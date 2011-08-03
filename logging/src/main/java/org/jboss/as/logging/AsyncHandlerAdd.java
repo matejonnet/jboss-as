@@ -28,6 +28,7 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import org.jboss.as.controller.AbstractAddStepHandler;
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.ServiceVerificationHandler;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
@@ -49,13 +50,16 @@ class AsyncHandlerAdd extends AbstractAddStepHandler {
 
     static final AsyncHandlerAdd INSTANCE = new AsyncHandlerAdd();
 
-    protected void populateModel(ModelNode operation, ModelNode model) {
+    @Override
+    protected void populateModel(ModelNode operation, ModelNode model) throws OperationFailedException {
+        LoggingValidators.validate(operation);
         model.get(QUEUE_LENGTH).set(operation.get(QUEUE_LENGTH));
         model.get(SUBHANDLERS).set(operation.get(SUBHANDLERS));
-        model.get(LEVEL).set(operation.get(LEVEL));
+        if (operation.hasDefined(LEVEL)) model.get(LEVEL).set(operation.get(LEVEL));
         model.get(OVERFLOW_ACTION).set(operation.get(OVERFLOW_ACTION));
     }
 
+    @Override
     protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) {
         final PathAddress address = PathAddress.pathAddress(operation.get(OP_ADDR));
         final String name = address.getLastElement().getValue();
@@ -72,8 +76,9 @@ class AsyncHandlerAdd extends AbstractAddStepHandler {
         service.addHandlers(list);
         if (operation.hasDefined(QUEUE_LENGTH))
             service.setQueueLength(operation.get(QUEUE_LENGTH).asInt());
-        service.setLevel(Level.parse(operation.get(LEVEL).asString()));
-        service.setOverflowAction(OverflowAction.valueOf(operation.get(OVERFLOW_ACTION).asString()));
+        if (operation.hasDefined(LEVEL)) service.setLevel(Level.parse(operation.get(LEVEL).asString()));
+        if (operation.hasDefined(OVERFLOW_ACTION))
+            service.setOverflowAction(OverflowAction.valueOf(operation.get(OVERFLOW_ACTION).asString()));
 
         serviceBuilder.addListener(verificationHandler);
         serviceBuilder.setInitialMode(ServiceController.Mode.ACTIVE);

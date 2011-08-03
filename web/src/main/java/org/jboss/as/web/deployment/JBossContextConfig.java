@@ -57,7 +57,6 @@ import org.apache.naming.resources.FileDirContext;
 import org.apache.naming.resources.ProxyDirContext;
 import org.apache.tomcat.util.IntrospectionUtils;
 import org.jboss.annotation.javaee.Icon;
-import org.jboss.as.clustering.web.ClusteringNotSupportedException;
 import org.jboss.as.clustering.web.OutgoingDistributableSessionData;
 import org.jboss.as.server.deployment.Attachments;
 import org.jboss.as.server.deployment.DeploymentUnit;
@@ -111,7 +110,6 @@ import org.jboss.metadata.web.spec.WebResourceCollectionMetaData;
 import org.jboss.metadata.web.spec.WebResourceCollectionsMetaData;
 import org.jboss.metadata.web.spec.WelcomeFileListMetaData;
 import org.jboss.modules.Module;
-import org.jboss.modules.ModuleClassLoader;
 import org.jboss.modules.ModuleIdentifier;
 import org.jboss.vfs.VirtualFile;
 
@@ -223,9 +221,13 @@ public class JBossContextConfig extends ContextConfig {
     protected Object getInstance(String moduleName, String className, List<ParamValueMetaData> params) {
         try {
             final Module module = deploymentUnitContext.getAttachment(Attachments.MODULE);
-            ModuleClassLoader moduleClassLoader = null;
+            ClassLoader moduleClassLoader = null;
             if (moduleName == null) {
-                moduleClassLoader = module.getClassLoader();
+                if (context.getLoader() == null || context.getLoader().getClassLoader() == null) {
+                    moduleClassLoader = module.getClassLoader();
+                } else {
+                    moduleClassLoader = context.getLoader().getClassLoader();
+                }
             } else {
                 moduleClassLoader = module.getModule(ModuleIdentifier.create(moduleName)).getClassLoader();
             }
@@ -277,7 +279,7 @@ public class JBossContextConfig extends ContextConfig {
             try {
                 context.setManager(new DistributableSessionManager<OutgoingDistributableSessionData>(this.context.getParent(), metaData, this.deploymentUnitContext.getServiceRegistry()));
                 context.setDistributable(true);
-            } catch (ClusteringNotSupportedException e) {
+            } catch (Exception e) {
                 log.warn("Clustering not supported, falling back to non-clustered session manager.", e);
             }
         }

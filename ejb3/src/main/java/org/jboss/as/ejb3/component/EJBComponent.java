@@ -22,15 +22,17 @@
 package org.jboss.as.ejb3.component;
 
 import org.jboss.as.ee.component.BasicComponent;
+import org.jboss.as.ee.component.ComponentView;
+import org.jboss.as.ee.component.ComponentViewInstance;
 import org.jboss.as.ejb3.security.EJBSecurityMetaData;
 import org.jboss.as.naming.context.NamespaceContextSelector;
 import org.jboss.as.security.service.SimpleSecurityManager;
-import org.jboss.as.server.deployment.DeploymentUnit;
+import org.jboss.as.server.CurrentServiceRegistry;
 import org.jboss.ejb3.context.CurrentInvocationContext;
 import org.jboss.ejb3.context.spi.InvocationContext;
-import org.jboss.ejb3.tx2.spi.TransactionalComponent;
 import org.jboss.logging.Logger;
 import org.jboss.msc.service.ServiceController;
+import org.jboss.msc.service.ServiceName;
 
 import javax.ejb.ApplicationException;
 import javax.ejb.EJBException;
@@ -51,6 +53,7 @@ import javax.transaction.TransactionManager;
 import javax.transaction.TransactionSynchronizationRegistry;
 import javax.transaction.UserTransaction;
 import java.io.Serializable;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.security.Principal;
 import java.util.Collection;
@@ -62,8 +65,25 @@ import java.util.concurrent.ConcurrentMap;
 /**
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
  */
-public abstract class EJBComponent extends BasicComponent implements org.jboss.ejb3.context.spi.EJBComponent, TransactionalComponent {
+public abstract class EJBComponent extends BasicComponent implements org.jboss.ejb3.context.spi.EJBComponent {
     private static Logger log = Logger.getLogger(EJBComponent.class);
+
+    private static final ApplicationException APPLICATION_EXCEPTION = new ApplicationException() {
+        @Override
+        public boolean inherited() {
+            return true;
+        }
+
+        @Override
+        public boolean rollback() {
+            return false;
+        }
+
+        @Override
+        public Class<? extends Annotation> annotationType() {
+            return ApplicationException.class;
+        }
+    };
 
     private final ConcurrentMap<MethodIntf, ConcurrentMap<String, ConcurrentMap<ArrayKey, TransactionAttributeType>>> txAttrs;
 
@@ -72,6 +92,7 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.e
     private static volatile boolean youHaveBeenWarnedEJBTHREE2120 = false;
     private final Map<Class<?>, ApplicationException> applicationExceptions;
     private final EJBSecurityMetaData securityMetaData;
+    private final Map<String, ServiceName> viewServices;
 
     /**
      * Construct a new instance.
@@ -84,10 +105,7 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.e
 
         this.applicationExceptions = Collections.unmodifiableMap(ejbComponentCreateService.getEjbJarConfiguration().getApplicationExceptions());
 
-        // constructs
-        final DeploymentUnit deploymentUnit = ejbComponentCreateService.getDeploymentUnitInjector().getValue();
-        final ServiceController<EJBUtilities> serviceController = (ServiceController<EJBUtilities>) deploymentUnit.getServiceRegistry().getRequiredService(EJBUtilities.SERVICE_NAME);
-        this.utilities = serviceController.getValue();
+        this.utilities = ejbComponentCreateService.getEJBUtilities();
 
 
         txAttrs = ejbComponentCreateService.getTxAttrs();
@@ -95,10 +113,24 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.e
 
         // security metadata
         this.securityMetaData = ejbComponentCreateService.getSecurityMetaData();
+
+        this.viewServices = ejbComponentCreateService.getViewServices();
     }
 
-    @Override
-    public ApplicationException getApplicationException(Class<?> exceptionClass) {
+    protected <T> T createViewInstanceProxy(final Class<T> viewInterface, final Map<Object, Object> contextData) {
+        if (viewInterface == null)
+            throw new IllegalArgumentException("View interface is null");
+        if (viewServices.containsKey(viewInterface.getName())) {
+            final ServiceController<?> serviceController = CurrentServiceRegistry.getServiceRegistry().getRequiredService(viewServices.get(viewInterface.getName()));
+            final ComponentView view = (ComponentView) serviceController.getValue();
+            final ComponentViewInstance instance = view.createInstance(contextData);
+            return viewInterface.cast(instance.createProxy());
+        } else {
+            throw new IllegalStateException("View of type " + viewInterface + " not found on bean " + this);
+        }
+    }
+
+    public ApplicationException getApplicationException(Class<?> exceptionClass, Method invokedMethod) {
         ApplicationException applicationException = this.applicationExceptions.get(exceptionClass);
         if (applicationException != null) {
             return applicationException;
@@ -121,6 +153,18 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.e
             }
             // move to next super class
             superClass = superClass.getSuperclass();
+        }
+        // AS7-1317: examine the throws clause of the method
+        // An unchecked-exception is only an application exception if annotated (or described) as such.
+        // (see EJB 3.1 FR 14.2.1)
+        if (RuntimeException.class.isAssignableFrom(exceptionClass) || Error.class.isAssignableFrom(exceptionClass))
+            return null;
+        if (invokedMethod != null) {
+            final Class<?>[] exceptionTypes = invokedMethod.getExceptionTypes();
+            for (Class<?> type : exceptionTypes) {
+                if (type.isAssignableFrom(exceptionClass))
+                    return APPLICATION_EXCEPTION;
+            }
         }
         // not an application exception, so return null.
         return null;
@@ -222,7 +266,6 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.e
         return txAttr;
     }
 
-    @Override
     public TransactionManager getTransactionManager() {
         return utilities.getTransactionManager();
     }
@@ -231,7 +274,6 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.e
         return utilities.getTransactionSynchronizationRegistry();
     }
 
-    @Override
     public int getTransactionTimeout(Method method) {
         return -1; // un-configured
     }

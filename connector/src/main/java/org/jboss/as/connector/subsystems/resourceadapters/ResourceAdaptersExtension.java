@@ -21,12 +21,6 @@
  */
 package org.jboss.as.connector.subsystems.resourceadapters;
 
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Map.Entry;
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
 import static org.jboss.as.connector.pool.Constants.BACKGROUNDVALIDATION;
 import static org.jboss.as.connector.pool.Constants.BACKGROUNDVALIDATIONMINUTES;
 import static org.jboss.as.connector.pool.Constants.BLOCKING_TIMEOUT_WAIT_MILLIS;
@@ -36,11 +30,6 @@ import static org.jboss.as.connector.pool.Constants.MIN_POOL_SIZE;
 import static org.jboss.as.connector.pool.Constants.POOL_PREFILL;
 import static org.jboss.as.connector.pool.Constants.POOL_USE_STRICT_MIN;
 import static org.jboss.as.connector.pool.Constants.USE_FAST_FAIL;
-import org.jboss.as.connector.pool.PoolConfigurationRWHandler;
-import org.jboss.as.connector.pool.PoolConfigurationRWHandler.PoolConfigurationReadHandler;
-import org.jboss.as.connector.pool.PoolConfigurationRWHandler.RaPoolConfigurationWriteHandler;
-import org.jboss.as.connector.pool.PoolMetrics;
-import org.jboss.as.connector.pool.PoolOperations;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.ADMIN_OBJECTS;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.ALLOCATION_RETRY;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.ALLOCATION_RETRY_WAIT_MILLIS;
@@ -53,7 +42,7 @@ import static org.jboss.as.connector.subsystems.resourceadapters.Constants.CONFI
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.CONNECTIONDEFINITIONS;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.ENABLED;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.FLUSH_STRATEGY;
-import static org.jboss.as.connector.subsystems.resourceadapters.Constants.INTERLIVING;
+import static org.jboss.as.connector.subsystems.resourceadapters.Constants.INTERLEAVING;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.JNDI_NAME;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.NAME;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.NOTXSEPARATEPOOL;
@@ -73,7 +62,7 @@ import static org.jboss.as.connector.subsystems.resourceadapters.Constants.SECUR
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.TRANSACTIONSUPPORT;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.USE_CCM;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.USE_JAVA_CONTEXT;
-import static org.jboss.as.connector.subsystems.resourceadapters.Constants.WRAP_XA_DATASOURCE;
+import static org.jboss.as.connector.subsystems.resourceadapters.Constants.WRAP_XA_RESOURCE;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.XA_RESOURCE_TIMEOUT;
 import static org.jboss.as.connector.subsystems.resourceadapters.ResourceAdaptersSubsystemProviders.ADD_RESOURCEADAPTER_DESC;
 import static org.jboss.as.connector.subsystems.resourceadapters.ResourceAdaptersSubsystemProviders.FLUSH_ALL_CONNECTION_DESC;
@@ -83,21 +72,35 @@ import static org.jboss.as.connector.subsystems.resourceadapters.ResourceAdapter
 import static org.jboss.as.connector.subsystems.resourceadapters.ResourceAdaptersSubsystemProviders.SUBSYSTEM;
 import static org.jboss.as.connector.subsystems.resourceadapters.ResourceAdaptersSubsystemProviders.SUBSYSTEM_ADD_DESC;
 import static org.jboss.as.connector.subsystems.resourceadapters.ResourceAdaptersSubsystemProviders.TEST_CONNECTION_DESC;
-import org.jboss.as.controller.Extension;
-import org.jboss.as.controller.ExtensionContext;
-import org.jboss.as.controller.OperationContext;
-import org.jboss.as.controller.OperationStepHandler;
-import org.jboss.as.controller.OperationFailedException;
-import org.jboss.as.controller.PathAddress;
-import org.jboss.as.controller.PathElement;
-import org.jboss.as.controller.SubsystemRegistration;
-import org.jboss.as.controller.descriptions.DescriptionProvider;
-import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIBE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
+
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Map.Entry;
+
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+
+import org.jboss.as.connector.pool.PoolConfigurationRWHandler;
+import org.jboss.as.connector.pool.PoolConfigurationRWHandler.PoolConfigurationReadHandler;
+import org.jboss.as.connector.pool.PoolConfigurationRWHandler.RaPoolConfigurationWriteHandler;
+import org.jboss.as.connector.pool.PoolMetrics;
+import org.jboss.as.connector.pool.PoolOperations;
+import org.jboss.as.controller.Extension;
+import org.jboss.as.controller.ExtensionContext;
+import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.OperationStepHandler;
+import org.jboss.as.controller.PathAddress;
+import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.SubsystemRegistration;
+import org.jboss.as.controller.descriptions.DescriptionProvider;
+import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.descriptions.common.CommonDescriptions;
 import org.jboss.as.controller.parsing.ExtensionParsingContext;
 import org.jboss.as.controller.parsing.ParseUtils;
@@ -126,12 +129,12 @@ import org.jboss.staxmapper.XMLExtendedStreamReader;
 import org.jboss.staxmapper.XMLExtendedStreamWriter;
 
 /**
- * @author @author <a href="mailto:stefano.maestri@redhat.com">Stefano
- *         Maestri</a>
+ * @author <a href="mailto:stefano.maestri@redhat.com">Stefano Maestri</a>
+ * @author <a href="mailto:jeff.zhang@jboss.org">Jeff Zhang</a>
  */
 public class ResourceAdaptersExtension implements Extension {
 
-    private static final Logger log = Logger.getLogger("org.jboss.as.datasources");
+    private static final Logger log = Logger.getLogger("org.jboss.as.resourceadapters");
 
     @Override
     public void initialize(final ExtensionContext context) {
@@ -274,7 +277,7 @@ public class ResourceAdaptersExtension implements Extension {
 
             if (conDef.has(MAX_POOL_SIZE) || conDef.has(MIN_POOL_SIZE) || conDef.has(POOL_USE_STRICT_MIN)
                     || conDef.has(POOL_PREFILL)) {
-                if (conDef.has(INTERLIVING) || conDef.has(WRAP_XA_DATASOURCE) || conDef.has(NOTXSEPARATEPOOL)
+                if (conDef.has(INTERLEAVING) || conDef.has(WRAP_XA_RESOURCE) || conDef.has(NOTXSEPARATEPOOL)
                         || conDef.has(PAD_XID) || conDef.has(SAME_RM_OVERRIDE)) {
                     streamWriter.writeStartElement(CommonConnDef.Tag.XA_POOL.getLocalName());
                     writeElementIfHas(streamWriter, conDef, CommonPool.Tag.MIN_POOL_SIZE, MIN_POOL_SIZE);
@@ -284,10 +287,10 @@ public class ResourceAdaptersExtension implements Extension {
                     writeElementIfHas(streamWriter, conDef, CommonPool.Tag.USE_STRICT_MIN, POOL_USE_STRICT_MIN);
 
                     writeElementIfHas(streamWriter, conDef, CommonXaPool.Tag.ISSAMERMOVERRIDEVALUE, SAME_RM_OVERRIDE);
-                    writeElementIfHas(streamWriter, conDef, CommonXaPool.Tag.INTERLEAVING, INTERLIVING);
+                    writeElementIfHas(streamWriter, conDef, CommonXaPool.Tag.INTERLEAVING, INTERLEAVING);
                     writeElementIfHas(streamWriter, conDef, CommonXaPool.Tag.NO_TX_SEPARATE_POOLS, NOTXSEPARATEPOOL);
                     writeElementIfHas(streamWriter, conDef, CommonXaPool.Tag.PAD_XID, PAD_XID);
-                    writeElementIfHas(streamWriter, conDef, CommonXaPool.Tag.WRAP_XA_RESOURCE, WRAP_XA_DATASOURCE);
+                    writeElementIfHas(streamWriter, conDef, CommonXaPool.Tag.WRAP_XA_RESOURCE, WRAP_XA_RESOURCE);
 
                     streamWriter.writeEndElement();
                 } else {
@@ -554,12 +557,15 @@ public class ResourceAdaptersExtension implements Extension {
                 }
                 if (conDef.isXa()) {
                     CommonXaPool xaPool = (CommonXaPool) conDef.getPool();
-                    setBooleanIfNotNull(condefModel, INTERLIVING, xaPool.isInterleaving());
+                    setBooleanIfNotNull(condefModel, INTERLEAVING, xaPool.isInterleaving());
                     setBooleanIfNotNull(condefModel, PAD_XID, xaPool.isPadXid());
                     setBooleanIfNotNull(condefModel, SAME_RM_OVERRIDE, xaPool.isSameRmOverride());
                     setBooleanIfNotNull(condefModel, NOTXSEPARATEPOOL, xaPool.isNoTxSeparatePool());
-                    setBooleanIfNotNull(condefModel, WRAP_XA_DATASOURCE, xaPool.isWrapXaDataSource());
-
+                    setBooleanIfNotNull(condefModel, WRAP_XA_RESOURCE, xaPool.isWrapXaDataSource(), Boolean.TRUE);
+                }
+            } else {
+                if (conDef.isXa()) {
+                    setBooleanIfNotNull(condefModel, WRAP_XA_RESOURCE, null, Boolean.TRUE);
                 }
             }
 
@@ -623,6 +629,15 @@ public class ResourceAdaptersExtension implements Extension {
     private static void setBooleanIfNotNull(final ModelNode node, final String identifier, final Boolean value) {
         if (value != null) {
             node.get(identifier).set(value);
+        }
+    }
+
+    private static void setBooleanIfNotNull(final ModelNode node, final String identifier,
+                                            final Boolean value, final Boolean defaultValue) {
+        if (value != null) {
+            node.get(identifier).set(value);
+        } else if (defaultValue != null) {
+            node.get(identifier).set(defaultValue);
         }
     }
 

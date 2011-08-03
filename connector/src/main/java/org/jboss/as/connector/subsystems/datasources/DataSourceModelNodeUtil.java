@@ -42,7 +42,7 @@ import static org.jboss.as.connector.subsystems.datasources.Constants.ENABLED;
 import static org.jboss.as.connector.subsystems.datasources.Constants.EXCEPTIONSORTERCLASSNAME;
 import static org.jboss.as.connector.subsystems.datasources.Constants.EXCEPTIONSORTER_PROPERTIES;
 import static org.jboss.as.connector.subsystems.datasources.Constants.FLUSH_STRATEGY;
-import static org.jboss.as.connector.subsystems.datasources.Constants.INTERLIVING;
+import static org.jboss.as.connector.subsystems.datasources.Constants.INTERLEAVING;
 import static org.jboss.as.connector.subsystems.datasources.Constants.JNDINAME;
 import static org.jboss.as.connector.subsystems.datasources.Constants.JTA;
 import static org.jboss.as.connector.subsystems.datasources.Constants.NEW_CONNECTION_SQL;
@@ -78,7 +78,7 @@ import static org.jboss.as.connector.subsystems.datasources.Constants.USE_JAVA_C
 import static org.jboss.as.connector.subsystems.datasources.Constants.VALIDATEONMATCH;
 import static org.jboss.as.connector.subsystems.datasources.Constants.VALIDCONNECTIONCHECKERCLASSNAME;
 import static org.jboss.as.connector.subsystems.datasources.Constants.VALIDCONNECTIONCHECKER_PROPERTIES;
-import static org.jboss.as.connector.subsystems.datasources.Constants.WRAP_XA_DATASOURCE;
+import static org.jboss.as.connector.subsystems.datasources.Constants.WRAP_XA_RESOURCE;
 import static org.jboss.as.connector.subsystems.datasources.Constants.XADATASOURCECLASS;
 import static org.jboss.as.connector.subsystems.datasources.Constants.XADATASOURCEPROPERTIES;
 import static org.jboss.as.connector.subsystems.datasources.Constants.XA_RESOURCE_TIMEOUT;
@@ -222,11 +222,11 @@ class DataSourceModelNodeUtil {
             if (pool.getFlushStrategy() != null) {
                 setStringIfNotNull(xaDataSourceModel, FLUSH_STRATEGY, pool.getFlushStrategy().getName());
             }
-            setBooleanIfNotNull(xaDataSourceModel, INTERLIVING, pool.isInterleaving());
+            setBooleanIfNotNull(xaDataSourceModel, INTERLEAVING, pool.isInterleaving());
             setBooleanIfNotNull(xaDataSourceModel, NOTXSEPARATEPOOL, pool.isNoTxSeparatePool());
             setBooleanIfNotNull(xaDataSourceModel, PAD_XID, pool.isPadXid());
             setBooleanIfNotNull(xaDataSourceModel, SAME_RM_OVERRIDE, pool.isSameRmOverride());
-            setBooleanIfNotNull(xaDataSourceModel, WRAP_XA_DATASOURCE, pool.isWrapXaDataSource());
+            setBooleanIfNotNull(xaDataSourceModel, WRAP_XA_RESOURCE, pool.isWrapXaDataSource());
         }
         final DsSecurity security = xaDataSource.getSecurity();
         if (security != null) {
@@ -396,11 +396,11 @@ class DataSourceModelNodeUtil {
         final Integer minPoolSize = getIntIfSetOrGetDefault(dataSourceNode, MIN_POOL_SIZE, null);
         final boolean prefill = getBooleanIfSetOrGetDefault(dataSourceNode, POOL_PREFILL, false);
         final boolean useStrictMin = getBooleanIfSetOrGetDefault(dataSourceNode, POOL_USE_STRICT_MIN, false);
-        final boolean interleaving = getBooleanIfSetOrGetDefault(dataSourceNode, INTERLIVING, false);
+        final boolean interleaving = getBooleanIfSetOrGetDefault(dataSourceNode, INTERLEAVING, false);
         final boolean noTxSeparatePool = getBooleanIfSetOrGetDefault(dataSourceNode, NOTXSEPARATEPOOL, false);
         final boolean padXid = getBooleanIfSetOrGetDefault(dataSourceNode, PAD_XID, false);
         final boolean isSameRmOverride = getBooleanIfSetOrGetDefault(dataSourceNode, SAME_RM_OVERRIDE, false);
-        final boolean wrapXaDataSource = getBooleanIfSetOrGetDefault(dataSourceNode, WRAP_XA_DATASOURCE, false);
+        final boolean wrapXaDataSource = getBooleanIfSetOrGetDefault(dataSourceNode, WRAP_XA_RESOURCE, true);
         final FlushStrategy flushStrategy = dataSourceNode.hasDefined(FLUSH_STRATEGY) ? FlushStrategy.forName(dataSourceNode
                 .get(FLUSH_STRATEGY).asString()) : FlushStrategy.FAILING_CONNECTION_ONLY;
 

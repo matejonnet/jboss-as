@@ -131,7 +131,7 @@ class Constants {
 
     static final String XADATASOURCECLASS = "xa-data-source-class";
 
-    static final String INTERLIVING = "interliving";
+    static final String INTERLEAVING = "interleaving";
 
     static final String NOTXSEPARATEPOOL = "no-tx-separate-pool";
 
@@ -139,7 +139,7 @@ class Constants {
 
     static final String SAME_RM_OVERRIDE = "same-rm-override";
 
-    static final String WRAP_XA_DATASOURCE = "wrap-xa-datasource";
+    static final String WRAP_XA_RESOURCE = "wrap-xa-resource";
 
     static final String NEWCONNECTIONSQL = "new-connection-sql";
 
