@@ -1,0 +1,51 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="urn:jboss:domain:paas-controller:1.0"
+            xmlns="urn:jboss:domain:paas-controller:1.0"
+            elementFormDefault="qualified"
+            attributeFormDefault="unqualified"
+            version="1.0">
+
+   <!-- The subsystem root element -->
+   <xs:element name="subsystem" type="subsystemType"/>
+   
+   <xs:complexType name="subsystemType">
+      <xs:all>
+         <xs:element name="iaas-providers" type="iaas-providersType">
+         <xs:element name="instances" type="instancesType">
+      </xs:all>
+   </xs:complexType>
+   
+   <xs:complexType name="iaas-providersType">
+      <xs:all minOccurs="0" maxOccurs="unbounded">
+         <xs:element name="iaas-provider" type="iaas-providerType"/>
+      </xs:all>
+   </xs:complexType>
+   
+   <xs:complexType name="iaas-providerType">
+      <xs:attribute name="provider"    use="required" />
+      <xs:attribute name="driver"      use="required" />
+      <xs:attribute name="url"         use="required" />
+      <xs:attribute name="username"    use="required" />
+      <xs:attribute name="password"    use="required" />
+      <!-- image containing preconfigured JBoss AS for PaaS -->
+      <xs:attribute name="image-id"    use="required" />
+   </xs:complexType>
+
+   <xs:complexType name="instancesType">
+      <xs:all minOccurs="0" maxOccurs="unbounded">
+         <xs:element name="instance" type="instanceType"/>
+      </xs:all>
+   </xs:complexType>
+
+   <xs:complexType name="instanceType">
+      <xs:attribute name="instanceId" use="required" />
+      <xs:all minOccurs="0" maxOccurs="unbounded">
+         <xs:element name="server-group" type="server-group"/>
+      </xs:all>
+   </xs:complexType>
+
+   <xs:complexType name="server-groupType">
+      <xs:attribute name="name" use="required" />
+   </xs:complexType>
+
+</xs:schema>

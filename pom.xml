@@ -274,6 +274,8 @@
         <module>webservices</module>
         <module>weld</module>
         <module>testsuite</module>
+        <module>paas-controller</module>
+        <module>process-paas-controller</module>
     </modules>
 
     <build>
