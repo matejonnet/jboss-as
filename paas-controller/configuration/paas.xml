@@ -573,9 +573,6 @@
         </socket-binding-group>
     </socket-binding-groups>
     <deployments>
-        <deployment name="hello-servlet-noEJB.war" runtime-name="hello-servlet-noEJB.war">
-            <content sha1="9f3ab97a294d7dc751e7b6055c7b5d68b5f6dc2c"/>
-        </deployment>
     </deployments>
     <server-groups>
         <!-- TODO could be removed ? -->

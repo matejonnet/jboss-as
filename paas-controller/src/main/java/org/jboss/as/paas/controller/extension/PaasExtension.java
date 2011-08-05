@@ -66,22 +66,22 @@ public class PaasExtension implements Extension {
         context.setSubsystemXmlMapping(NAMESPACE, parser);
     }
 
+    
 
     @Override
     public void initialize(ExtensionContext context) {
         System.out.println(">>>>>>>>>>> PaasExtension.initialize");
 
-        
-        ModelControllerClient client = null;
-        try {
-            //TODO parameterize connection utl & port
-            client = ModelControllerClient.Factory.create("localhost", 9999);
-        } catch (UnknownHostException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-        ListApplicationsHandle.INSTANCE.init(client);
-        DeployHandle.INSTANCE.init(client);
+//        ModelControllerClient client = null;
+//        try {
+//            //TODO parameterize connection utl & port
+//            client = ModelControllerClient.Factory.create("localhost", 9999);
+//        } catch (UnknownHostException e) {
+//            // TODO Auto-generated catch block
+//            e.printStackTrace();
+//        }
+//        ListApplicationsHandle.INSTANCE.init(client);
+//        DeployHandle.INSTANCE.init(client);
         
 
         final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME);
@@ -89,6 +89,7 @@ public class PaasExtension implements Extension {
         //We always need to add an 'add' operation
         registration.registerOperationHandler(ADD, PaasAddHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
         
+        //add module specific operations
         registration.registerOperationHandler(ListApplicationsHandle.OPERATION_NAME, ListApplicationsHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
         registration.registerOperationHandler(DeployHandle.OPERATION_NAME, DeployHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
         
@@ -100,7 +101,7 @@ public class PaasExtension implements Extension {
         providerChild.registerOperationHandler(ModelDescriptionConstants.ADD, IaasProviderAddHandler.INSTANCE, IaasProviderAddHandler.INSTANCE);
         providerChild.registerOperationHandler(ModelDescriptionConstants.REMOVE, IaasProviderRemoveHandler.INSTANCE, IaasProviderRemoveHandler.INSTANCE);
         //TODO typeChild.registerReadWriteAttribute("tick", null, TrackerTickHandler.INSTANCE, Storage.CONFIGURATION);        
-        providerChild.registerReadWriteAttribute("driver", null, ProviderDriverHandle.INSTANCE, Storage.CONFIGURATION);
+        //providerChild.registerReadWriteAttribute("driver", null, ProviderDriverHandle.INSTANCE, Storage.CONFIGURATION);
         //        providerChild.registerReadWriteAttribute("url", null, Storage.CONFIGURATION);
         //        providerChild.registerReadWriteAttribute("username", null, Storage.CONFIGURATION);
         //        providerChild.registerReadWriteAttribute("password", null, Storage.CONFIGURATION);
@@ -110,10 +111,9 @@ public class PaasExtension implements Extension {
         serverInstanceChild.registerOperationHandler(ModelDescriptionConstants.ADD, ServerInstanceAddHandler.INSTANCE, ServerInstanceAddHandler.INSTANCE);
         serverInstanceChild.registerOperationHandler(ModelDescriptionConstants.REMOVE, ServerInstanceRemoveHandler.INSTANCE, ServerInstanceRemoveHandler.INSTANCE);
 
-        //providerChild.registerReadOnlyAttribute("provider", null, Storage.CONFIGURATION);
-        providerChild.registerReadWriteAttribute("provider", null, InstanceProviderHandle.INSTANCE, Storage.CONFIGURATION);
+        providerChild.registerReadOnlyAttribute("provider", null, Storage.CONFIGURATION);
+        //providerChild.registerReadWriteAttribute("provider", null, InstanceProviderHandle.INSTANCE, Storage.CONFIGURATION);
 
-        //TODO reader is null !!!
         subsystem.registerXMLElementWriter(parser);
     }
 
@@ -319,28 +319,65 @@ public class PaasExtension implements Extension {
         /** {@inheritDoc} */
         @Override
         public void writeContent(final XMLExtendedStreamWriter writer, final SubsystemMarshallingContext context) throws XMLStreamException {
-            //TODO implement
             //Write out the main subsystem element
             context.startSubsystemElement(PaasExtension.NAMESPACE, false);
 
             writer.writeStartElement("iaas-providers");
-
             ModelNode node = context.getModelNode();
-            ModelNode iaasProvider = node.get("iaas-provider");
+            ModelNode iaasProvider = node.get("provider");
             for (Property property : iaasProvider.asPropertyList()) {
-
                 //write each child element to xml
                 writer.writeStartElement("iaas-provider");
-                writer.writeAttribute("driver", property.getName());
+                writer.writeAttribute("provider", property.getName());
                 ModelNode entry = property.getValue();
+                if (entry.hasDefined("driver")) {
+                    writer.writeAttribute("driver", entry.get("driver").asString());
+                }
                 if (entry.hasDefined("url")) {
                     writer.writeAttribute("url", entry.get("url").asString());
                 }
+                if (entry.hasDefined("username")) {
+                    writer.writeAttribute("username", entry.get("username").asString());
+                }
+                if (entry.hasDefined("password")) {
+                    writer.writeAttribute("password", entry.get("password").asString());
+                }
+                if (entry.hasDefined("image-id")) {
+                    writer.writeAttribute("image-id", entry.get("image-id").asString());
+                }
+                writer.writeEndElement();
+            }
+            //End providers
+            writer.writeEndElement();
+
+            
+            writer.writeStartElement("instances");
+            ModelNode instance = node.get("instance");
+            for (Property property : instance.asPropertyList()) {
+                //write each child element to xml
+                writer.writeStartElement("instance");
+                writer.writeAttribute("id", property.getName());
+                ModelNode entry = property.getValue();
+                if (entry.hasDefined("provider")) {
+                    writer.writeAttribute("provider", entry.get("provider").asString());
+                }
+                
+                ModelNode serverGroups = entry.get("serverGroups");
+                if (serverGroups.isDefined())
+                for (ModelNode sererGroup : serverGroups.asList()) {
+                    //write each child element to xml
+                    writer.writeStartElement("server-group");
+                    writer.writeAttribute("name", sererGroup.asString());
+                    writer.writeEndElement();
+                }
+                //End instance 
                 writer.writeEndElement();
             }
 
-            //End deployment-types
+            //End instances
             writer.writeEndElement();
+            
+            
             //End subsystem
             writer.writeEndElement();
         }
