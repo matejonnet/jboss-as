@@ -82,8 +82,8 @@ public class PaasExtension implements Extension {
 //        }
 //        ListApplicationsHandle.INSTANCE.init(client);
 //        DeployHandle.INSTANCE.init(client);
-        
-
+         
+        //TODO register subsysetem outside the profile
         final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME);
         final ManagementResourceRegistration registration = subsystem.registerSubsystemModel(PaasProviders.SUBSYSTEM);
         //We always need to add an 'add' operation

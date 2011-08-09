@@ -52,81 +52,38 @@ public class ListApplicationsHandle implements OperationStepHandler {
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-        //        if (client == null) {
-        //            ModelNode error = new ModelNode();
-        //            error.set("ModelControllerClient is null. Singleton must be initialized.");
-        //            throw new OperationFailedException(error);
-        //        }
-        //        List<String> deployments = Util.getDeployments(client);
 
+        final ModelNode request;
 
+        try {
+            DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
 
+            
+            builder.operationName("read-children-names");
+            builder.addProperty("child-type", "deployment");
+            request = builder.buildRequest();
 
-        //        final ModelNode model = context.readModelForUpdate(PathAddress.EMPTY_ADDRESS);
-        //            final String level = operation.get(CommonAttributes.LEVEL).asString();
-        //            model.get(CommonAttributes.ROOT_LOGGER, CommonAttributes.LEVEL).set(level);
-        //            if (context.getType() == OperationContext.Type.SERVER) {
-        //                context.addStep(new OperationStepHandler() {
-        //                    public void execute(OperationContext context, ModelNode operation) {
-        //                        final ServiceRegistry serviceRegistry = context.getServiceRegistry(false);
-        //                        final ServiceController<Logger> controller = (ServiceController<Logger>) serviceRegistry.getService(LogServices.ROOT_LOGGER);
-        //                        if (controller != null) {
-        //                            controller.getValue().setLevel(Level.parse(level));
-        //                        }
-        //                        context.completeStep();
-        //                    }
-        //                }, OperationContext.Stage.RUNTIME);
-        //            }
+            context.addStep(request, new OperationStepHandler() {
+                public void execute(OperationContext context, ModelNode operation) {
 
+                    String operationName = "read-children-names";
+                    OperationStepHandler opStep = context.getResourceRegistration().getOperationHandler(PathAddress.EMPTY_ADDRESS, operationName);
 
+                    try {
+                        opStep.execute(context, operation);
+                    } catch (OperationFailedException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
 
-        final ModelNode request = new ModelNode();
-
-        //            builder.operationName("read-children-names");
-        //            builder.addProperty("child-type", "deployment");
-        //            request = builder.buildRequest();
-
-        //context.addStep(request, new OperationStepHandler() {
-        context.addStep(context.getResult(), request, new OperationStepHandler() {
-
-            public void execute(OperationContext context, ModelNode operation) {
-
-                //                Resource res = context.getRootResource();
-                //                ModelNode rootModel = res.getModel();
-
-
-                String operationName = "read-children-names";
-                OperationStepHandler opStep = context.getResourceRegistration().getOperationHandler(PathAddress.EMPTY_ADDRESS, operationName);
-                //PathAddress address = PathAddress.pathAddress(PathElement.pathElement("/"));
-                //OperationStepHandler opStep = context.getResourceRegistration().getOperationHandler(address, operationName);
-
-                try {  
-                    final ModelNode request;
-                    DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
-                    builder.operationName("read-children-names");
-                    builder.addProperty("child-type", "deployment");
-                    request = builder.buildRequest();
-
-                    opStep.execute(context, request);
-                    
-                    //TODO set outcome success
-                    
-                } catch (Throwable e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
+                    context.completeStep();
                 }
-
-                context.completeStep();
-            }
-        }, OperationContext.Stage.IMMEDIATE);
-
-
-        //        ModelNode deploymentsNode = new ModelNode();
-        //        for (String deployment : deployments) {
-        //            deploymentsNode.add(deployment);
-        //        }
-        //        context.getResult().set("deployments", deploymentsNode);
-
+            }, OperationContext.Stage.IMMEDIATE);
+        } catch (OperationFormatException e1) {
+            // TODO Auto-generated catch block
+            e1.printStackTrace();
+        }
+        
         context.completeStep();
     }
 }
