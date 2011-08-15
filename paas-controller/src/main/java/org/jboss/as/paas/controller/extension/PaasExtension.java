@@ -66,41 +66,28 @@ public class PaasExtension implements Extension {
         context.setSubsystemXmlMapping(NAMESPACE, parser);
     }
 
-    
-
     @Override
     public void initialize(ExtensionContext context) {
         System.out.println(">>>>>>>>>>> PaasExtension.initialize");
 
-//        ModelControllerClient client = null;
-//        try {
-//            //TODO parameterize connection utl & port
-//            client = ModelControllerClient.Factory.create("localhost", 9999);
-//        } catch (UnknownHostException e) {
-//            // TODO Auto-generated catch block
-//            e.printStackTrace();
-//        }
-//        ListApplicationsHandle.INSTANCE.init(client);
-//        DeployHandle.INSTANCE.init(client);
-         
         //TODO register subsysetem outside the profile
         final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME);
         final ManagementResourceRegistration registration = subsystem.registerSubsystemModel(PaasProviders.SUBSYSTEM);
         //We always need to add an 'add' operation
         registration.registerOperationHandler(ADD, PaasAddHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
-        
+
         //add module specific operations
         registration.registerOperationHandler(ListApplicationsHandle.OPERATION_NAME, ListApplicationsHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
         registration.registerOperationHandler(DeployHandle.OPERATION_NAME, DeployHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
-        
+
         //We always need to add a 'describe' operation
         registration.registerOperationHandler(DESCRIBE, PaasDescribeHandler.INSTANCE, PaasDescribeHandler.INSTANCE, false, OperationEntry.EntryType.PRIVATE);
 
-        //Add the type child
+        //Add the provider child
         ManagementResourceRegistration providerChild = registration.registerSubModel(PathElement.pathElement("provider"), PaasProviders.PROVIDER_CHILD);
         providerChild.registerOperationHandler(ModelDescriptionConstants.ADD, IaasProviderAddHandler.INSTANCE, IaasProviderAddHandler.INSTANCE);
         providerChild.registerOperationHandler(ModelDescriptionConstants.REMOVE, IaasProviderRemoveHandler.INSTANCE, IaasProviderRemoveHandler.INSTANCE);
-        //TODO typeChild.registerReadWriteAttribute("tick", null, TrackerTickHandler.INSTANCE, Storage.CONFIGURATION);        
+        //TODO typeChild.registerReadWriteAttribute("tick", null, TrackerTickHandler.INSTANCE, Storage.CONFIGURATION);
         //providerChild.registerReadWriteAttribute("driver", null, ProviderDriverHandle.INSTANCE, Storage.CONFIGURATION);
         //        providerChild.registerReadWriteAttribute("url", null, Storage.CONFIGURATION);
         //        providerChild.registerReadWriteAttribute("username", null, Storage.CONFIGURATION);
@@ -111,8 +98,15 @@ public class PaasExtension implements Extension {
         serverInstanceChild.registerOperationHandler(ModelDescriptionConstants.ADD, ServerInstanceAddHandler.INSTANCE, ServerInstanceAddHandler.INSTANCE);
         serverInstanceChild.registerOperationHandler(ModelDescriptionConstants.REMOVE, ServerInstanceRemoveHandler.INSTANCE, ServerInstanceRemoveHandler.INSTANCE);
 
+        //TODO read only ?
         providerChild.registerReadOnlyAttribute("provider", null, Storage.CONFIGURATION);
         //providerChild.registerReadWriteAttribute("provider", null, InstanceProviderHandle.INSTANCE, Storage.CONFIGURATION);
+
+
+        ManagementResourceRegistration serverGroupChildRegistration = serverInstanceChild.registerSubModel(PathElement.pathElement("server-group"), PaasProviders.SERVER_GROUP_CHILD);
+        //ManagementResourceRegistration serverGroupChild = registration.registerSubModel(PathElement.pathElement("server-group"), PaasProviders.INSTANCE_CHILD);
+        serverGroupChildRegistration.registerOperationHandler(ModelDescriptionConstants.ADD, ServerGroupAddHandler.INSTANCE, ServerGroupAddHandler.INSTANCE);
+        serverGroupChildRegistration.registerOperationHandler(ModelDescriptionConstants.REMOVE, ServerGroupRemoveHandler.INSTANCE, ServerGroupRemoveHandler.INSTANCE);
 
         subsystem.registerXMLElementWriter(parser);
     }
@@ -195,16 +189,6 @@ public class PaasExtension implements Extension {
                 throw ParseUtils.missingRequiredElement(reader, Collections.singleton("provider"));
             }
 
-            //           //Add the 'add' operation for each 'type' child
-            //           ModelNode addType = new ModelNode();
-            //           addType.get(OP).set(ModelDescriptionConstants.ADD);
-            //           PathAddress addr = PathAddress.pathAddress(PathElement.pathElement(SUBSYSTEM, SUBSYSTEM_NAME), PathElement.pathElement("type", suffix));
-            //           addType.get(OP_ADDR).set(addr.toModelNode());
-            //           if (tick != null) {
-            //               addType.get("tick").set(tick);
-            //           }
-            //
-
             //Add the 'add' operation for each 'type' child
             ModelNode addType = new ModelNode();
             addType.get(OP).set(ModelDescriptionConstants.ADD);
@@ -217,7 +201,7 @@ public class PaasExtension implements Extension {
                 addType.get("url").set(iaasUrl);
             if (iaasUsername != null)
                 addType.get("username").set(iaasUsername);
-            if (iaasPassword != null)    
+            if (iaasPassword != null)
                 addType.get("password").set(iaasPassword);
             if (iaasImageId != null)
                 addType.get("image-id").set(iaasImageId);
@@ -229,90 +213,96 @@ public class PaasExtension implements Extension {
             if (!reader.getLocalName().equals("instance")) {
                 throw ParseUtils.unexpectedElement(reader);
             }
-            
+
             String id = null;
             String provider = null;
-            
+            String ip = null;
+
             for (int i = 0 ; i < reader.getAttributeCount() ; i++) {
                 String attr = reader.getAttributeLocalName(i);
                 if (attr.equals("id")){
                     id = reader.getAttributeValue(i);
                 } else if (attr.equals("provider")){
                     provider = reader.getAttributeValue(i);
+                } else if (attr.equals("ip")){
+                    ip = reader.getAttributeValue(i);
                 } else {
                     throw ParseUtils.unexpectedAttribute(reader, i);
-                }
-            }
-            
-            //List<String> serverGroups = new ArrayList<String>();
-            Set<ModelNode> serverGroups = new HashSet<ModelNode>();
-            //Read the children
-            while (reader.hasNext() && reader.nextTag() != END_ELEMENT) {
-                if (reader.getLocalName().equals("server-group")) {
-                    parseServerGroups(reader, serverGroups);
-                } else {
-                    throw ParseUtils.unexpectedElement(reader);
                 }
             }
 
             if (id == null) {
                 throw ParseUtils.missingRequiredElement(reader, Collections.singleton("id"));
             }
-            
-            //           //Add the 'add' operation for each 'type' child
-            //           ModelNode addType = new ModelNode();
-            //           addType.get(OP).set(ModelDescriptionConstants.ADD);
-            //           PathAddress addr = PathAddress.pathAddress(PathElement.pathElement(SUBSYSTEM, SUBSYSTEM_NAME), PathElement.pathElement("type", suffix));
-            //           addType.get(OP_ADDR).set(addr.toModelNode());
-            //           if (tick != null) {
-            //               addType.get("tick").set(tick);
-            //           }
-            //
-            
+
             //Add the 'add' operation for each 'type' child
             ModelNode addType = new ModelNode();
             addType.get(OP).set(ModelDescriptionConstants.ADD);
             PathAddress addr = PathAddress.pathAddress(PathElement.pathElement(SUBSYSTEM, SUBSYSTEM_NAME), PathElement.pathElement("instance", id));
             addType.get(OP_ADDR).set(addr.toModelNode());
-            
+
             if (provider != null)
                 addType.get("provider").set(provider);
-            
-            if (serverGroups.size() > 0)
-                addType.get("serverGroups").set(serverGroups);
-            
+
+            if (ip != null)
+                addType.get("ip").set(ip);
+
             list.add(addType);
+
+            while (reader.hasNext() && reader.nextTag() != END_ELEMENT) {
+                if (reader.getLocalName().equals("server-group")) {
+                    readServerGroup(reader, list, id);
+                } else {
+                    throw ParseUtils.unexpectedElement(reader);
+                }
+            }
         }
 
 
         /**
          * @param reader
-         * @param serverGroups 
-         * @throws XMLStreamException 
+         * @param serverGroups
+         * @throws XMLStreamException
          */
-        private void parseServerGroups(XMLExtendedStreamReader reader, Collection<ModelNode> serverGroups) throws XMLStreamException {
+        private void readServerGroup(XMLExtendedStreamReader reader, List<ModelNode> list, String instanceId) throws XMLStreamException {
             if (!reader.getLocalName().equals("server-group")) {
                 throw ParseUtils.unexpectedElement(reader);
             }
-            
-            ModelNode name = null;
-            
+
+            String name = null;
+            String position = null;
+
             for (int i = 0 ; i < reader.getAttributeCount() ; i++) {
                 String attr = reader.getAttributeLocalName(i);
                 if (attr.equals("name")){
-                    name = new ModelNode();
-                    name.set(reader.getAttributeValue(i));
+                    name = reader.getAttributeValue(i);
+                } else if (attr.equals("position")){
+                    position = reader.getAttributeValue(i);
                 } else {
                     throw ParseUtils.unexpectedAttribute(reader, i);
                 }
             }
-            
+
+            assert (reader.nextTag() != END_ELEMENT);
+
             ParseUtils.requireNoContent(reader);
+
             if (name == null) {
-                throw ParseUtils.missingRequiredElement(reader, Collections.singleton("provider"));
+                throw ParseUtils.missingRequiredElement(reader, Collections.singleton("name"));
             }
-            
-            serverGroups.add(name);
+
+            ModelNode addType = new ModelNode();
+            addType.get(OP).set(ModelDescriptionConstants.ADD);
+            PathAddress addr = PathAddress.pathAddress(
+                    PathElement.pathElement(SUBSYSTEM, SUBSYSTEM_NAME),
+                    PathElement.pathElement("instance", instanceId),
+                    PathElement.pathElement("server-group", name));
+            addType.get(OP_ADDR).set(addr.toModelNode());
+
+            if (position != null)
+                addType.get("position").set(position);
+
+            list.add(addType);
         }
 
 
@@ -350,7 +340,6 @@ public class PaasExtension implements Extension {
             //End providers
             writer.writeEndElement();
 
-            
             writer.writeStartElement("instances");
             ModelNode instance = node.get("instance");
             for (Property property : instance.asPropertyList()) {
@@ -361,29 +350,29 @@ public class PaasExtension implements Extension {
                 if (entry.hasDefined("provider")) {
                     writer.writeAttribute("provider", entry.get("provider").asString());
                 }
-                
-                ModelNode serverGroups = entry.get("serverGroups");
+
+                ModelNode serverGroups = entry.get("server-group");
                 if (serverGroups.isDefined())
-                for (ModelNode sererGroup : serverGroups.asList()) {
+                for (Property serverGroup : serverGroups.asPropertyList()) {
                     //write each child element to xml
                     writer.writeStartElement("server-group");
-                    writer.writeAttribute("name", sererGroup.asString());
+                    writer.writeAttribute("name", serverGroup.getName());
+                    ModelNode sgEntry = serverGroup.getValue();
+                    if (sgEntry.hasDefined("position")) {
+                        writer.writeAttribute("position", sgEntry.get("position").asString());
+                    }
                     writer.writeEndElement();
                 }
-                //End instance 
+                //End instance
                 writer.writeEndElement();
             }
-
             //End instances
             writer.writeEndElement();
-            
-            
+
             //End subsystem
             writer.writeEndElement();
         }
     }
-
-
 
     /**
      * Recreate the steps to put the subsystem in the same state it was in.
@@ -404,36 +393,6 @@ public class PaasExtension implements Extension {
         public ModelNode getModelDescription(Locale locale) {
             return CommonDescriptions.getSubsystemDescribeOperation(locale);
         }
-
-
-        //        public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-        //           //Add the main operation
-        //           context.getResult().add(createAddSubsystemOperation());
-        //
-        //           //Add the operations to create each child
-        //
-        //           ModelNode node = context.readModel(PathAddress.EMPTY_ADDRESS);
-        //           for (Property property : node.get("type").asPropertyList()) {
-        //
-        //               ModelNode addType = new ModelNode();
-        //               addType.get(OP).set(ModelDescriptionConstants.ADD);
-        //               PathAddress addr = PathAddress.pathAddress(PathElement.pathElement(SUBSYSTEM, SUBSYSTEM_NAME), PathElement.pathElement("type", property.getName()));
-        //               addType.get(OP_ADDR).set(addr.toModelNode());
-        //               if (property.getValue().hasDefined("tick")) {
-        //                   addType.get("tick").set(property.getValue().get("tick").asLong());
-        //               }
-        //               context.getResult().add(addType);
-        //           }
-        //           context.completeStep();
-        //       }
-        //
-        //       @Override
-        //       public ModelNode getModelDescription(Locale locale) {
-        //           return CommonDescriptions.getSubsystemDescribeOperation(locale);
-        //       }
-
-
-
     }
 
 }

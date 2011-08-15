@@ -31,20 +31,21 @@
             <subsystem xmlns="urn:jboss:domain:paas-controller:1.0">
                 <iaas-providers>
                     <iaas-provider provider="myprovider" driver="mock" url="http://localhost:3001/api" username="mockuser" password="mockpassword" image-id="i-12345" />
+                    <iaas-provider provider="myvm" driver="vm" />
                 </iaas-providers>
                 <instances>
                     <instance id="in-1" provider="myprovider">
-                        <server-group name="main-server-group" />
+                        <server-group name="main-server-group" position="0" />
                     </instance>
                     <instance id="in-2" provider="myprovider">
-                        <server-group name="main-server-group" />
-                        <server-group name="other-server-group" />
+                        <server-group name="main-server-group" position="0" />
+                        <server-group name="other-server-group" position="1" />
                     </instance>
-                    <instance id="in-3" provider="myprovider">
-                        <server-group name="other-server-group" />
+                    <instance id="in-3" provider="myvm" ip="172.16.254.2">
+                        <server-group name="other-server-group" position="0" />
                     </instance>
                 </instances>
-                
+
             </subsystem>
         </profile>
         <profile name="default">
@@ -576,7 +577,7 @@
     </deployments>
     <server-groups>
         <!-- TODO could be removed ? -->
-        <server-group name="paas-server-group" profile="paas">
+        <server-group name="paas-server-group" profile="paas-controller">
             <jvm name="default">
                 <heap size="64m" max-size="64m"/>
             </jvm>

@@ -1,5 +1,5 @@
 /**
- * 
+ *
  */
 package org.jboss.as.paas.controller.extension;
 
@@ -8,9 +8,11 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQ
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUIRED;
 
+import java.net.MalformedURLException;
 import java.util.List;
 import java.util.Locale;
 
+import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.jboss.as.controller.AbstractAddStepHandler;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
@@ -19,6 +21,7 @@ import org.jboss.as.controller.ServiceVerificationHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.paas.controller.PaasController;
+import org.jboss.as.paas.controller.iaas.IaasController;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 import org.jboss.msc.service.ServiceController;
@@ -31,6 +34,13 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
 
     public static final IaasProviderAddHandler INSTANCE = new IaasProviderAddHandler();
 
+    private static final String ATTRIBUTE_PROVIDER = "provider";
+    private static final String ATTRIBUTE_DRIVER = "driver";
+    private static final String ATTRIBUTE_URL = "url";
+    private static final String ATTRIBUTE_USERNAME = "username";
+    private static final String ATTRIBUTE_PASSWORD = "password";
+    private static final String ATTRIBUTE_IMAGE_ID = "image-id";
+
     private IaasProviderAddHandler() {
         System.out.println(">>>>>>>>>>> IaasProviderAddHandler constructed.");
     }
@@ -40,6 +50,27 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
         System.out.println(">>>>>>>>>>>>>> IaasProviderAddHandler.execute");
         super.execute(context, operation);
+
+        //<iaas-provider provider="myprovider" driver="mock" url="http://localhost:3001/api" username="mockuser" password="mockpassword" image-id="i-12345"/>
+
+        //String providerName = operation.get(ATTRIBUTE_PROVIDER).asString();
+        String providerName = PathAddress.pathAddress(operation.get(ModelDescriptionConstants.ADDRESS)).getLastElement().getValue();
+        String driver = operation.get(ATTRIBUTE_DRIVER).asString();
+        String url = operation.get(ATTRIBUTE_URL).asString();
+        String username = operation.get(ATTRIBUTE_USERNAME).asString();
+        String password = operation.get(ATTRIBUTE_PASSWORD).asString();
+        String imageId = operation.get(ATTRIBUTE_IMAGE_ID).asString();
+
+        try {
+            IaasController.addProvider(providerName, driver, url, username, password, imageId);
+        } catch (MalformedURLException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        } catch (DeltaCloudClientException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+
     }
 
     /* (non-Javadoc)
@@ -52,25 +83,25 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         ModelNode node = new ModelNode();
         node.get(DESCRIPTION).set("Adds a tracked deployment type");
 
-        node.get(REQUEST_PROPERTIES, "driver", DESCRIPTION).set("Deltacloud IaaS provider driver");
-        node.get(REQUEST_PROPERTIES, "driver", TYPE).set(ModelType.STRING);
-        node.get(REQUEST_PROPERTIES, "driver", REQUIRED).set(true);
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_DRIVER, DESCRIPTION).set("Deltacloud IaaS provider driver");
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_DRIVER, TYPE).set(ModelType.STRING);
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_DRIVER, REQUIRED).set(true);
 
-        node.get(REQUEST_PROPERTIES, "url", DESCRIPTION).set("Deltacloud IaaS provider url");
-        node.get(REQUEST_PROPERTIES, "url", TYPE).set(ModelType.STRING);
-        node.get(REQUEST_PROPERTIES, "url", REQUIRED).set(true);
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_URL, DESCRIPTION).set("Deltacloud IaaS provider url");
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_URL, TYPE).set(ModelType.STRING);
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_URL, REQUIRED).set(false);
 
-        node.get(REQUEST_PROPERTIES, "username", DESCRIPTION).set("Deltacloud IaaS provider username");
-        node.get(REQUEST_PROPERTIES, "username", TYPE).set(ModelType.STRING);
-        node.get(REQUEST_PROPERTIES, "username", REQUIRED).set(true);
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_USERNAME, DESCRIPTION).set("Deltacloud IaaS provider username");
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_USERNAME, TYPE).set(ModelType.STRING);
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_USERNAME, REQUIRED).set(false);
 
-        node.get(REQUEST_PROPERTIES, "password", DESCRIPTION).set("Deltacloud IaaS provider password");
-        node.get(REQUEST_PROPERTIES, "password", TYPE).set(ModelType.STRING);
-        node.get(REQUEST_PROPERTIES, "password", REQUIRED).set(true);
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_PASSWORD, DESCRIPTION).set("Deltacloud IaaS provider password");
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_PASSWORD, TYPE).set(ModelType.STRING);
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_PASSWORD, REQUIRED).set(false);
 
-        node.get(REQUEST_PROPERTIES, "image-id", DESCRIPTION).set("Deltacloud IaaS provider image id.");
-        node.get(REQUEST_PROPERTIES, "image-id", TYPE).set(ModelType.STRING);
-        node.get(REQUEST_PROPERTIES, "image-id", REQUIRED).set(true);
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_IMAGE_ID, DESCRIPTION).set("Deltacloud IaaS provider image id.");
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_IMAGE_ID, TYPE).set(ModelType.STRING);
+        node.get(REQUEST_PROPERTIES, ATTRIBUTE_IMAGE_ID, REQUIRED).set(false);
 
         return node;
     }
@@ -85,34 +116,34 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
 
         String driver = "";
         //Read the value from the operation
-        if (operation.hasDefined("driver")) {
-            driver = operation.get("driver").asString();
+        if (operation.hasDefined(ATTRIBUTE_DRIVER)) {
+            driver = operation.get(ATTRIBUTE_DRIVER).asString();
         }
-        model.get("driver").set(driver);
+        model.get(ATTRIBUTE_DRIVER).set(driver);
 
         String url = "";
-        if (operation.hasDefined("url")) {
-            url = operation.get("url").asString();
+        if (operation.hasDefined(ATTRIBUTE_URL)) {
+            url = operation.get(ATTRIBUTE_URL).asString();
         }
-        model.get("url").set(url);
+        model.get(ATTRIBUTE_URL).set(url);
 
         String username = "";
-        if (operation.hasDefined("username")) {
-            username = operation.get("username").asString();
+        if (operation.hasDefined(ATTRIBUTE_USERNAME)) {
+            username = operation.get(ATTRIBUTE_USERNAME).asString();
         }
-        model.get("username").set(username);
+        model.get(ATTRIBUTE_USERNAME).set(username);
 
         String password = "";
-        if (operation.hasDefined("password")) {
-            password = operation.get("password").asString();
+        if (operation.hasDefined(ATTRIBUTE_PASSWORD)) {
+            password = operation.get(ATTRIBUTE_PASSWORD).asString();
         }
-        model.get("password").set(password);
+        model.get(ATTRIBUTE_PASSWORD).set(password);
 
         String imageId = "";
-        if (operation.hasDefined("image-id")) {
-            imageId = operation.get("image-id").asString();
+        if (operation.hasDefined(ATTRIBUTE_IMAGE_ID)) {
+            imageId = operation.get(ATTRIBUTE_IMAGE_ID).asString();
         }
-        model.get("image-id").set(imageId);
+        model.get(ATTRIBUTE_IMAGE_ID).set(imageId);
 
     }
 

@@ -113,4 +113,19 @@ class PaasProviders {
       }
    };
 
+   public static DescriptionProvider SERVER_GROUP_CHILD = new DescriptionProvider() {
+       @Override
+       public ModelNode getModelDescription(Locale locale) {
+           final ModelNode node = new ModelNode();
+           node.get(DESCRIPTION).set("Server group.");
+
+           //Add information about the child
+           node.get(ATTRIBUTES, "position", DESCRIPTION).set("server group.");
+           node.get(ATTRIBUTES, "position", TYPE).set(ModelType.INT);
+           node.get(ATTRIBUTES, "position", REQUIRED).set(true);
+
+           return node;
+       }
+   };
+
 }

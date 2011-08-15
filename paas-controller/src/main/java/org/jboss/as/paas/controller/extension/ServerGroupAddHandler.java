@@ -27,18 +27,15 @@ import org.jboss.msc.service.ServiceName;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class ServerInstanceAddHandler extends AbstractAddStepHandler implements DescriptionProvider {
+public class ServerGroupAddHandler extends AbstractAddStepHandler implements DescriptionProvider {
 
-   public static final ServerInstanceAddHandler INSTANCE = new ServerInstanceAddHandler();
+   public static final ServerGroupAddHandler INSTANCE = new ServerGroupAddHandler();
 
-   private ServerInstanceAddHandler() {
-      System.out.println(">>>>>>>>>>> ServerInstanceAddHandler constructed.");
-   }
+   private ServerGroupAddHandler() {}
 
 
    @Override
    public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-       System.out.println(">>>>>>>>>>>>>> ServerInstanceAddHandler.execute");
        super.execute(context, operation);
    }
 
@@ -48,11 +45,11 @@ public class ServerInstanceAddHandler extends AbstractAddStepHandler implements 
    @Override
    public ModelNode getModelDescription(Locale locale) {
       ModelNode node = new ModelNode();
-      node.get(DESCRIPTION).set("Adds a server instance");
+      node.get(DESCRIPTION).set("Adds a server group to instance.");
 
-      node.get(REQUEST_PROPERTIES, "provider", DESCRIPTION).set("Deltacloud IaaS provider name.");
-      node.get(REQUEST_PROPERTIES, "provider", TYPE).set(ModelType.STRING);
-      node.get(REQUEST_PROPERTIES, "provider", REQUIRED).set(true);
+      node.get(REQUEST_PROPERTIES, "position", DESCRIPTION).set("Server group slot position.");
+      node.get(REQUEST_PROPERTIES, "position", TYPE).set(ModelType.INT);
+      node.get(REQUEST_PROPERTIES, "position", REQUIRED).set(true);
 
       return node;
    }
@@ -63,30 +60,13 @@ public class ServerInstanceAddHandler extends AbstractAddStepHandler implements 
    @Override
    protected void populateModel(ModelNode operation, ModelNode model) throws OperationFailedException {
 
-      System.out.println(">>>>>>>>>>> ServerInstanceAddHandler.populateModel");
-
-      String provider = "";
-      String ip = "";
-      //TODO used typed server groups ?
-      //String serverGroups = "";
+      int position = 0;
 
       //Read the value from the operation
-      if (operation.hasDefined("provider")) {
-          provider = operation.get("provider").asString();
+      if (operation.hasDefined("position")) {
+          position = operation.get("position").asInt();
       }
-      model.get("provider").set(provider);
-
-      if (operation.hasDefined("ip")) {
-          ip = operation.get("ip").asString();
-      }
-      model.get("ip").set(ip);
-
-//      if (operation.hasDefined("serverGroups")) {
-//          ModelNode sererGroups = operation.get("serverGroups");
-//          model.get("serverGroups").set(sererGroups);
-//      } else {
-//          model.get("serverGroups").setEmptyList();
-//      }
+      model.get("position").set(position);
    }
 
    /* (non-Javadoc)
@@ -94,19 +74,6 @@ public class ServerInstanceAddHandler extends AbstractAddStepHandler implements 
     */
    @Override
    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) throws OperationFailedException {
-      System.out.println(">>>>>>>>>>>>>> ServerInstanceAddHandler.performRuntime");
-      // TODO Auto-generated method stub
-      //super.performRuntime(context, operation, model, verificationHandler, newControllers);
-//      String provider = PathAddress.pathAddress(operation.get(ModelDescriptionConstants.ADDRESS)).getLastElement().getValue();
-//      //TODO add all parameters
-//      PaasService service = new PaasService(provider, model.get("driver").asString());
-//      ServiceName name = PaasService.createServiceName(provider);
-//      ServiceController<PaasService> controller = context.getServiceTarget()
-//            .addService(name, service)
-//            .addListener(verificationHandler)
-//            .setInitialMode(ServiceController.Mode.ACTIVE)
-//            .install();
-//      newControllers.add(controller);
 
    }
 

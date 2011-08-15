@@ -1,5 +1,5 @@
 /**
- * 
+ *
  */
 package org.jboss.as.paas.controller;
 
@@ -14,17 +14,19 @@ import org.jboss.msc.service.StopContext;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
+ * @deprecated use IaasController
  */
+@Deprecated
 public class PaasController {
 
     public static final PaasController INSTANCE = new PaasController();
 
     private Infrastructure infrastructure = new Infrastructure();
-    
+
     private PaasController() {}
-    
+
     public void addIaasProvider() {
-        
+
     }
 
     public void addServerInstance(List<String> serverGroups, IaasProvider provider) {
@@ -33,13 +35,13 @@ public class PaasController {
         //instance.setImageId(provider);
         infrastructure.addServerInstance(instance, provider);
     }
-    
+
     /**
-     * Adds another server instance to serverGroup 
+     * Adds another server instance to serverGroup
      */
     public void expandServerGroup(String serverGroup) {
-        
+
     }
 
-    
+
 }

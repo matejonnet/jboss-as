@@ -1,5 +1,5 @@
 /**
- * 
+ *
  */
 package org.jboss.as.paas.controller.extension;
 
@@ -10,6 +10,11 @@ import static org.jboss.as.controller.client.helpers.ClientConstants.OP_ADDR;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 import org.jboss.as.cli.operation.OperationFormatException;
 import org.jboss.as.cli.operation.impl.DefaultOperationRequestBuilder;
@@ -17,13 +22,19 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
+import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.client.MessageSeverity;
+import org.jboss.as.controller.client.ModelControllerClient;
 import org.jboss.as.controller.client.Operation;
 import org.jboss.as.controller.client.OperationBuilder;
 import org.jboss.as.controller.registry.ImmutableManagementResourceRegistration;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.Resource;
+import org.jboss.as.controller.registry.Resource.ResourceEntry;
+import org.jboss.as.paas.controller.DomainController;
 import org.jboss.as.paas.controller.Util;
+import org.jboss.as.paas.controller.iaas.IaasController;
+import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 import org.jboss.msc.service.ServiceController;
@@ -39,8 +50,14 @@ public class DeployHandle implements OperationStepHandler {
     public static final DeployHandle INSTANCE = new DeployHandle();
     public static final String OPERATION_NAME = "deploy";
     private static final String ATTRIBUTE_PATH = "path";
+    private static final String ATTRIBUTE_PROVIDER = "provider";
+    private static final String ATTRIBUTE_NEW_INSTANCE = "new-instance";
+
+    //TODO make configurable
+    private static final int MAX_AS_PER_HOST = 3;
 
     private final Logger log = Logger.getLogger(DeployHandle.class);
+
 
     private DeployHandle() {}
 
@@ -51,6 +68,9 @@ public class DeployHandle implements OperationStepHandler {
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
 
         final String filePath = operation.get(ATTRIBUTE_PATH).asString();
+        final String provider = operation.get(ATTRIBUTE_PROVIDER).asString();
+        final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() ? operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean() : false;
+
 
         //TODO validate required attributes
 
@@ -71,17 +91,179 @@ public class DeployHandle implements OperationStepHandler {
 
         String appName = f.getName();
 
-        //TODO create new thread to create new server instance and add deployment jobs to queue ?? can domain controller handle this without sleep ?
-        //        addServerInstanceToGroup(appName);
+        createServerGroup(context, appName);
 
-        deploy(context, f, appName);
+        addHostToServerGroup(newInstance, provider, context, getServerGroupName(appName));
+
+        deployToServerGroup(context, f, appName);
 
         context.completeStep();
     }
 
-    private void deploy(OperationContext context, final File f, String appName) {
+    /**
+     * @param newInstance
+     * @param provider
+     * @param context
+     * @param groupName
+     *
+     */
+    private void addHostToServerGroup(boolean newInstance, String provider, OperationContext context, String groupName) {
+        boolean newInstanceRequired = false;
+        if (newInstance) {
+            newInstanceRequired = true;
+        }
+
+        InstanceSlot slot = null;
+
+        if (!newInstanceRequired) {
+            slot = getFreeSlot(groupName, context, provider);
+        }
+
+        if (slot == null) {
+            newInstanceRequired = true;
+        }
+
+        if (newInstanceRequired) {
+            slot = addServerInstanceToDomain(provider);
+        }
+
+        ModelNode compositeRequest = new ModelNode();
+        compositeRequest.get("operation").set("composite");
+        compositeRequest.get("address").setEmptyList();
+        ModelNode steps = compositeRequest.get("steps");
+
+        //addHOST to SG
+        // /host=master/server-config=server-one:add(socket-binding-group=standard-sockets, socket-binding-port-offset=<portOffset>)
+        ModelNode opAddHostToSg = new ModelNode();
+        opAddHostToSg.get(OP).set("add");
+        opAddHostToSg.get(OP_ADDR).add("host", slot.getHostIP());
+        opAddHostToSg.get(OP_ADDR).add("server-config", "server" + slot.getSlotPosition());
+        opAddHostToSg.get("group").set(groupName);
+        opAddHostToSg.get("auto-start").set(true);
+        opAddHostToSg.get("socket-binding-group").set("standard-sockets");
+        opAddHostToSg.get("socket-binding-port-offset").set(slot.getPortOffset()); //TODO verify
+        steps.add(opAddHostToSg);
+
+        ModelNode opAddSgToInstance = new ModelNode();
+        opAddSgToInstance.get(OP).set("add");
+        opAddSgToInstance.get(OP_ADDR).add("profile", "paas-controller");
+        opAddSgToInstance.get(OP_ADDR).add("subsystem", "paas-controller");
+        opAddSgToInstance.get(OP_ADDR).add("instance", slot.getInstanceId());
+        opAddSgToInstance.get(OP_ADDR).add("server-group", groupName);
+        //opAddSgToInstance.get("name").set(groupName);
+        opAddSgToInstance.get("position").set(slot.getSlotPosition());
+
+
+//        ModelNode serverGroup = new ModelNode();
+//        serverGroup.get("name").set(groupName);
+//        serverGroup.get("position").set(slot.getSlotPosition());
+//        opAddSgToInstance.get("serverGroups").add(serverGroup);
+
+        //<server-group name="other-server-group" position="0"/>
+        //opAddSgToInstance.get("position").set(slot.getSlotPosition());
+
+        steps.add(opAddSgToInstance);
+
+
+        context.addStep(compositeRequest, new OperationStepHandler() {
+            public void execute(OperationContext context, ModelNode operation) {
+                Util.executeStep(context, operation);
+            }
+        }, OperationContext.Stage.MODEL);
+    }
+
+    /**
+     * loop throught instances which doesn't serve this group jet
+     * @param context
+     * @param providerName
+     *
+     * @return
+     */
+    private InstanceSlot getFreeSlot(String group, OperationContext context, String providerName) {
+        Resource rootResource = context.getRootResource();
+        ModelNode operationAddr = new ModelNode();
+
+        PathAddress instancesAddr = PathAddress.pathAddress(
+                PathElement.pathElement("profile", "paas-controller"),
+                PathElement.pathElement("subsystem", "paas-controller"));
+
+        final Resource instancesResource = rootResource.navigate(instancesAddr);
+        //Set<String> instances = instancesResource.getChildrenNames("instance");
+        Set<ResourceEntry> instances = instancesResource.getChildren("instance");
+
+        for (ResourceEntry instance : instances) {
+            boolean hasFreeSlot = true;
+            Set<Integer> usedPositions = new HashSet<Integer>();
+
+//            List<ModelNode> serverGroups = instance.getModel().get("server-group").asList();
+//            Resource serverGroups = instance.getChild(PathElement.pathElement("server-group"));
+            Set<ResourceEntry> serverGroups = instance.getChildren("server-group");
+
+
+            if (serverGroups.size() > MAX_AS_PER_HOST) {
+                hasFreeSlot=false;
+            }
+
+            if (hasFreeSlot)
+            for (ResourceEntry serverGroup : serverGroups) {
+                //if server group is already on this instance don't allow another
+                if (group.equals(serverGroup.getName())) {
+                    hasFreeSlot=false;
+                }
+                usedPositions.add(serverGroup.getModel().get("position").asInt());
+            }
+
+            if (hasFreeSlot) {
+                //find first free slot
+                for (int i = 0; i < MAX_AS_PER_HOST ; i++) {
+                    if (!usedPositions.contains(i)) {
+                        String hostIP = null;
+                        try {
+                            hostIP = IaasController.getInstanceIp(providerName, instance.getName());
+                        } catch (Exception e) {
+                            // TODO Auto-generated catch block
+                            e.printStackTrace();
+                        }
+                        return new InstanceSlot(hostIP, i, instance.getName());
+                    }
+                }
+
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @param context
+     * @param appName
+     */
+    private void createServerGroup(OperationContext context, String appName) {
+
+        DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
+        builder.setOperationName("add");
+        builder.addNode("server-group", getServerGroupName(appName));
+        builder.addProperty("profile", "default");
+        builder.addProperty("socket-binding-group", "standard-sockets");
+        //TODO if this is required ? parametrize port offset, calculate it acording to deployment number per instance (1st=>0; 2nd=>100, ...)
+        //builder.addProperty("socket-binding-port-offset", "0");
+        try {
+            ModelNode request = builder.buildRequest();
+
+            context.addStep(request, new OperationStepHandler() {
+                public void execute(OperationContext context, ModelNode operation) {
+                    Util.executeStep(context, operation);
+                }
+            }, OperationContext.Stage.MODEL);
+        } catch (OperationFormatException e) {
+            // TODO Auto-generated catch block
+            log.error("Cannot build request to create server group.", e);
+        }
+    }
+
+
+    private void deployToServerGroup(OperationContext context, final File f, String appName) {
         //Deployment process extracted from org.jboss.as.cli.handlers.DeployHandler.doHandle(CommandContext)
-        
+
         String serverGroup = getServerGroupName(appName);
 
         final ModelNode request;
@@ -111,7 +293,7 @@ public class DeployHandle implements OperationStepHandler {
                     } finally {
                         try {
                             is.close();
-                        } catch (Throwable t) { 
+                        } catch (Throwable t) {
                             log.errorf(t, "Failed to close resource %s", is);
                         }
                         context.completeStep();
@@ -131,24 +313,6 @@ public class DeployHandle implements OperationStepHandler {
         request.get("address").setEmptyList();
         ModelNode steps = request.get("steps");
 
-        //add server group
-        DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
-        builder.setOperationName("add");
-        builder.addNode("server-group", serverGroup);
-        builder.addProperty("profile", "default");
-        builder.addProperty("socket-binding-group", "standard-sockets");
-        //TODO parametrize port offset, calculate it acording to deployment number per instance (1st=>0; 2nd=>100, ...)
-        builder.addProperty("socket-binding-port-offset", "0");
-        ModelNode opAddSG;
-        try {
-            opAddSG = builder.buildRequest();
-            steps.add(opAddSG);
-        } catch (OperationFormatException e) {
-            // TODO Auto-generated catch block
-            log.error("Cannot build request to create server group.", e);
-        }
-
-
         //deploy app - step add
         ModelNode opAdd = new ModelNode();
         opAdd.get(OP).set("add");
@@ -166,7 +330,7 @@ public class DeployHandle implements OperationStepHandler {
 
         context.addStep(request, new OperationStepHandler() {
             public void execute(OperationContext context, ModelNode operation) {
-                Util.executeStep(context, operation, "composite");
+                Util.executeStep(context, operation);
             }
         }, OperationContext.Stage.MODEL);
 
@@ -176,18 +340,25 @@ public class DeployHandle implements OperationStepHandler {
 
 
     /**
-     * - creates new server instance 
+     * - creates new server instance
      * - join it to domain controller
      * - associate it with server group
      * - start the server instance
-     *  
-     * @param appName 
+     * @return
+     *
      */
-    private void addServerInstanceToGroup(String appName) {
-        // TODO Auto-generated method stub
-
-        //
-
+    private InstanceSlot addServerInstanceToDomain(String provider) {
+        try {
+            //TODO update config instances/instance
+            String instanceId = IaasController.createNewInstance(provider);
+            String hostIp = IaasController.getInstanceIp(provider, instanceId);
+            DomainController.addHostToDomain(hostIp);
+            return new InstanceSlot(hostIp, 0, instanceId);
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        return null;
     }
 
 
@@ -200,9 +371,9 @@ public class DeployHandle implements OperationStepHandler {
 
     /**
      * create operation context with input stream
-     * 
+     *
      * @param context
-     * @param operation 
+     * @param operation
      * @return
      */
     protected OperationContext addAttachmentToContext(final OperationContext context, final Operation operation) {
@@ -220,7 +391,7 @@ public class DeployHandle implements OperationStepHandler {
                 }
                 return operation.getInputStreams().get(index);
             }
-            
+
             @Override
             public void setRollbackOnly() {
                 context.setRollbackOnly();
@@ -238,7 +409,7 @@ public class DeployHandle implements OperationStepHandler {
 
             @Override
             public void revertReloadRequired() {
-                context.revertReloadRequired();                
+                context.revertReloadRequired();
             }
 
             @Override
@@ -383,7 +554,7 @@ public class DeployHandle implements OperationStepHandler {
 
             @Override
             public void addStep(ModelNode response, ModelNode operation, OperationStepHandler step, Stage stage) throws IllegalArgumentException {
-                context.addStep(response, operation, step, stage);                
+                context.addStep(response, operation, step, stage);
             }
 
             @Override
