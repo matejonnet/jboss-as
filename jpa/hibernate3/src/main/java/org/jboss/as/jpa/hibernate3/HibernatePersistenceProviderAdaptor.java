@@ -69,27 +69,20 @@ public class HibernatePersistenceProviderAdaptor implements PersistenceProviderA
                 cacheManager = "java:jboss/infinispan/hibernate";
                 pu.getProperties().put("hibernate.cache.infinispan.cachemanager", cacheManager);
             }
+            if (pu.getProperties().getProperty("hibernate.cache.region_prefix") == null) {
+                // cache entries for this PU will be identified by scoped pu name + Entity class name
+                pu.getProperties().put("hibernate.cache.region_prefix", pu.getScopedPersistenceUnitName());
+            }
             ArrayList<ServiceName> result = new ArrayList<ServiceName>();
-            result.add(adjustJndiName(cacheManager));
+            result.add(ContextNames.bindInfoFor(toJndiName(cacheManager).toString()).getBinderServiceName());
             return result;
         }
         return null;
     }
 
-
-    private ServiceName adjustJndiName(String jndiName) {
-        jndiName = toJndiName(jndiName).toString();
-        int index = jndiName.indexOf("/");
-        String namespace = (index > 5) ? jndiName.substring(5, index) : null;
-        String binding = (index > 5) ? jndiName.substring(index + 1) : jndiName.substring(5);
-        ServiceName naming = (namespace != null) ? ContextNames.JAVA_CONTEXT_SERVICE_NAME.append(namespace) : ContextNames.JAVA_CONTEXT_SERVICE_NAME;
-        return naming.append(binding);
-    }
-
     private static JndiName toJndiName(String value) {
         return value.startsWith("java:") ? JndiName.of(value) : JndiName.of("java:jboss").append(value.startsWith("/") ? value.substring(1) : value);
     }
-
 
     @Override
     public void beforeCreateContainerEntityManagerFactory(PersistenceUnitMetadata pu) {

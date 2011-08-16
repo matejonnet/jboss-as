@@ -31,6 +31,7 @@ import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.ServiceVerificationHandler;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
+import static org.jboss.as.logging.CommonAttributes.APPEND;
 import static org.jboss.as.logging.CommonAttributes.AUTOFLUSH;
 import static org.jboss.as.logging.CommonAttributes.ENCODING;
 import static org.jboss.as.logging.CommonAttributes.FILE;
@@ -55,6 +56,7 @@ class FileHandlerAdd extends AbstractAddStepHandler {
     @Override
     protected void populateModel(ModelNode operation, ModelNode model) throws OperationFailedException {
         LoggingValidators.validate(operation);
+        if (operation.hasDefined(APPEND)) model.get(APPEND).set(operation.get(APPEND));
         model.get(AUTOFLUSH).set(operation.get(AUTOFLUSH));
         model.get(ENCODING).set(operation.get(ENCODING));
         model.get(FORMATTER).set(operation.get(FORMATTER));
@@ -69,6 +71,7 @@ class FileHandlerAdd extends AbstractAddStepHandler {
         final ServiceTarget serviceTarget = context.getServiceTarget();
         try {
             final FileHandlerService service = new FileHandlerService();
+            if (operation.hasDefined(APPEND)) service.setAppend(operation.get(APPEND).asBoolean());
 
             final ServiceBuilder<Handler> serviceBuilder = serviceTarget.addService(LogServices.handlerName(name), service);
             if (operation.hasDefined(FILE)) {
@@ -84,7 +87,7 @@ class FileHandlerAdd extends AbstractAddStepHandler {
             final Boolean autoFlush = operation.get(AUTOFLUSH).asBoolean();
             if (autoFlush != null) service.setAutoflush(autoFlush.booleanValue());
             if (operation.hasDefined(ENCODING)) service.setEncoding(operation.get(ENCODING).asString());
-            if (operation.hasDefined(FORMATTER)) service.setFormatterSpec(createFormatterSpec(operation));
+            service.setFormatterSpec(AbstractFormatterSpec.Factory.create(operation));
             serviceBuilder.addListener(verificationHandler);
             serviceBuilder.setInitialMode(ServiceController.Mode.ACTIVE);
             newControllers.add(serviceBuilder.install());
@@ -92,9 +95,5 @@ class FileHandlerAdd extends AbstractAddStepHandler {
             throw new OperationFailedException(new ModelNode().set(t.getLocalizedMessage()));
         }
 
-    }
-
-    static AbstractFormatterSpec createFormatterSpec(final ModelNode operation) {
-        return new PatternFormatterSpec(operation.get(FORMATTER).asString());
     }
 }

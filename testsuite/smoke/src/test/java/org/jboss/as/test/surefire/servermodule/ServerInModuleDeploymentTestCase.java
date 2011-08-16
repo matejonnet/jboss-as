@@ -21,11 +21,29 @@
  */
 package org.jboss.as.test.surefire.servermodule;
 
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
+import junit.framework.Assert;
+import org.jboss.arquillian.junit.Arquillian;
+import org.jboss.as.arquillian.container.MBeanServerConnectionProvider;
+import org.jboss.as.controller.client.ModelControllerClient;
+import org.jboss.as.controller.client.helpers.standalone.ServerDeploymentManager;
+import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
+import org.jboss.as.protocol.old.StreamUtils;
+import org.jboss.as.test.modular.utils.ShrinkWrapUtils;
+import org.jboss.as.test.surefire.servermodule.archive.sar.Simple;
+import org.jboss.dmr.ModelNode;
+import org.jboss.shrinkwrap.api.exporter.ExplodedExporter;
+import org.jboss.shrinkwrap.api.exporter.ZipExporter;
+import org.jboss.shrinkwrap.api.spec.JavaArchive;
+import org.junit.Test;
+import org.junit.runner.RunWith;
 
+import javax.management.InstanceNotFoundException;
+import javax.management.MBeanServerConnection;
+import javax.management.MBeanServerDelegate;
+import javax.management.MBeanServerNotification;
+import javax.management.Notification;
+import javax.management.NotificationListener;
+import javax.management.ObjectName;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -41,47 +59,18 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import javax.management.InstanceNotFoundException;
-import javax.management.MBeanServerConnection;
-import javax.management.MBeanServerDelegate;
-import javax.management.MBeanServerNotification;
-import javax.management.Notification;
-import javax.management.NotificationListener;
-import javax.management.ObjectName;
-
-import junit.framework.Assert;
-
-import org.jboss.arquillian.container.test.api.Deployment;
-import org.jboss.arquillian.container.test.api.RunAsClient;
-import org.jboss.arquillian.junit.Arquillian;
-import org.jboss.as.arquillian.container.MBeanServerConnectionProvider;
-import org.jboss.as.controller.client.ModelControllerClient;
-import org.jboss.as.controller.client.helpers.standalone.ServerDeploymentManager;
-import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
-import org.jboss.as.protocol.old.StreamUtils;
-import org.jboss.as.test.modular.utils.ShrinkWrapUtils;
-import org.jboss.as.test.surefire.servermodule.archive.sar.Simple;
-import org.jboss.dmr.ModelNode;
-import org.jboss.shrinkwrap.api.Archive;
-import org.jboss.shrinkwrap.api.exporter.ExplodedExporter;
-import org.jboss.shrinkwrap.api.exporter.ZipExporter;
-import org.jboss.shrinkwrap.api.spec.JavaArchive;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
 
 /**
  * Tests deployment to a standalone server, both via the client API and by the
  * filesystem scanner.
  * @author Brian Stansberry (c) 2011 Red Hat Inc.
  */
-@RunAsClient
 @RunWith(Arquillian.class)
 public class ServerInModuleDeploymentTestCase  {
-
-    @Deployment(testable = false)
-    public static Archive<?> getDeployment(){
-        return ShrinkWrapUtils.createEmptyJavaArchive("please-the-arquillian-gods.jar");
-    }
 
     @Test
     public void testDeploymentStreamApi() throws Exception {
@@ -152,7 +141,19 @@ public class ServerInModuleDeploymentTestCase  {
     }
 
     @Test
-    public void testFilesystemDeployment() throws Exception {
+    public void testFilesystemScannerRegistration() throws Exception {
+        final File deployDir = createDeploymentDir("dummy");
+
+        ModelControllerClient client = ModelControllerClient.Factory.create(InetAddress.getByName("localhost"), 9999);
+        final String scannerName = "dummy";
+        addDeploymentScanner(deployDir, client, scannerName, false);
+        removeDeploymentScanner(client, scannerName);
+        addDeploymentScanner(deployDir, client, scannerName, false);
+        removeDeploymentScanner(client, scannerName);
+    }
+
+    @Test
+    public void testFilesystemDeployment_Marker() throws Exception {
         final JavaArchive archive = ShrinkWrapUtils.createJavaArchive("servermodule/test-deployment.sar",
                 Simple.class.getPackage());
         final File dir = new File("target/archives");
@@ -160,11 +161,11 @@ public class ServerInModuleDeploymentTestCase  {
         final File file = new File(dir, "test-deployment.sar");
         archive.as(ZipExporter.class).exportTo(file, true);
 
-        final File deployDir = createDeploymentDir("deployments");
+        final File deployDir = createDeploymentDir("marker-deployments");
 
         ModelControllerClient client = ModelControllerClient.Factory.create(InetAddress.getByName("localhost"), 9999);
-        final String scannerName = "zips";
-        addDeploymentScanner(deployDir, client, scannerName);
+        final String scannerName = "markerZips";
+        addDeploymentScanner(deployDir, client, scannerName, false);
 
         try {
             final File target = new File(deployDir, "test-deployment.sar");
@@ -211,8 +212,9 @@ public class ServerInModuleDeploymentTestCase  {
                     // let that complete
                     // so we don't end up having our own file deleted
                     final File dodeploy = new File(deployDir, "test-deployment.sar.dodeploy");
+                    final File isdeploying = new File(deployDir, "test-deployment.sar.isdeploying");
                     for (int i = 0; i < 500; i++) {
-                        if (!dodeploy.exists()) {
+                        if (!dodeploy.exists() && !isdeploying.exists()) {
                             break;
                         }
                         // Wait for the last action to complete :(
@@ -235,8 +237,9 @@ public class ServerInModuleDeploymentTestCase  {
                 @Override
                 public void undeploy() {
                     final File dodeploy = new File(deployDir, "test-deployment.sar.dodeploy");
+                    final File isdeploying = new File(deployDir, "test-deployment.sar.isdeploying");
                     for (int i = 0; i < 500; i++) {
-                        if (!dodeploy.exists() && deployed.exists()) {
+                        if (!dodeploy.exists() && !isdeploying.exists() && deployed.exists()) {
                             break;
                         }
                         // Wait for the last action to complete :(
@@ -259,7 +262,119 @@ public class ServerInModuleDeploymentTestCase  {
             try {
                 removeDeploymentScanner(client, scannerName);
             } catch (Exception e) {
+            }
+            try {
                 client.close();
+            } catch (Exception e) {
+            }
+        }
+    }
+
+    @Test
+    public void testFilesystemDeployment_Auto() throws Exception {
+        final JavaArchive archive = ShrinkWrapUtils.createJavaArchive("servermodule/test-deployment.sar",
+                Simple.class.getPackage());
+        final File dir = new File("target/archives");
+        dir.mkdirs();
+        final File file = new File(dir, "test-deployment.sar");
+        archive.as(ZipExporter.class).exportTo(file, true);
+
+        final File deployDir = createDeploymentDir("auto-deployments");
+
+        ModelControllerClient client = ModelControllerClient.Factory.create(InetAddress.getByName("localhost"), 9999);
+        final String scannerName = "autoZips";
+        addDeploymentScanner(deployDir, client, scannerName, true);
+
+        try {
+            final File target = new File(deployDir, "test-deployment.sar");
+            final File deployed = new File(deployDir, "test-deployment.sar.deployed");
+            Assert.assertFalse(target.exists());
+
+            testDeployments(new DeploymentExecutor() {
+                @Override
+                public void initialDeploy() throws IOException {
+                    // Copy file to deploy directory
+                    final InputStream in = new BufferedInputStream(new FileInputStream(file));
+                    try {
+                        final OutputStream out = new BufferedOutputStream(new FileOutputStream(target));
+                        try {
+                            int i = in.read();
+                            while (i != -1) {
+                                out.write(i);
+                                i = in.read();
+                            }
+                        } finally {
+                            StreamUtils.safeClose(out);
+                        }
+                    } finally {
+                        StreamUtils.safeClose(in);
+                    }
+
+                    Assert.assertTrue(file.exists());
+                }
+
+                @Override
+                public void fullReplace() throws IOException {
+                    // The test is going to call this as soon as the deployment
+                    // sends a notification
+                    // but often before the scanner has completed the process
+                    // and deleted the
+                    // .isdeploying put down by deployment scanner. So pause a bit to
+                    // let that complete
+                    // so we don't end up having our own file deleted
+                    final File isdeploying = new File(deployDir, "test-deployment.sar.isdeploying");
+                    for (int i = 0; i < 500; i++) {
+                        if (!isdeploying.exists()) {
+                            break;
+                        }
+                        // Wait for the last action to complete :(
+                        try {
+                            Thread.sleep(10);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+
+                    if (isdeploying.exists()) {
+                        Assert.fail("initialDeploy step did not complete in a reasonably timely fashion");
+                    }
+
+                    // Copy file to deploy directory again
+                    initialDeploy();
+                }
+
+                @Override
+                public void undeploy() {
+                   final File isdeploying = new File(deployDir, "test-deployment.sar.isdeploying");
+                    for (int i = 0; i < 500; i++) {
+                        if (!isdeploying.exists() && deployed.exists()) {
+                            break;
+                        }
+                        // Wait for the last action to complete :(
+                        try {
+                            Thread.sleep(10);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+                    if (!deployed.exists()) {
+                        Assert.fail("fullReplace step did not complete in a reasonably timely fashion");
+                    }
+
+                    // Delete file from deploy directory
+                    target.delete();
+                }
+            });
+        } finally {
+            try {
+                removeDeploymentScanner(client, scannerName);
+            } catch (Exception e) {
+            }
+            try {
+                client.close();
+            } catch (Exception e) {
             }
         }
     }
@@ -271,13 +386,12 @@ public class ServerInModuleDeploymentTestCase  {
 
         ModelControllerClient client = ModelControllerClient.Factory.create(InetAddress.getByName("localhost"), 9999);
         final String scannerName = "exploded";
-        addDeploymentScanner(deployDir, client, scannerName);
+        addDeploymentScanner(deployDir, client, scannerName, false);
 
         final JavaArchive archive = ShrinkWrapUtils.createJavaArchive("servermodule/test-deployment.sar",
                 Simple.class.getPackage());
         final File dir = new File("target/archives");
         dir.mkdirs();
-        final File file = new File(dir, "test-deployment.sar");
         archive.as(ExplodedExporter.class).exportExploded(deployDir);
 
         try {
@@ -309,8 +423,9 @@ public class ServerInModuleDeploymentTestCase  {
                     // let that complete
                     // so we don't end up having our own file deleted
                     final File dodeploy = new File(deployDir, "test-deployment.sar.dodeploy");
+                    final File isdeploying = new File(deployDir, "test-deployment.sar.isdeploying");
                     for (int i = 0; i < 500; i++) {
-                        if (!dodeploy.exists()) {
+                        if (!dodeploy.exists() && !isdeploying.exists()) {
                             break;
                         }
                         // Wait for the last action to complete :(
@@ -333,8 +448,9 @@ public class ServerInModuleDeploymentTestCase  {
                 @Override
                 public void undeploy() {
                     final File dodeploy = new File(deployDir, "test-deployment.sar.dodeploy");
+                    final File isdeploying = new File(deployDir, "test-deployment.sar.isdeploying");
                     for (int i = 0; i < 500; i++) {
-                        if (!dodeploy.exists() && deployed.exists()) {
+                        if (!dodeploy.exists() && !isdeploying.exists() && deployed.exists()) {
                             break;
                         }
                         // Wait for the last action to complete :(
@@ -357,12 +473,15 @@ public class ServerInModuleDeploymentTestCase  {
             try {
                 removeDeploymentScanner(client, scannerName);
             } catch (Exception e) {
+            }
+            try {
                 client.close();
+            } catch (Exception e) {
             }
         }
     }
 
-    private ModelNode addDeploymentScanner(final File deployDir, final ModelControllerClient client, final String scannerName)
+    private ModelNode addDeploymentScanner(final File deployDir, final ModelControllerClient client, final String scannerName, final boolean autoDeployZipped)
             throws IOException {
         ModelNode add = new ModelNode();
         add.get(OP).set(ADD);
@@ -373,6 +492,9 @@ public class ServerInModuleDeploymentTestCase  {
         add.get("path").set(deployDir.getAbsolutePath());
         add.get("scan-enabled").set(true);
         add.get("scan-interval").set(1000);
+        if (autoDeployZipped == false) {
+            add.get("auto-deploy-zipped").set(false);
+        }
 
         ModelNode result = client.execute(add);
         Assert.assertEquals(ModelDescriptionConstants.SUCCESS, result.require(ModelDescriptionConstants.OUTCOME).asString());
@@ -471,7 +593,7 @@ public class ServerInModuleDeploymentTestCase  {
 
         @Override
         public void handleNotification(Notification notification, Object handback) {
-            if (notification instanceof MBeanServerNotification == false) {
+            if (!(notification instanceof MBeanServerNotification)) {
                 return;
             }
 
@@ -495,6 +617,8 @@ public class ServerInModuleDeploymentTestCase  {
             if (!latch.await(20, TimeUnit.SECONDS)) {
                 Assert.fail("Timed out waiting for registration/unregistration");
             }
+            //there seems to be a race condition where
+            Thread.sleep(200);
         }
     }
 

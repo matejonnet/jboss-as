@@ -39,6 +39,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYP
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE_TYPE;
 import static org.jboss.as.logging.CommonAttributes.APPEND;
 import static org.jboss.as.logging.CommonAttributes.AUTOFLUSH;
+import static org.jboss.as.logging.CommonAttributes.CLASS;
 import static org.jboss.as.logging.CommonAttributes.ENCODING;
 import static org.jboss.as.logging.CommonAttributes.FILE;
 import static org.jboss.as.logging.CommonAttributes.FILTER;
@@ -46,7 +47,9 @@ import static org.jboss.as.logging.CommonAttributes.FORMATTER;
 import static org.jboss.as.logging.CommonAttributes.HANDLER;
 import static org.jboss.as.logging.CommonAttributes.LEVEL;
 import static org.jboss.as.logging.CommonAttributes.MAX_BACKUP_INDEX;
+import static org.jboss.as.logging.CommonAttributes.MODULE;
 import static org.jboss.as.logging.CommonAttributes.NAME;
+import static org.jboss.as.logging.CommonAttributes.PROPERTIES;
 import static org.jboss.as.logging.CommonAttributes.ROTATE_SIZE;
 import static org.jboss.as.logging.CommonAttributes.SUFFIX;
 import static org.jboss.as.logging.CommonAttributes.TARGET;
@@ -59,6 +62,8 @@ import static org.jboss.as.logging.CommonAttributes.OVERFLOW_ACTION;
 import static org.jboss.as.logging.CommonAttributes.PATH;
 import static org.jboss.as.logging.CommonAttributes.QUEUE_LENGTH;
 import static org.jboss.as.logging.CommonAttributes.RELATIVE_TO;
+import static org.jboss.as.logging.CommonAttributes.VALUE;
+
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 
@@ -88,6 +93,7 @@ class LoggingSubsystemProviders {
             subsystem.get(CHILDREN, CommonAttributes.FILE_HANDLER, DESCRIPTION).set(bundle.getString("file.handler"));
             subsystem.get(CHILDREN, CommonAttributes.PERIODIC_ROTATING_FILE_HANDLER, DESCRIPTION).set(bundle.getString("periodic.handler"));
             subsystem.get(CHILDREN, CommonAttributes.SIZE_ROTATING_FILE_HANDLER, DESCRIPTION).set(bundle.getString("size.periodic.handler"));
+            subsystem.get(CHILDREN, CommonAttributes.CUSTOM_HANDLER, DESCRIPTION).set(bundle.getString("custom.handler"));
 
             return subsystem;
         }
@@ -715,6 +721,97 @@ class LoggingSubsystemProviders {
             operation.get(REQUEST_PROPERTIES, MAX_BACKUP_INDEX, TYPE).set(ModelType.INT);
             operation.get(REQUEST_PROPERTIES, MAX_BACKUP_INDEX, DESCRIPTION).set(bundle.getString("size.periodic.handler.max-backup"));
             operation.get(REQUEST_PROPERTIES, MAX_BACKUP_INDEX, REQUIRED).set(true);
+
+            return operation;
+        }
+    };
+
+    static final DescriptionProvider CUSTOM_HANDLER = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+
+            final ModelNode node = new ModelNode();
+            node.get(DESCRIPTION).set(bundle.getString("custom.handler"));
+
+            addCommonHandlerAttributes(node, bundle);
+
+            node.get(ATTRIBUTES, CLASS, TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, CLASS, DESCRIPTION).set(bundle.getString("custom.handler.class"));
+
+            node.get(ATTRIBUTES, MODULE, TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, MODULE, DESCRIPTION).set(bundle.getString("custom.handler.module"));
+
+            node.get(ATTRIBUTES, PROPERTIES, TYPE).set(ModelType.LIST);
+            node.get(ATTRIBUTES, PROPERTIES, DESCRIPTION).set(bundle.getString("custom.handler.properties"));
+            node.get(ATTRIBUTES, PROPERTIES, VALUE_TYPE, NAME, DESCRIPTION).set(bundle.getString("custom.handler.properties.name"));
+            node.get(ATTRIBUTES, PROPERTIES, VALUE_TYPE, NAME, VALUE_TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, PROPERTIES, VALUE_TYPE, VALUE, DESCRIPTION).set(bundle.getString("custom.handler.properties.value"));
+            node.get(ATTRIBUTES, PROPERTIES, VALUE_TYPE, VALUE, VALUE_TYPE).set(ModelType.STRING);
+
+            return node;
+        }
+    };
+
+    static final DescriptionProvider CUSTOM_HANDLER_ADD = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+            final ModelNode operation = new ModelNode();
+            operation.get(OPERATION_NAME).set(ADD);
+            operation.get(DESCRIPTION).set(bundle.getString("custom.handler"));
+
+            addCommonHandlerRequestProperties(operation, bundle);
+
+            operation.get(REQUEST_PROPERTIES, CLASS, TYPE).set(ModelType.STRING);
+            operation.get(REQUEST_PROPERTIES, CLASS, DESCRIPTION).set(bundle.getString("custom.handler.class"));
+            operation.get(REQUEST_PROPERTIES, CLASS, REQUIRED).set(true);
+
+            operation.get(REQUEST_PROPERTIES, MODULE, TYPE).set(ModelType.STRING);
+            operation.get(REQUEST_PROPERTIES, MODULE, DESCRIPTION).set(bundle.getString("custom.handler.module"));
+            operation.get(REQUEST_PROPERTIES, MODULE, REQUIRED).set(true);
+
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, TYPE).set(ModelType.LIST);
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, DESCRIPTION).set(bundle.getString("custom.handler.properties"));
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, REQUIRED).set(false);
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, VALUE_TYPE, NAME, DESCRIPTION).set(bundle.getString("custom.handler.properties.name"));
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, VALUE_TYPE, NAME, VALUE_TYPE).set(ModelType.STRING);
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, VALUE_TYPE, NAME, REQUIRED).set(true);
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, VALUE_TYPE, VALUE, DESCRIPTION).set(bundle.getString("custom.handler.properties.value"));
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, VALUE_TYPE, VALUE, VALUE_TYPE).set(ModelType.STRING);
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, VALUE_TYPE, VALUE, REQUIRED).set(true);
+
+            return operation;
+        }
+    };
+
+    static final DescriptionProvider CUSTOM_HANDLER_UPDATE = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+            final ModelNode operation = new ModelNode();
+            operation.get(OPERATION_NAME).set(CustomHandlerUpdateProperties.OPERATION_NAME);
+            operation.get(DESCRIPTION).set(bundle.getString("custom.handler.update"));
+
+            addCommonHandlerRequestProperties(operation, bundle);
+
+            operation.get(REQUEST_PROPERTIES, CLASS, TYPE).set(ModelType.STRING);
+            operation.get(REQUEST_PROPERTIES, CLASS, DESCRIPTION).set(bundle.getString("custom.handler.class"));
+            operation.get(REQUEST_PROPERTIES, CLASS, REQUIRED).set(true);
+
+            operation.get(REQUEST_PROPERTIES, MODULE, TYPE).set(ModelType.STRING);
+            operation.get(REQUEST_PROPERTIES, MODULE, DESCRIPTION).set(bundle.getString("custom.handler.module"));
+            operation.get(REQUEST_PROPERTIES, MODULE, REQUIRED).set(true);
+
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, TYPE).set(ModelType.LIST);
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, DESCRIPTION).set(bundle.getString("custom.handler.properties"));
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, REQUIRED).set(false);
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, VALUE_TYPE, NAME, DESCRIPTION).set(bundle.getString("custom.handler.properties.name"));
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, VALUE_TYPE, NAME, VALUE_TYPE).set(ModelType.STRING);
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, VALUE_TYPE, NAME, REQUIRED).set(true);
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, VALUE_TYPE, VALUE, DESCRIPTION).set(bundle.getString("custom.handler.properties.value"));
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, VALUE_TYPE, VALUE, VALUE_TYPE).set(ModelType.STRING);
+            operation.get(REQUEST_PROPERTIES, PROPERTIES, VALUE_TYPE, VALUE, REQUIRED).set(true);
 
             return operation;
         }

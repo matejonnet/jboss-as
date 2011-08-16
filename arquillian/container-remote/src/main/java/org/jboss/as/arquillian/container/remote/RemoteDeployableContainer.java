@@ -16,14 +16,8 @@
  */
 package org.jboss.as.arquillian.container.remote;
 
-import javax.management.MBeanServerConnection;
-
 import org.jboss.arquillian.container.spi.client.container.LifecycleException;
-import org.jboss.arquillian.container.spi.context.annotation.ContainerScoped;
-import org.jboss.arquillian.core.api.InstanceProducer;
-import org.jboss.arquillian.core.api.annotation.Inject;
 import org.jboss.as.arquillian.container.CommonDeployableContainer;
-import org.jboss.as.arquillian.container.MBeanServerConnectionProvider;
 
 /**
  * JBossASRemoteContainer
@@ -34,22 +28,8 @@ import org.jboss.as.arquillian.container.MBeanServerConnectionProvider;
 public final class RemoteDeployableContainer extends
         CommonDeployableContainer<RemoteContainerConfiguration> {
 
-    private MBeanServerConnectionProvider provider;
-
-    @Inject
-    @ContainerScoped
-    private InstanceProducer<MBeanServerConnection> mbeanServerInst;
-
-    @Override
-    public void setup(RemoteContainerConfiguration config) {
-        super.setup(config);
-        provider = new MBeanServerConnectionProvider(config.getBindAddress(),
-                config.getJmxPort());
-    }
-
     @Override
     protected void startInternal() throws LifecycleException {
-        mbeanServerInst.set(getMBeanServerConnection());
     }
 
     @Override
@@ -59,10 +39,5 @@ public final class RemoteDeployableContainer extends
     @Override
     public Class<RemoteContainerConfiguration> getConfigurationClass() {
         return RemoteContainerConfiguration.class;
-    }
-
-    @Override
-    protected MBeanServerConnection getMBeanServerConnection() {
-        return provider.getConnection();
     }
 }

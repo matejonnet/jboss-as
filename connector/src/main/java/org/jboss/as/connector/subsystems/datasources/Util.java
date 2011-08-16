@@ -22,13 +22,10 @@
 
 package org.jboss.as.connector.subsystems.datasources;
 
-import static org.jboss.as.connector.subsystems.datasources.AbstractDataSourceAdd.cleanupJavaContext;
 import static org.jboss.as.connector.subsystems.datasources.Constants.JNDINAME;
 import static org.jboss.as.connector.subsystems.datasources.Constants.USE_JAVA_CONTEXT;
 
-import org.jboss.as.naming.deployment.ContextNames;
 import org.jboss.dmr.ModelNode;
-import org.jboss.msc.service.ServiceName;
 
 /**
  * Common use utility methods.
@@ -50,44 +47,16 @@ public class Util {
         final String jndiName;
         if (!rawJndiName.startsWith("java:") && modelNode.hasDefined(USE_JAVA_CONTEXT) && modelNode.get(USE_JAVA_CONTEXT).asBoolean()) {
             if(rawJndiName.startsWith("jboss/")) {
-                jndiName = "java:/" + rawJndiName;
+                // Bind to java:jboss/ namespace
+                jndiName = "java:" + rawJndiName;
             } else {
-                jndiName= "java:" + rawJndiName;
+                // Bind to java:/ namespace
+                jndiName= "java:/" + rawJndiName;
             }
         } else {
             jndiName = rawJndiName;
         }
         return jndiName;
-    }
-
-    /**
-     * Gets the appropriate ServiceName to use for the BinderService associated with the given {@code jndiName}
-     * @param jndiName  the jndi name
-     * @return the service name of the binder service
-     */
-    public static ServiceName getBinderServiceName(final String jndiName) {
-
-        String bindName = cleanupJavaContext(jndiName);
-        final ServiceName parentContextName;
-        if (bindName.startsWith("jboss/")) {
-            parentContextName = ContextNames.JBOSS_CONTEXT_SERVICE_NAME;
-            bindName = bindName.substring(6);
-        } else {
-            parentContextName = ContextNames.JAVA_CONTEXT_SERVICE_NAME;
-        }
-        return parentContextName.append(bindName);
-    }
-
-    static String cleanupJavaContext(String jndiName) {
-        String bindName;
-        if (jndiName.startsWith("java:/")) {
-            bindName = jndiName.substring(6);
-        } else if(jndiName.startsWith("java:")) {
-            bindName = jndiName.substring(5);
-        } else {
-            bindName = jndiName;
-        }
-        return bindName;
     }
 
     private Util() {

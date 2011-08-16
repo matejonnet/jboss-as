@@ -23,9 +23,8 @@ package org.jboss.as.weld.ejb;
 
 import org.jboss.as.ee.component.ComponentView;
 import org.jboss.as.ee.component.ComponentViewInstance;
-import org.jboss.as.ee.component.ViewDescription;
 import org.jboss.as.ejb3.component.stateful.StatefulSessionComponent;
-import org.jboss.as.server.CurrentServiceRegistry;
+import org.jboss.as.server.CurrentServiceContainer;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.weld.ejb.api.SessionObjectReference;
@@ -66,8 +65,8 @@ public class StatefulSessionObjectReferenceImpl implements SessionObjectReferenc
             views.put(view.getInterface().getName(), view.getInterface());
         }
 
-        for (ViewDescription view : descriptor.getComponentDescription().getViews()) {
-            final Class<?> viewClass = views.get(view.getViewClassName());
+        for (Map.Entry<Class<?>, ServiceName> entry : descriptor.getViewServices().entrySet()) {
+            final Class<?> viewClass = entry.getKey();
             if (viewClass != null) {
                 //see WELD-921
                 //this is horrible, but until it is fixed there is not much that can be done
@@ -82,7 +81,7 @@ public class StatefulSessionObjectReferenceImpl implements SessionObjectReferenc
                     final Class<?> clazz = it.next();
                     it.remove();
                     seen.add(clazz);
-                    viewServices.put(clazz.getName(), view.getServiceName());
+                    viewServices.put(clazz.getName(), entry.getValue());
                     final Class<?> superclass = clazz.getSuperclass();
                     if (superclass != Object.class && superclass != null && !seen.contains(superclass)) {
                         toProcess.add(superclass);
@@ -108,7 +107,7 @@ public class StatefulSessionObjectReferenceImpl implements SessionObjectReferenc
             throw new NoSuchEJBException("Bean has been removed");
         }
         if (viewServices.containsKey(businessInterfaceType.getName())) {
-            final ServiceController<?> serviceController = CurrentServiceRegistry.getServiceRegistry().getRequiredService(viewServices.get(businessInterfaceType.getName()));
+            final ServiceController<?> serviceController = CurrentServiceContainer.getServiceContainer().getRequiredService(viewServices.get(businessInterfaceType.getName()));
             final ComponentView view = (ComponentView) serviceController.getValue();
             final ComponentViewInstance instance = view.createInstance(Collections.<Object, Object>singletonMap(StatefulSessionComponent.SESSION_ATTACH_KEY, id));
             return (S) instance.createProxy();
@@ -140,7 +139,7 @@ public class StatefulSessionObjectReferenceImpl implements SessionObjectReferenc
 
     private StatefulSessionComponent getComponent() {
         if (ejbComponent == null) {
-            final ServiceController<?> controller = CurrentServiceRegistry.getServiceRegistry().getRequiredService(createServiceName);
+            final ServiceController<?> controller = CurrentServiceContainer.getServiceContainer().getRequiredService(createServiceName);
             ejbComponent = (StatefulSessionComponent) controller.getValue();
         }
         return ejbComponent;

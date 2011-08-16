@@ -31,6 +31,7 @@ import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.ServiceVerificationHandler;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
+import static org.jboss.as.logging.CommonAttributes.APPEND;
 import static org.jboss.as.logging.CommonAttributes.AUTOFLUSH;
 import static org.jboss.as.logging.CommonAttributes.ENCODING;
 import static org.jboss.as.logging.CommonAttributes.FILE;
@@ -59,6 +60,7 @@ class SizeRotatingFileHandlerAdd extends AbstractAddStepHandler {
     @Override
     protected void populateModel(ModelNode operation, ModelNode model) throws OperationFailedException {
         LoggingValidators.validate(operation);
+        if (operation.hasDefined(APPEND)) model.get(APPEND).set(operation.get(APPEND));
         model.get(AUTOFLUSH).set(operation.get(AUTOFLUSH));
         model.get(ENCODING).set(operation.get(ENCODING));
         model.get(FORMATTER).set(operation.get(FORMATTER));
@@ -74,6 +76,7 @@ class SizeRotatingFileHandlerAdd extends AbstractAddStepHandler {
         final ServiceTarget serviceTarget = context.getServiceTarget();
         try {
             final SizeRotatingFileHandlerService service = new SizeRotatingFileHandlerService();
+            if (operation.hasDefined(APPEND)) service.setAppend(operation.get(APPEND).asBoolean());
             final ServiceBuilder<Handler> serviceBuilder = serviceTarget.addService(LogServices.handlerName(name), service);
             if (operation.hasDefined(FILE)) {
                 final HandlerFileService fileService = new HandlerFileService(operation.get(FILE, PATH).asString());
@@ -88,11 +91,20 @@ class SizeRotatingFileHandlerAdd extends AbstractAddStepHandler {
             final Boolean autoFlush = operation.get(AUTOFLUSH).asBoolean();
             if (autoFlush != null) service.setAutoflush(autoFlush.booleanValue());
             if (operation.hasDefined(ENCODING)) service.setEncoding(operation.get(ENCODING).asString());
-            if (operation.hasDefined(FORMATTER)) service.setFormatterSpec(createFormatterSpec(operation));
+            service.setFormatterSpec(AbstractFormatterSpec.Factory.create(operation));
             if (operation.hasDefined(MAX_BACKUP_INDEX))
                 service.setMaxBackupIndex(operation.get(MAX_BACKUP_INDEX).asInt());
-            if (operation.hasDefined(ROTATE_SIZE))
-                service.setRotateSize(operation.get(ROTATE_SIZE).asLong(DEFAULT_ROTATE_SIZE));
+
+            long rotateSize = DEFAULT_ROTATE_SIZE;
+            if (operation.hasDefined(ROTATE_SIZE)) {
+                try {
+                    rotateSize = LoggingSubsystemParser.parseSize(operation.get(ROTATE_SIZE).asString());
+                } catch (Throwable t) {
+                    throw new OperationFailedException(new ModelNode().set(t.getLocalizedMessage()));
+                }
+            }
+            service.setRotateSize(rotateSize);
+
             serviceBuilder.addListener(verificationHandler);
             serviceBuilder.setInitialMode(ServiceController.Mode.ACTIVE);
             newControllers.add(serviceBuilder.install());
@@ -100,9 +112,5 @@ class SizeRotatingFileHandlerAdd extends AbstractAddStepHandler {
             throw new OperationFailedException(new ModelNode().set(t.getLocalizedMessage()));
         }
 
-    }
-
-    static AbstractFormatterSpec createFormatterSpec(final ModelNode operation) {
-        return new PatternFormatterSpec(operation.get(FORMATTER).asString());
     }
 }

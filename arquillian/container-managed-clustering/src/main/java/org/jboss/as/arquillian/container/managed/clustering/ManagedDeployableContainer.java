@@ -16,35 +16,27 @@
  */
 package org.jboss.as.arquillian.container.managed.clustering;
 
-import org.jboss.arquillian.container.spi.client.container.LifecycleException;
-import org.jboss.arquillian.container.spi.context.annotation.ContainerScoped;
-import org.jboss.arquillian.core.api.InstanceProducer;
-import org.jboss.arquillian.core.api.annotation.Inject;
-import org.jboss.as.arquillian.container.CommonDeployableContainer;
-import org.jboss.as.arquillian.container.MBeanServerConnectionProvider;
-import org.jboss.as.controller.ControlledProcessState;
-import org.jboss.as.controller.PathAddress;
-import org.jboss.as.controller.operations.common.Util;
-import org.jboss.dmr.ModelNode;
-
-import javax.management.MBeanServerConnection;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.channels.FileChannel;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.TimeoutException;
-import java.util.logging.Logger;
-
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OUTCOME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_ATTRIBUTE_OPERATION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESULT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUCCESS;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.TimeoutException;
+import java.util.logging.Logger;
+
+import org.jboss.arquillian.container.spi.client.container.LifecycleException;
+import org.jboss.as.arquillian.container.CommonDeployableContainer;
+import org.jboss.as.controller.ControlledProcessState;
+import org.jboss.as.controller.PathAddress;
+import org.jboss.as.controller.operations.common.Util;
+import org.jboss.dmr.ModelNode;
 
 /**
  * JBossAsManagedContainer
@@ -55,13 +47,8 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUC
 public final class ManagedDeployableContainer extends CommonDeployableContainer<ManagedContainerConfiguration> {
 
     private final Logger log = Logger.getLogger(ManagedDeployableContainer.class.getName());
-    private MBeanServerConnectionProvider provider;
     private Thread shutdownThread;
     private Process process;
-
-    @Inject
-    @ContainerScoped
-    private InstanceProducer<MBeanServerConnection> mbeanServerInst;
 
     private int destroyProcess() {
         if (process == null)
@@ -82,7 +69,6 @@ public final class ManagedDeployableContainer extends CommonDeployableContainer<
     @Override
     public void setup(ManagedContainerConfiguration config) {
         super.setup(config);
-        provider = new MBeanServerConnectionProvider(config.getBindAddress(), config.getJmxPort());
     }
 
     @Override
@@ -173,10 +159,9 @@ public final class ManagedDeployableContainer extends CommonDeployableContainer<
             }
             if (!serverAvailable) {
                 destroyProcess();
-                throw new TimeoutException(String.format("Managed server was not started within [%d] ms", getContainerConfiguration().getStartupTimeout()));
+                throw new TimeoutException(String.format("Managed server was not started within [%d] s", getContainerConfiguration().getStartupTimeoutInSeconds()));
             }
 
-            mbeanServerInst.set(getMBeanServerConnection(5000));
         } catch (Exception e) {
             throw new LifecycleException("Could not start container", e);
         }
@@ -197,11 +182,6 @@ public final class ManagedDeployableContainer extends CommonDeployableContainer<
         } catch (Exception e) {
             throw new LifecycleException("Could not stop container", e);
         }
-    }
-
-    @Override
-    protected MBeanServerConnection getMBeanServerConnection() {
-        return provider.getConnection();
     }
 
     private boolean isServerStarted() {
@@ -228,15 +208,8 @@ public final class ManagedDeployableContainer extends CommonDeployableContainer<
         public void run() {
             final InputStream stream = process.getInputStream();
             final InputStreamReader reader = new InputStreamReader(stream);
-            final boolean writeOutput = AccessController.doPrivileged(new PrivilegedAction<Boolean>() {
+            final boolean writeOutput = getContainerConfiguration().isOutputToConsole();
 
-                @Override
-                public Boolean run() {
-                    // this needs a better name
-                    String val = System.getProperty("org.jboss.as.writeconsole");
-                    return val != null && "true".equals(val);
-                }
-            });
             final char[] data = new char[100];
             try {
                 for (int read = 0; read != -1; read = reader.read(data)) {

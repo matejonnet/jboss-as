@@ -23,8 +23,7 @@ package org.jboss.as.weld.ejb;
 
 import org.jboss.as.ee.component.ComponentView;
 import org.jboss.as.ee.component.ComponentViewInstance;
-import org.jboss.as.ee.component.ViewDescription;
-import org.jboss.as.server.CurrentServiceRegistry;
+import org.jboss.as.server.CurrentServiceContainer;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceRegistry;
@@ -60,8 +59,8 @@ public class SessionObjectReferenceImpl implements SessionObjectReference {
         }
 
 
-        for (ViewDescription view : descriptor.getComponentDescription().getViews()) {
-            final Class<?> viewClass = views.get(view.getViewClassName());
+        for (Map.Entry<Class<?>, ServiceName> entry : descriptor.getViewServices().entrySet()) {
+            final Class<?> viewClass = entry.getKey();
             if (viewClass != null) {
                 //see WELD-921
                 //this is horrible, but until it is fixed there is not much that can be done
@@ -76,7 +75,7 @@ public class SessionObjectReferenceImpl implements SessionObjectReference {
                     final Class<?> clazz = it.next();
                     it.remove();
                     seen.add(clazz);
-                    viewServices.put(clazz.getName(), view.getServiceName());
+                    viewServices.put(clazz.getName(), entry.getValue());
                     final Class<?> superclass = clazz.getSuperclass();
                     if(superclass != Object.class && superclass != null && !seen.contains(superclass)) {
                         toProcess.add(superclass);
@@ -103,7 +102,7 @@ public class SessionObjectReferenceImpl implements SessionObjectReference {
         }
         //TODO: this should be cached
         if (viewServices.containsKey(businessInterfaceType.getName())) {
-            final ServiceController<?> serviceController = CurrentServiceRegistry.getServiceRegistry().getRequiredService(viewServices.get(businessInterfaceType.getName()));
+            final ServiceController<?> serviceController = CurrentServiceContainer.getServiceContainer().getRequiredService(viewServices.get(businessInterfaceType.getName()));
             final ComponentView view = (ComponentView) serviceController.getValue();
             final ComponentViewInstance instance = view.createInstance();
             return (S) instance.createProxy();

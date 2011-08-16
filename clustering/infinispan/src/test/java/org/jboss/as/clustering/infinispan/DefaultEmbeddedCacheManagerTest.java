@@ -22,7 +22,18 @@
 
 package org.jboss.as.clustering.infinispan;
 
-import static org.mockito.Mockito.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.isA;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.Collections;
 import java.util.List;
@@ -31,21 +42,25 @@ import java.util.Set;
 import org.infinispan.AdvancedCache;
 import org.infinispan.Cache;
 import org.infinispan.config.Configuration;
+import org.infinispan.config.ConfigurationException;
 import org.infinispan.config.GlobalConfiguration;
 import org.infinispan.lifecycle.ComponentStatus;
 import org.infinispan.manager.CacheContainer;
 import org.infinispan.manager.EmbeddedCacheManager;
 import org.infinispan.remoting.transport.Address;
-import org.jboss.as.clustering.infinispan.DefaultEmbeddedCacheManager;
+import org.junit.After;
 import org.junit.Test;
-
-import static org.junit.Assert.*;
 /**
  * @author Paul Ferraro
  */
 public class DefaultEmbeddedCacheManagerTest {
     private final EmbeddedCacheManager manager = mock(EmbeddedCacheManager.class);
     private final EmbeddedCacheManager subject = new DefaultEmbeddedCacheManager(this.manager, "default");
+    
+    @After
+    public void cleanup() {
+        reset(manager);
+    }
     
     @Test
     public void getDefaultCache() {
@@ -54,7 +69,7 @@ public class DefaultEmbeddedCacheManagerTest {
 
         when(this.manager.<Object, Object>getCache("default", true)).thenReturn(cache);
         when(cache.getAdvancedCache()).thenReturn(cache);
-
+        
         Cache<Object, Object> result = this.subject.getCache();
 
         assertNotSame(cache, result);
@@ -68,14 +83,14 @@ public class DefaultEmbeddedCacheManagerTest {
         AdvancedCache<Object, Object> defaultCache = mock(AdvancedCache.class);
         @SuppressWarnings("unchecked")
         AdvancedCache<Object, Object> otherCache = mock(AdvancedCache.class);
-
+        
         when(this.manager.<Object, Object>getCache("default", true)).thenReturn(defaultCache);
         when(this.manager.<Object, Object>getCache("other", true)).thenReturn(otherCache);
         when(defaultCache.getAdvancedCache()).thenReturn(defaultCache);
         when(otherCache.getAdvancedCache()).thenReturn(otherCache);
-
+        
         Cache<Object, Object> result = this.subject.getCache("default");
-
+        
         assertNotSame(defaultCache, result);
         assertEquals(result, defaultCache);
         assertSame(this.subject, result.getCacheManager());
@@ -97,6 +112,18 @@ public class DefaultEmbeddedCacheManagerTest {
         assertNotSame(defaultCache, result);
         assertEquals(result, defaultCache);
         assertSame(this.subject, result.getCacheManager());
+        
+        Cache<Object, Object> cache = result;
+        AdvancedCache<Object, Object> advancedCache = cache.getAdvancedCache();
+        assertSame(cache, advancedCache);
+        AdvancedCache<Object, Object> classLoaderCache = advancedCache.with(Thread.currentThread().getContextClassLoader());
+        verify(defaultCache).addInterceptor(isA(ClassLoaderAwareCache.ClassLoaderAwareCommandInterceptor.class), eq(0));
+        assertNotSame(advancedCache, classLoaderCache);
+        
+        // Subsequent calls to with(...) cause addInterceptor() to fail
+        doThrow(new ConfigurationException("")).when(defaultCache).addInterceptor(isA(ClassLoaderAwareCache.ClassLoaderAwareCommandInterceptor.class), eq(0));
+        AdvancedCache<Object, Object> classLoaderCache2 = advancedCache.with(Thread.currentThread().getContextClassLoader());
+        assertNotSame(advancedCache, classLoaderCache2);
     }
 
     @Test
@@ -146,8 +173,8 @@ public class DefaultEmbeddedCacheManagerTest {
         Configuration otherConfig = new Configuration();
         Configuration otherConfigOverride = new Configuration();
 
-        when(this.manager.defineConfiguration("default", defaultConfigOverride)).thenReturn(defaultConfig);
-        when(this.manager.defineConfiguration("other", otherConfigOverride)).thenReturn(otherConfig);
+        when(this.manager.defineConfiguration("default", "default", defaultConfigOverride)).thenReturn(defaultConfig);
+        when(this.manager.defineConfiguration("other", "default", otherConfigOverride)).thenReturn(otherConfig);
 
         Configuration result = this.subject.defineConfiguration("default", defaultConfigOverride);
 
@@ -173,22 +200,72 @@ public class DefaultEmbeddedCacheManagerTest {
         Configuration otherConfig = new Configuration();
         Configuration otherConfigOverride = new Configuration();
 
-        when(this.manager.defineConfiguration("default", "template", defaultConfigOverride)).thenReturn(defaultConfig);
-        when(this.manager.defineConfiguration("other", "template", otherConfigOverride)).thenReturn(otherConfig);
+        when(this.manager.defineConfiguration("default", "template", defaultConfigOverride)).thenReturn(defaultConfigOverride);
+        when(this.manager.defineConfiguration("default", "default", defaultConfigOverride)).thenReturn(defaultConfig);
+        when(this.manager.defineConfiguration("other", "template", otherConfigOverride)).thenReturn(otherConfigOverride);
+        when(this.manager.defineConfiguration("other", "default", otherConfigOverride)).thenReturn(otherConfig);
 
         Configuration result = this.subject.defineConfiguration("default", "template", defaultConfigOverride);
+
+        assertSame(defaultConfigOverride, result);
+
+        result = this.subject.defineConfiguration("default", "default", defaultConfigOverride);
+
+        assertSame(defaultConfig, result);
+
+        result = this.subject.defineConfiguration("default", CacheContainer.DEFAULT_CACHE_NAME, defaultConfigOverride);
+
+        assertSame(defaultConfig, result);
+
+        result = this.subject.defineConfiguration("default", null, defaultConfigOverride);
 
         assertSame(defaultConfig, result);
 
         result = this.subject.defineConfiguration("other", "template", otherConfigOverride);
 
+        assertSame(otherConfigOverride, result);
+
+        result = this.subject.defineConfiguration("other", "default", otherConfigOverride);
+
+        assertSame(otherConfig, result);
+
+        result = this.subject.defineConfiguration("other", CacheContainer.DEFAULT_CACHE_NAME, otherConfigOverride);
+
+        assertSame(otherConfig, result);
+
+        result = this.subject.defineConfiguration("other", null, otherConfigOverride);
+
         assertSame(otherConfig, result);
 
         result = this.subject.defineConfiguration(CacheContainer.DEFAULT_CACHE_NAME, "template", defaultConfigOverride);
 
+        assertSame(defaultConfigOverride, result);
+
+        result = this.subject.defineConfiguration(CacheContainer.DEFAULT_CACHE_NAME, "default", defaultConfigOverride);
+
+        assertSame(defaultConfig, result);
+
+        result = this.subject.defineConfiguration(CacheContainer.DEFAULT_CACHE_NAME, CacheContainer.DEFAULT_CACHE_NAME, defaultConfigOverride);
+
+        assertSame(defaultConfig, result);
+
+        result = this.subject.defineConfiguration(CacheContainer.DEFAULT_CACHE_NAME, null, defaultConfigOverride);
+
         assertSame(defaultConfig, result);
 
         result = this.subject.defineConfiguration(null, "template", defaultConfigOverride);
+
+        assertSame(defaultConfigOverride, result);
+
+        result = this.subject.defineConfiguration(null, "default", defaultConfigOverride);
+
+        assertSame(defaultConfig, result);
+
+        result = this.subject.defineConfiguration(null, CacheContainer.DEFAULT_CACHE_NAME, defaultConfigOverride);
+
+        assertSame(defaultConfig, result);
+
+        result = this.subject.defineConfiguration(null, null, defaultConfigOverride);
 
         assertSame(defaultConfig, result);
     }
