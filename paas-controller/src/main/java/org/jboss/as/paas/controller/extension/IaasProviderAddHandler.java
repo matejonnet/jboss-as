@@ -62,7 +62,7 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         String imageId = operation.get(ATTRIBUTE_IMAGE_ID).asString();
 
         try {
-            IaasController.addProvider(providerName, driver, url, username, password, imageId);
+            IaasController.addProvider(providerName, driver, url, username, password, imageId, context);
         } catch (MalformedURLException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();

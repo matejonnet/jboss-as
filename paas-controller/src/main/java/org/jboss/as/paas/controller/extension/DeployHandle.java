@@ -53,9 +53,6 @@ public class DeployHandle implements OperationStepHandler {
     private static final String ATTRIBUTE_PROVIDER = "provider";
     private static final String ATTRIBUTE_NEW_INSTANCE = "new-instance";
 
-    //TODO make configurable
-    private static final int MAX_AS_PER_HOST = 3;
-
     private final Logger log = Logger.getLogger(DeployHandle.class);
 
 
@@ -93,145 +90,14 @@ public class DeployHandle implements OperationStepHandler {
 
         createServerGroup(context, appName);
 
-        addHostToServerGroup(newInstance, provider, context, getServerGroupName(appName));
+        Util.addHostToServerGroup(newInstance, provider, context, Util.getServerGroupName(appName));
 
         deployToServerGroup(context, f, appName);
 
         context.completeStep();
     }
 
-    /**
-     * @param newInstance
-     * @param provider
-     * @param context
-     * @param groupName
-     *
-     */
-    private void addHostToServerGroup(boolean newInstance, String provider, OperationContext context, String groupName) {
-        boolean newInstanceRequired = false;
-        if (newInstance) {
-            newInstanceRequired = true;
-        }
 
-        InstanceSlot slot = null;
-
-        if (!newInstanceRequired) {
-            slot = getFreeSlot(groupName, context, provider);
-        }
-
-        if (slot == null) {
-            newInstanceRequired = true;
-        }
-
-        if (newInstanceRequired) {
-            slot = addServerInstanceToDomain(provider);
-        }
-
-        ModelNode compositeRequest = new ModelNode();
-        compositeRequest.get("operation").set("composite");
-        compositeRequest.get("address").setEmptyList();
-        ModelNode steps = compositeRequest.get("steps");
-
-        //addHOST to SG
-        // /host=master/server-config=server-one:add(socket-binding-group=standard-sockets, socket-binding-port-offset=<portOffset>)
-        ModelNode opAddHostToSg = new ModelNode();
-        opAddHostToSg.get(OP).set("add");
-        opAddHostToSg.get(OP_ADDR).add("host", slot.getHostIP());
-        opAddHostToSg.get(OP_ADDR).add("server-config", "server" + slot.getSlotPosition());
-        opAddHostToSg.get("group").set(groupName);
-        opAddHostToSg.get("auto-start").set(true);
-        opAddHostToSg.get("socket-binding-group").set("standard-sockets");
-        opAddHostToSg.get("socket-binding-port-offset").set(slot.getPortOffset()); //TODO verify
-        steps.add(opAddHostToSg);
-
-        ModelNode opAddSgToInstance = new ModelNode();
-        opAddSgToInstance.get(OP).set("add");
-        opAddSgToInstance.get(OP_ADDR).add("profile", "paas-controller");
-        opAddSgToInstance.get(OP_ADDR).add("subsystem", "paas-controller");
-        opAddSgToInstance.get(OP_ADDR).add("instance", slot.getInstanceId());
-        opAddSgToInstance.get(OP_ADDR).add("server-group", groupName);
-        //opAddSgToInstance.get("name").set(groupName);
-        opAddSgToInstance.get("position").set(slot.getSlotPosition());
-
-
-//        ModelNode serverGroup = new ModelNode();
-//        serverGroup.get("name").set(groupName);
-//        serverGroup.get("position").set(slot.getSlotPosition());
-//        opAddSgToInstance.get("serverGroups").add(serverGroup);
-
-        //<server-group name="other-server-group" position="0"/>
-        //opAddSgToInstance.get("position").set(slot.getSlotPosition());
-
-        steps.add(opAddSgToInstance);
-
-
-        context.addStep(compositeRequest, new OperationStepHandler() {
-            public void execute(OperationContext context, ModelNode operation) {
-                Util.executeStep(context, operation);
-            }
-        }, OperationContext.Stage.MODEL);
-    }
-
-    /**
-     * loop throught instances which doesn't serve this group jet
-     * @param context
-     * @param providerName
-     *
-     * @return
-     */
-    private InstanceSlot getFreeSlot(String group, OperationContext context, String providerName) {
-        Resource rootResource = context.getRootResource();
-        ModelNode operationAddr = new ModelNode();
-
-        PathAddress instancesAddr = PathAddress.pathAddress(
-                PathElement.pathElement("profile", "paas-controller"),
-                PathElement.pathElement("subsystem", "paas-controller"));
-
-        final Resource instancesResource = rootResource.navigate(instancesAddr);
-        //Set<String> instances = instancesResource.getChildrenNames("instance");
-        Set<ResourceEntry> instances = instancesResource.getChildren("instance");
-
-        for (ResourceEntry instance : instances) {
-            boolean hasFreeSlot = true;
-            Set<Integer> usedPositions = new HashSet<Integer>();
-
-//            List<ModelNode> serverGroups = instance.getModel().get("server-group").asList();
-//            Resource serverGroups = instance.getChild(PathElement.pathElement("server-group"));
-            Set<ResourceEntry> serverGroups = instance.getChildren("server-group");
-
-
-            if (serverGroups.size() > MAX_AS_PER_HOST) {
-                hasFreeSlot=false;
-            }
-
-            if (hasFreeSlot)
-            for (ResourceEntry serverGroup : serverGroups) {
-                //if server group is already on this instance don't allow another
-                if (group.equals(serverGroup.getName())) {
-                    hasFreeSlot=false;
-                }
-                usedPositions.add(serverGroup.getModel().get("position").asInt());
-            }
-
-            if (hasFreeSlot) {
-                //find first free slot
-                for (int i = 0; i < MAX_AS_PER_HOST ; i++) {
-                    if (!usedPositions.contains(i)) {
-                        String hostIP = null;
-                        try {
-                            hostIP = IaasController.getInstanceIp(providerName, instance.getName());
-                        } catch (Exception e) {
-                            // TODO Auto-generated catch block
-                            e.printStackTrace();
-                        }
-                        return new InstanceSlot(hostIP, i, instance.getName());
-                    }
-                }
-
-            }
-        }
-        return null;
-    }
 
     /**
      * @param context
@@ -241,7 +107,7 @@ public class DeployHandle implements OperationStepHandler {
 
         DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
         builder.setOperationName("add");
-        builder.addNode("server-group", getServerGroupName(appName));
+        builder.addNode("server-group", Util.getServerGroupName(appName));
         builder.addProperty("profile", "default");
         builder.addProperty("socket-binding-group", "standard-sockets");
         //TODO if this is required ? parametrize port offset, calculate it acording to deployment number per instance (1st=>0; 2nd=>100, ...)
@@ -264,7 +130,7 @@ public class DeployHandle implements OperationStepHandler {
     private void deployToServerGroup(OperationContext context, final File f, String appName) {
         //Deployment process extracted from org.jboss.as.cli.handlers.DeployHandler.doHandle(CommandContext)
 
-        String serverGroup = getServerGroupName(appName);
+        String serverGroup = Util.getServerGroupName(appName);
 
         final ModelNode request;
 
@@ -338,35 +204,6 @@ public class DeployHandle implements OperationStepHandler {
         //TODO verify result
     }
 
-
-    /**
-     * - creates new server instance
-     * - join it to domain controller
-     * - associate it with server group
-     * - start the server instance
-     * @return
-     *
-     */
-    private InstanceSlot addServerInstanceToDomain(String provider) {
-        try {
-            //TODO update config instances/instance
-            String instanceId = IaasController.createNewInstance(provider);
-            String hostIp = IaasController.getInstanceIp(provider, instanceId);
-            DomainController.addHostToDomain(hostIp);
-            return new InstanceSlot(hostIp, 0, instanceId);
-        } catch (Exception e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-        return null;
-    }
-
-
-
-    private String getServerGroupName(String appName) {
-        //return appName + "-SG";
-        return appName;
-    }
 
 
     /**

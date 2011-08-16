@@ -3,14 +3,10 @@
  */
 package org.jboss.as.paas.controller.iaas;
 
-import java.net.MalformedURLException;
 import java.util.List;
-import java.util.Map;
 
-import org.apache.deltacloud.client.DeltaCloudClient;
 import org.apache.deltacloud.client.DeltaCloudClientException;
-import org.apache.deltacloud.client.DeltaCloudClientImpl;
-import org.apache.deltacloud.client.Instance;
+import org.jboss.as.controller.OperationContext;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -23,6 +19,7 @@ public class IaasProvider {
     private String username;
     private String password;
     private String imageId;
+    private OperationContext context;
 
     private IaasDriver driverDeletage;
 
@@ -34,6 +31,7 @@ public class IaasProvider {
      * @param imageId
      */
     public IaasProvider(String name, String driver, String url, String username, String password, String imageId) {
+        super();
         this.name = name;
         this.driver = driver;
         this.url = url;
@@ -41,6 +39,18 @@ public class IaasProvider {
         this.password = password;
         this.imageId = imageId;
     }
+
+    /**
+     * @param context
+     */
+    public IaasProvider(String name, String driver, OperationContext context) {
+        super();
+        this.name = name;
+        this.driver = driver;
+        this.context = context;
+    }
+
+
 
     private IaasDriver getDeletage() throws Exception, DeltaCloudClientException {
         if (driverDeletage == null) {
@@ -92,6 +102,13 @@ public class IaasProvider {
     }
 
     /**
+     * @return the context
+     */
+    public OperationContext getContext() {
+        return context;
+    }
+
+    /**
      * @return
      * @throws Exception
      * @throws DeltaCloudClientException
@@ -106,9 +123,20 @@ public class IaasProvider {
      * @throws Exception
      * @throws DeltaCloudClientException
      */
+    public boolean terminateInstance(String instanceId) throws DeltaCloudClientException, Exception {
+        return getDeletage().terminateInstance(instanceId);
+    }
+
+    /**
+     * @param instanceId
+     * @return
+     * @throws Exception
+     * @throws DeltaCloudClientException
+     */
     public List<String> getPublicAddresses(String instanceId) throws DeltaCloudClientException, Exception {
         return getDeletage().getInstance(instanceId).getPublicAddresses();
     }
+
 
 
 }

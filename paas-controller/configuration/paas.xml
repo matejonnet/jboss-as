@@ -32,6 +32,7 @@
                 <iaas-providers>
                     <iaas-provider provider="myprovider" driver="mock" url="http://localhost:3001/api" username="mockuser" password="mockpassword" image-id="i-12345" />
                     <iaas-provider provider="myvm" driver="vm" />
+                    <iaas-provider provider="local-domain-controller" driver="local" />
                 </iaas-providers>
                 <instances>
                     <instance id="in-1" provider="myprovider">
@@ -44,6 +45,8 @@
                     <instance id="in-3" provider="myvm" ip="172.16.254.2">
                         <server-group name="other-server-group" position="0" />
                     </instance>
+                    <instance id="in-vm-1" provider="myvm" ip="172.16.254.128" />
+                    <instance id="in-vm-2" provider="myvm" ip="172.16.254.129" />
                 </instances>
 
             </subsystem>

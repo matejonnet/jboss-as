@@ -12,6 +12,7 @@ import org.apache.deltacloud.client.DeltaCloudClient;
 import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.apache.deltacloud.client.DeltaCloudClientImpl;
 import org.apache.deltacloud.client.Instance;
+import org.jboss.as.controller.OperationContext;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -21,8 +22,13 @@ public class IaasController {
     private static final IaasController INSTANCE = new IaasController();
     private Map<String, IaasProvider> providers = new HashMap<String, IaasProvider>();
 
-    public static void addProvider(String name, String driver, String deltacloudUrl, String deltacloudUser, String deltacloudPassword, String imageId) throws MalformedURLException, DeltaCloudClientException {
-        IaasProvider provier = new IaasProvider(name, driver, deltacloudUrl, deltacloudUser, deltacloudPassword, imageId);
+    public static void addProvider(String name, String driver, String deltacloudUrl, String deltacloudUser, String deltacloudPassword, String imageId, OperationContext context) throws MalformedURLException, DeltaCloudClientException {
+        IaasProvider provier;
+        if ("vm".equals(driver)) {
+            provier = new IaasProvider(name, driver, context);
+        } else {
+            provier = new IaasProvider(name, driver, deltacloudUrl, deltacloudUser, deltacloudPassword, imageId);
+        }
         INSTANCE.providers.put(name, provier);
     }
 
@@ -48,6 +54,18 @@ public class IaasController {
         }
         return instance.getId();
     }
+
+    /**
+     * @param provider
+     * @param instanceId
+     * @throws Exception
+     * @throws DeltaCloudClientException
+     */
+    public static boolean terminateInstance(String providerName, String instanceId) throws DeltaCloudClientException, Exception {
+        IaasProvider provider = INSTANCE.getProvider(providerName);
+        return provider.terminateInstance(instanceId);
+    }
+
 
     /**
      * @param providerName

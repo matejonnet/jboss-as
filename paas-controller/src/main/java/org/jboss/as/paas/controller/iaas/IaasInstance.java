@@ -22,6 +22,12 @@ public interface IaasInstance {
             return new IaasInstanceDeltaClWrapper(instance);
         }
 
+        public static IaasInstance createInstance(List<String> publicAddresses, String instanceId) {
+            return new IaasInstanceVmWrapper(publicAddresses, instanceId);
+        }
+
+
+
     }
 
     /**

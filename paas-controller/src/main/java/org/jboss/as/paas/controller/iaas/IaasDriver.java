@@ -6,7 +6,6 @@ package org.jboss.as.paas.controller.iaas;
 import java.net.MalformedURLException;
 
 import org.apache.deltacloud.client.DeltaCloudClientException;
-import org.apache.deltacloud.client.Instance;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -25,6 +24,14 @@ public interface IaasDriver {
      */
     IaasInstance createInstance(String imageId);
 
+
+    /**
+     * @param instanceId
+     * @return
+     */
+    boolean terminateInstance(String instanceId);
+
+
     public class Factory {
 
         /**
@@ -37,7 +44,7 @@ public interface IaasDriver {
             if ("local".equals(driverName)) {
                 driver = new LocalIaasDriver();
             } else if ("vm".equals(driverName)) {
-                //TODO implement
+                driver = new VmIaasDriver(iaasProvider.getContext());
             } else if (driverName.startsWith("delta-")) {
                 //TODO validate required params
                 try {

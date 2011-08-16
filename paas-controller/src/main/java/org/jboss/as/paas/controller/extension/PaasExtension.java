@@ -61,6 +61,10 @@ public class PaasExtension implements Extension {
     /** The parser used for parsing our subsystem */
     private final SubsystemParser parser = new SubsystemParser();
 
+    //TODO make configurable
+    public static final int MAX_AS_PER_HOST = 3;
+
+
     @Override
     public void initializeParsers(ExtensionParsingContext context) {
         context.setSubsystemXmlMapping(NAMESPACE, parser);
@@ -79,6 +83,9 @@ public class PaasExtension implements Extension {
         //add module specific operations
         registration.registerOperationHandler(ListApplicationsHandle.OPERATION_NAME, ListApplicationsHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
         registration.registerOperationHandler(DeployHandle.OPERATION_NAME, DeployHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        registration.registerOperationHandler(UnDeployHandle.OPERATION_NAME, UnDeployHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        registration.registerOperationHandler(ExpandHandle.OPERATION_NAME, ExpandHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        registration.registerOperationHandler(ShrinkHandle.OPERATION_NAME, ShrinkHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
 
         //We always need to add a 'describe' operation
         registration.registerOperationHandler(DESCRIBE, PaasDescribeHandler.INSTANCE, PaasDescribeHandler.INSTANCE, false, OperationEntry.EntryType.PRIVATE);
@@ -349,6 +356,9 @@ public class PaasExtension implements Extension {
                 ModelNode entry = property.getValue();
                 if (entry.hasDefined("provider")) {
                     writer.writeAttribute("provider", entry.get("provider").asString());
+                }
+                if (entry.hasDefined("ip")) {
+                    writer.writeAttribute("ip", entry.get("ip").asString());
                 }
 
                 ModelNode serverGroups = entry.get("server-group");

@@ -7,6 +7,7 @@ import java.net.MalformedURLException;
 
 import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.apache.deltacloud.client.DeltaCloudClientImpl;
+import org.apache.deltacloud.client.Instance;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -44,6 +45,21 @@ public class DeltacloudIaasDriver implements IaasDriver {
             // TODO Auto-generated catch block
             e.printStackTrace();
             return null;
+        }
+    }
+
+    /* (non-Javadoc)
+     * @see org.jboss.as.paas.controller.iaas.IaasDriver#terminateInstance(java.lang.String)
+     */
+    @Override
+    public boolean terminateInstance(String instanceId) {
+        try {
+            Instance instance = driver.listInstances(instanceId);
+            instance.destroy(driver);
+            return true;
+        } catch (DeltaCloudClientException e) {
+            e.printStackTrace();
+            return false;
         }
     }
 

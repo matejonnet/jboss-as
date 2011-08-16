@@ -1,0 +1,58 @@
+/**
+ *
+ */
+package org.jboss.as.paas.controller.iaas;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
+import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.registry.Resource.ResourceEntry;
+import org.jboss.as.paas.controller.Util;
+import org.jboss.logging.Logger;
+
+/**
+ * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
+ */
+public class VmIaasDriver implements IaasDriver {
+
+    private final Logger log = Logger.getLogger(VmIaasDriver.class);
+    private OperationContext context;
+
+    /**
+     * @param context
+     */
+    public VmIaasDriver(OperationContext context) {
+        this.context = context;
+    }
+
+    /* (non-Javadoc)
+     * @see org.jboss.as.paas.controller.iaas.IaasDriver#getInstance(java.lang.String)
+     */
+    @Override
+    public IaasInstance getInstance(String instanceId) {
+        ResourceEntry instance = Util.getInstance(context, instanceId);
+        String instanceIp = instance.getModel().get("ip").asString();
+        List<String> publicAddresses = Arrays.asList(new String[]{instanceIp});
+        return new IaasInstanceVmWrapper(publicAddresses, instanceId);
+    }
+
+    /* (non-Javadoc)
+     * @see org.jboss.as.paas.controller.iaas.IaasDriver#createInstance(java.lang.String)
+     */
+    @Override
+    public IaasInstance createInstance(String imageId) {
+        throw new UnsupportedOperationException("Cannot call instantiate on local driver. Verify your configuration.");
+    }
+
+    /* (non-Javadoc)
+     * @see org.jboss.as.paas.controller.iaas.IaasDriver#terminateInstance(java.lang.String)
+     */
+    @Override
+    public boolean terminateInstance(String instanceId) {
+        log.warn("Terminate instance called on vm driver. Skipping termination.");
+        return true;
+    }
+
+}
