@@ -71,6 +71,10 @@ public class ExpandHandle implements OperationStepHandler {
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
+        if (!Util.isDomainController(context)) {
+            context.completeStep();
+            return;
+        }
 
         final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
         final String provider = operation.get(ATTRIBUTE_PROVIDER).asString();

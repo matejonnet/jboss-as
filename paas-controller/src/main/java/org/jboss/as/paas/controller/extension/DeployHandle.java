@@ -64,6 +64,13 @@ public class DeployHandle implements OperationStepHandler {
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
 
+        System.out.println(">>>>>>>>> DeployHandle.execute ");
+        if (!Util.isDomainController(context)) {
+            context.completeStep();
+            return;
+        }
+        System.out.println(">>>>>>>>> DeployHandle.execute: continue ... ");
+
         final String filePath = operation.get(ATTRIBUTE_PATH).asString();
         final String provider = operation.get(ATTRIBUTE_PROVIDER).asString();
         final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() ? operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean() : false;
@@ -75,11 +82,19 @@ public class DeployHandle implements OperationStepHandler {
         if(filePath != null) {
             f = new File(filePath);
             if(!f.exists()) {
-                context.getResult().add("Path " + f.getAbsolutePath() + " doesn't exist. File must be located on localhost.");
+                String message = "Path " + f.getAbsolutePath() + " doesn't exist. File must be located on localhost.";
+                context.getResult().add(message);
+                log.warn(message);
+                //TODO remove
+                System.out.println(message);
                 return;
             }
             if(f.isDirectory()) {
-                context.getResult().add(f.getAbsolutePath() + " is a directory.");
+                String message = f.getAbsolutePath() + " is a directory.";
+                context.getResult().add(message);
+                log.warn(message);
+                //TODO remove
+                System.out.println(message);
                 return;
             }
         } else {
@@ -100,6 +115,8 @@ public class DeployHandle implements OperationStepHandler {
 
 
     /**
+     * create a server group on DC
+     *
      * @param context
      * @param appName
      */
@@ -110,14 +127,15 @@ public class DeployHandle implements OperationStepHandler {
         builder.addNode("server-group", Util.getServerGroupName(appName));
         builder.addProperty("profile", "default");
         builder.addProperty("socket-binding-group", "standard-sockets");
-        //TODO if this is required ? parametrize port offset, calculate it acording to deployment number per instance (1st=>0; 2nd=>100, ...)
-        //builder.addProperty("socket-binding-port-offset", "0");
+
+
         try {
             ModelNode request = builder.buildRequest();
 
             context.addStep(request, new OperationStepHandler() {
                 public void execute(OperationContext context, ModelNode operation) {
                     Util.executeStep(context, operation);
+                    if (log.isDebugEnabled()) log.debug("Server group created. Oreration:" + operation);
                 }
             }, OperationContext.Stage.MODEL);
         } catch (OperationFormatException e) {
@@ -127,6 +145,13 @@ public class DeployHandle implements OperationStepHandler {
     }
 
 
+    /**
+     * deploy application content and associate deployment with servr group
+     *
+     * @param context
+     * @param f
+     * @param appName
+     */
     private void deployToServerGroup(OperationContext context, final File f, String appName) {
         //Deployment process extracted from org.jboss.as.cli.handlers.DeployHandler.doHandle(CommandContext)
 
@@ -163,7 +188,6 @@ public class DeployHandle implements OperationStepHandler {
                             log.errorf(t, "Failed to close resource %s", is);
                         }
                         context.completeStep();
-                        //ctxWthStream.completeStep();
                     }
                 }
             }, OperationContext.Stage.MODEL);

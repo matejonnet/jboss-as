@@ -6,6 +6,8 @@ package org.jboss.as.paas.controller;
 import static org.jboss.as.controller.client.helpers.ClientConstants.OP;
 import static org.jboss.as.controller.client.helpers.ClientConstants.OP_ADDR;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -37,8 +39,11 @@ public class Util {
         String opName = operation.get(ModelDescriptionConstants.OP).asString();
         OperationStepHandler opStep = context.getResourceRegistration().getOperationHandler(PathAddress.EMPTY_ADDRESS, opName);
         try {
+            if (log.isDebugEnabled()) log.debug("Executing oreration:" + operation);
             opStep.execute(context, operation);
-        } catch (OperationFailedException e) {
+            if (log.isDebugEnabled()) log.debug("Oreration executed.");
+        //} catch (OperationFailedException e) {
+        } catch (Throwable e) {
             // TODO Auto-generated catch block
             log.error("Can not execute operation [" + opName + "]", e);
         }
@@ -85,11 +90,13 @@ public class Util {
     }
 
     /**
-     * @param newInstance
+     * Add host to server group. If there is no host with free slots it creates new host.
+     * New host creation is possible only with an IaaS provider.
+     *
+     * @param newInstance do not check for free slots, create new host
      * @param provider
      * @param context
      * @param groupName
-     *
      */
     public static void addHostToServerGroup(boolean newInstance, String provider, OperationContext context, String groupName) {
         boolean newInstanceRequired = false;
@@ -111,10 +118,10 @@ public class Util {
             slot = addServerInstanceToDomain(provider);
         }
 
-        ModelNode compositeRequest = new ModelNode();
-        compositeRequest.get("operation").set("composite");
-        compositeRequest.get("address").setEmptyList();
-        ModelNode steps = compositeRequest.get("steps");
+//        ModelNode compositeRequest = new ModelNode();
+//        compositeRequest.get("operation").set("composite");
+//        compositeRequest.get("address").setEmptyList();
+//        ModelNode steps = compositeRequest.get("steps");
 
         //addHOST to SG
         // /host=master/server-config=server-one:add(socket-binding-group=standard-sockets, socket-binding-port-offset=<portOffset>)
@@ -126,7 +133,13 @@ public class Util {
         opAddHostToSg.get("auto-start").set(true);
         opAddHostToSg.get("socket-binding-group").set("standard-sockets");
         opAddHostToSg.get("socket-binding-port-offset").set(slot.getPortOffset());
-        steps.add(opAddHostToSg);
+//        steps.add(opAddHostToSg);
+        context.addStep(opAddHostToSg, new OperationStepHandler() {
+            public void execute(OperationContext context, ModelNode operation) {
+                Util.executeStep(context, operation);
+                if (log.isDebugEnabled()) log.debug("Host added to server group. Oreration:" + operation);
+            }
+        }, OperationContext.Stage.MODEL);
 
         ModelNode opAddSgToInstance = new ModelNode();
         opAddSgToInstance.get(OP).set("add");
@@ -135,14 +148,21 @@ public class Util {
         opAddSgToInstance.get(OP_ADDR).add("instance", slot.getInstanceId());
         opAddSgToInstance.get(OP_ADDR).add("server-group", groupName);
         opAddSgToInstance.get("position").set(slot.getSlotPosition());
-
-        steps.add(opAddSgToInstance);
-
-        context.addStep(compositeRequest, new OperationStepHandler() {
+//      steps.add(opAddSgToInstance);
+        context.addStep(opAddSgToInstance, new OperationStepHandler() {
             public void execute(OperationContext context, ModelNode operation) {
                 Util.executeStep(context, operation);
+                if (log.isDebugEnabled()) log.debug("Host added to server group. Oreration:" + operation);
             }
         }, OperationContext.Stage.MODEL);
+
+
+//        context.addStep(compositeRequest, new OperationStepHandler() {
+//            public void execute(OperationContext context, ModelNode operation) {
+//                Util.executeStep(context, operation);
+//                if (log.isDebugEnabled()) log.debug("Host added to server group. Oreration:" + operation);
+//            }
+//        }, OperationContext.Stage.MODEL);
     }
 
     /**
@@ -169,6 +189,7 @@ public class Util {
 
     /**
      * loop throught instances which doesn't serve this group jet
+     *
      * @param context
      * @param providerName
      *
@@ -193,7 +214,7 @@ public class Util {
             }
 
             ResourceEntry iaasProvider = Util.getIaasProvider(context, providerName);
-            String iaasDriver = iaasProvider.getModel().get("driver").asString();
+           // String iaasDriver = iaasProvider.getModel().get("driver").asString();
 
             if (hasFreeSlot)
             for (ResourceEntry serverGroup : serverGroups) {
@@ -319,4 +340,57 @@ public class Util {
             }
         }, OperationContext.Stage.MODEL);
     }
+
+    public static boolean isDomainController(OperationContext context) {
+        Resource rootResource = context.getRootResource();
+
+        // /host=172.16.254.128:read-config-as-xml
+
+        //rootResource.navigate(PathAddress.pathAddress(PathElement.pathElement("host")));
+        //rootResource.getModel().get("host") //undefined
+//        System.out.println(">>>>>>> Util.isDomainController: " + rootResource.getChildTypes().contains("server-group"));
+//        return rootResource.getChildTypes().contains("server-group");
+
+
+
+        PathAddress addr;
+
+        addr = PathAddress.pathAddress(
+                PathElement.pathElement("host", getLocalIp()));
+        final Resource resource = rootResource.navigate(addr);
+        String domainController = resource.getModel().get("domain-controller").asPropertyList().get(0).getName();
+        return "local".equals(domainController);
+    }
+
+    private static String getLocalIp() {
+        System.out.println(">>>>>>> local ip is: " + System.getProperty("local.address.ip"));
+        return System.getProperty("local.address.ip");
+
+//        String hostName;
+//        try {
+//            hostName = InetAddress.getLocalHost().getHostName();
+//            InetAddress addrs[] = InetAddress.getAllByName(hostName);
+//
+//            String myIp = "UNKNOWN";
+//            for (InetAddress addr: addrs) {
+//                System.out.println ("addr.getHostAddress() = " + addr.getHostAddress());
+//                System.out.println ("addr.getHostName() = " + addr.getHostName());
+//                System.out.println ("addr.isAnyLocalAddress() = " + addr.isAnyLocalAddress());
+//                System.out.println ("addr.isLinkLocalAddress() = " + addr.isLinkLocalAddress());
+//                System.out.println ("addr.isLoopbackAddress() = " + addr.isLoopbackAddress());
+//                System.out.println ("addr.isMulticastAddress() = " + addr.isMulticastAddress());
+//                System.out.println ("addr.isSiteLocalAddress() = " + addr.isSiteLocalAddress());
+//                System.out.println ("");
+//
+//                if (!addr.isLoopbackAddress() && addr.isSiteLocalAddress()) {
+//                    return addr.getHostAddress();
+//                }
+//            }
+//        } catch (UnknownHostException e) {
+//            // TODO Auto-generated catch block
+//            e.printStackTrace();
+//        }
+//        return null;
+    }
+
 }

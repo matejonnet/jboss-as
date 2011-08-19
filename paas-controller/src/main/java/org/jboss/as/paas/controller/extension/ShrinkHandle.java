@@ -69,6 +69,10 @@ public class ShrinkHandle implements OperationStepHandler {
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
+        if (!Util.isDomainController(context)) {
+            context.completeStep();
+            return;
+        }
 
         final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
 //TODO validate required attributes

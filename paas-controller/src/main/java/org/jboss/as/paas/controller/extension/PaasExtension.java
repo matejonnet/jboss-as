@@ -75,6 +75,7 @@ public class PaasExtension implements Extension {
         System.out.println(">>>>>>>>>>> PaasExtension.initialize");
 
         //TODO register subsysetem outside the profile
+        //custom operations must execute on domain controller only. Now there is an if (isDomainController)
         final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME);
         final ManagementResourceRegistration registration = subsystem.registerSubsystemModel(PaasProviders.SUBSYSTEM);
         //We always need to add an 'add' operation

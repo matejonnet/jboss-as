@@ -1,7 +1,9 @@
 /**
- * 
+ *
  */
 package org.jboss.as.paas.controller.extension;
+
+import static org.jboss.as.controller.client.helpers.ClientConstants.OP_ADDR;
 
 import java.net.UnknownHostException;
 import java.util.ArrayList;
@@ -16,10 +18,12 @@ import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.ServiceVerificationHandler;
 import org.jboss.as.controller.client.ModelControllerClient;
+import org.jboss.as.controller.client.helpers.ClientConstants;
+import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.registry.Resource;
-import org.jboss.as.cli.Util;
 import org.jboss.as.cli.operation.OperationFormatException;
 import org.jboss.as.cli.operation.impl.DefaultOperationRequestBuilder;
+import org.jboss.as.paas.controller.Util;
 import org.jboss.as.paas.controller.deployment.PaasDeploymentProcessor;
 import org.jboss.as.server.AbstractDeploymentChainStep;
 import org.jboss.as.server.DeploymentProcessorTarget;
@@ -52,38 +56,97 @@ public class ListApplicationsHandle implements OperationStepHandler {
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
+        System.out.println(">>>>>>>>> ListApplicationsHandle.execute.");
 
-        final ModelNode request;
+        if (!Util.isDomainController(context)) {
+            context.completeStep();
+            return;
+        }
+
+        System.out.println(">>>>>>>>> ListApplicationsHandle.execute: continue");
+
+        //        final ModelNode request = new ModelNode();
+        //        request.get(OP_ADDR).setEmptyList();
+        //        request.get(ClientConstants.OP).add("read-children-names");
+        //        request.get("child-type").set("deployment");
 
         try {
-            DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
 
-            
+            DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
             builder.operationName("read-children-names");
             builder.addProperty("child-type", "deployment");
-            request = builder.buildRequest();
 
-            context.addStep(request, new OperationStepHandler() {
-                public void execute(OperationContext context, ModelNode operation) {
+            ModelNode request = builder.buildRequest();
+            ModelNode opHeaders = new ModelNode();
 
-                    String operationName = "read-children-names";
-                    OperationStepHandler opStep = context.getResourceRegistration().getOperationHandler(PathAddress.EMPTY_ADDRESS, operationName);
+            if (operation.get("cord-true").isDefined()) {
+                opHeaders.get("execute-for-coordinator").set(true);
+                request.get(ModelDescriptionConstants.OPERATION_HEADERS).set(opHeaders);
+            } else if (operation.get("cord-false").isDefined()) {
+                opHeaders.get("execute-for-coordinator").set(false);
+                request.get(ModelDescriptionConstants.OPERATION_HEADERS).set(opHeaders);
+            }
 
-                    try {
-                        opStep.execute(context, operation);
-                    } catch (OperationFailedException e) {
-                        // TODO Auto-generated catch block
-                        e.printStackTrace();
+            if (operation.get("exe-model").isDefined()) {
+                System.out.println(">>>>>>>>> added step OperationContext.Stage.MODEL");
+                context.addStep(request, new OperationStepHandler() {
+                    public void execute(OperationContext context, ModelNode operation) {
+                        Util.executeStep(context, operation);
+                        if (log.isDebugEnabled()) log.debug("Server group created. Oreration:" + operation);
+                        System.out.println(">>>>>>>>> ListApplicationsHandle.execute: OperationContext.Stage.MODEL");
                     }
+                }, OperationContext.Stage.MODEL);
+            }
 
-                    context.completeStep();
-                }
-            }, OperationContext.Stage.IMMEDIATE);
-        } catch (OperationFormatException e1) {
+
+            if (operation.get("exe-domain").isDefined()) {
+                System.out.println(">>>>>>>>> added step OperationContext.Stage.DOMAIN");
+                context.addStep(request, new OperationStepHandler() {
+                    public void execute(OperationContext context, ModelNode operation) {
+                        Util.executeStep(context, operation);
+                        if (log.isDebugEnabled()) log.debug("Server group created. Oreration:" + operation);
+                        System.out.println(">>>>>>>>> ListApplicationsHandle.execute: OperationContext.Stage.DOMAIN");
+                    }
+                }, OperationContext.Stage.DOMAIN);
+            }
+
+        } catch (Exception e) {
             // TODO Auto-generated catch block
-            e1.printStackTrace();
+            log.error("Cannot build request to create server group.", e);
         }
-        
+
+
+
+        //        final ModelNode request
+        //        try {
+        //            DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
+        //
+        //
+        //            builder.operationName("read-children-names");
+        //            builder.addProperty("child-type", "deployment");
+        //            request = builder.buildRequest();
+        //
+        //            context.addStep(request, new OperationStepHandler() {
+        //                public void execute(OperationContext context, ModelNode operation) {
+        //
+        //                    String operationName = "read-children-names";
+        //                    OperationStepHandler opStep = context.getResourceRegistration().getOperationHandler(PathAddress.EMPTY_ADDRESS, operationName);
+        //
+        //                    try {
+        //                        opStep.execute(context, operation);
+        //                    } catch (OperationFailedException e) {
+        //                        // TODO Auto-generated catch block
+        //                        e.printStackTrace();
+        //                    }
+        //
+        //                    context.completeStep();
+        //                }
+        //            }, OperationContext.Stage.MODEL);
+        //        } catch (OperationFormatException e1) {
+        //            // TODO Auto-generated catch block
+        //            e1.printStackTrace();
+        //        }
+
         context.completeStep();
     }
 }
