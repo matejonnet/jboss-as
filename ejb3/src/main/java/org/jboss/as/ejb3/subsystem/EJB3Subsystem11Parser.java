@@ -24,9 +24,7 @@ package org.jboss.as.ejb3.subsystem;
 
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
-import org.jboss.as.controller.parsing.ParseUtils;
 import org.jboss.as.controller.persistence.SubsystemMarshallingContext;
-import org.jboss.as.ejb3.component.pool.StrictMaxPoolConfig;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
 import org.jboss.staxmapper.XMLElementReader;
@@ -46,6 +44,8 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.WRITE_ATTRIBUTE_OPERATION;
 import static org.jboss.as.controller.parsing.ParseUtils.duplicateAttribute;
 import static org.jboss.as.controller.parsing.ParseUtils.missingRequired;
 import static org.jboss.as.controller.parsing.ParseUtils.readStringAttributeElement;
@@ -56,16 +56,17 @@ import static org.jboss.as.controller.parsing.ParseUtils.unexpectedAttribute;
 import static org.jboss.as.controller.parsing.ParseUtils.unexpectedElement;
 import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.CORE_THREADS;
 import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.DEFAULT;
+import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.DEFAULT_MDB_INSTANCE_POOL;
+import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.DEFAULT_RESOURCE_ADAPTER_NAME;
+import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.DEFAULT_SLSB_INSTANCE_POOL;
 import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.INSTANCE_ACQUISITION_TIMEOUT;
 import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.INSTANCE_ACQUISITION_TIMEOUT_UNIT;
 import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.MAX_POOL_SIZE;
 import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.MAX_THREADS;
 import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.NAME;
-import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.OPERATION_SET_DEFAULT_MDB_INSTANCE_POOL;
-import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.OPERATION_SET_DEFAULT_RA_NAME;
-import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.OPERATION_SET_DEFAULT_SLSB_INSTANCE_POOL;
 import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.PATH;
 import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.RELATIVE_TO;
+import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.SERVICE;
 import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.STRICT_MAX_BEAN_INSTANCE_POOL;
 import static org.jboss.as.ejb3.subsystem.EJB3SubsystemModel.TIMER_SERVICE;
 
@@ -79,8 +80,7 @@ public class EJB3Subsystem11Parser implements XMLElementReader<List<ModelNode>>,
      */
     @Override
     public void writeContent(final XMLExtendedStreamWriter writer, final SubsystemMarshallingContext context) throws XMLStreamException {
-        // //TODO seems to be a problem with empty elements cleaning up the queue in FormattingXMLStreamWriter.runAttrQueue
-        //context.startSubsystemElement(NewManagedBeansExtension.NAMESPACE, true);
+
         context.startSubsystemElement(EJB3Extension.NAMESPACE_1_1, false);
 
         ModelNode model = context.getModelNode();
@@ -124,15 +124,14 @@ public class EJB3Subsystem11Parser implements XMLElementReader<List<ModelNode>>,
             writer.writeEndElement();
         }
         // timer-service
-        if (model.hasDefined(TIMER_SERVICE) && model.get(TIMER_SERVICE).hasDefined(DEFAULT)) {
+        if (model.hasDefined(SERVICE) && model.get(SERVICE).hasDefined(TIMER_SERVICE)) {
             // <timer-service>
             writer.writeStartElement(EJB3SubsystemXMLElement.TIMER_SERVICE.getLocalName());
-            final ModelNode timerServiceModel = model.get(TIMER_SERVICE).get(DEFAULT);
+            final ModelNode timerServiceModel = model.get(SERVICE, TIMER_SERVICE);
             this.writeTimerService(writer, timerServiceModel);
             // </timer-service>
             writer.writeEndElement();
         }
-
 
         // write the subsystem end element
         writer.writeEndElement();
@@ -153,6 +152,7 @@ public class EJB3Subsystem11Parser implements XMLElementReader<List<ModelNode>>,
             ejb3SubsystemAddOperation.get(EJB3SubsystemModel.LITE).set(Boolean.parseBoolean(liteValue));
         }
         operations.add(ejb3SubsystemAddOperation);
+
         // elements
         final EnumSet<EJB3SubsystemXMLElement> encountered = EnumSet.noneOf(EJB3SubsystemXMLElement.class);
         while (reader.hasNext() && reader.nextTag() != XMLStreamConstants.END_ELEMENT) {
@@ -179,8 +179,7 @@ public class EJB3Subsystem11Parser implements XMLElementReader<List<ModelNode>>,
                             break;
                         }
                         case TIMER_SERVICE: {
-                            final ModelNode timerService = parseTimerService(reader, operations);
-                            ejb3SubsystemAddOperation.get(TIMER_SERVICE).set(timerService);
+                            parseTimerService(reader, operations);
                             break;
                         }
                         default: {
@@ -444,9 +443,9 @@ public class EJB3Subsystem11Parser implements XMLElementReader<List<ModelNode>>,
     private void parseStrictMaxPool(final XMLExtendedStreamReader reader, List<ModelNode> operations) throws XMLStreamException {
         final int count = reader.getAttributeCount();
         String poolName = null;
-        int maxPoolSize = StrictMaxPoolConfig.DEFAULT_MAX_POOL_SIZE;
-        long timeout = StrictMaxPoolConfig.DEFAULT_TIMEOUT;
-        String unit = StrictMaxPoolConfig.DEFAULT_TIMEOUT_UNIT.name();
+        Integer maxPoolSize = null;
+        Long timeout = null;
+        String unit = null;
         for (int i = 0; i < count; i++) {
             requireNoNamespaceAttribute(reader, i);
             final String value = reader.getAttributeValue(i);
@@ -465,7 +464,7 @@ public class EJB3Subsystem11Parser implements XMLElementReader<List<ModelNode>>,
                     if (!isPositiveInt(value.trim())) {
                         throw new XMLStreamException("Illegal value: " + value + " for " + EJB3SubsystemXMLAttribute.INSTANCE_AQUISITION_TIMEOUT.getLocalName(), reader.getLocation());
                     }
-                    timeout = new Integer(value.trim());
+                    timeout = new Long(value.trim());
                     break;
                 case INSTANCE_AQUISITION_TIMEOUT_UNIT:
                     if (!isValidTimeoutUnit(value.trim())) {
@@ -486,10 +485,17 @@ public class EJB3Subsystem11Parser implements XMLElementReader<List<ModelNode>>,
         operations.add(this.createAddStrictMaxBeanInstancePoolOperation(poolName, maxPoolSize, timeout, unit));
     }
 
-    private ModelNode parseTimerService(final XMLExtendedStreamReader reader, List<ModelNode> operations) throws XMLStreamException {
-        final ModelNode timerService = new ModelNode();
-        final ModelNode defaultTimer = timerService.get(DEFAULT);
+    private void parseTimerService(final XMLExtendedStreamReader reader, List<ModelNode> operations) throws XMLStreamException {
+
         requireNoAttributes(reader);
+
+        final ModelNode address = new ModelNode();
+        address.add(SUBSYSTEM, EJB3Extension.SUBSYSTEM_NAME);
+        address.add(SERVICE, TIMER_SERVICE);
+        final ModelNode timerServiceAdd = new ModelNode();
+        timerServiceAdd.get(OP).set(ADD);
+        timerServiceAdd.get(OP_ADDR).set(address);
+
         Integer coreThreads = null;
         Integer maxThreads = null;
         String dataStorePath = null;
@@ -520,10 +526,10 @@ public class EJB3Subsystem11Parser implements XMLElementReader<List<ModelNode>>,
                         }
                     }
                     if (coreThreads != null) {
-                        defaultTimer.get(CORE_THREADS).set(coreThreads.intValue());
+                        timerServiceAdd.get(CORE_THREADS).set(coreThreads.intValue());
                     }
                     if (maxThreads != null) {
-                        defaultTimer.get(MAX_THREADS).set(maxThreads.intValue());
+                        timerServiceAdd.get(MAX_THREADS).set(maxThreads.intValue());
                     }
                     requireNoContent(reader);
                     break;
@@ -554,9 +560,9 @@ public class EJB3Subsystem11Parser implements XMLElementReader<List<ModelNode>>,
                     if (dataStorePath == null) {
                         throw missingRequired(reader, Collections.singleton(EJB3SubsystemXMLAttribute.PATH));
                     }
-                    defaultTimer.get(PATH).set(dataStorePath);
+                    timerServiceAdd.get(PATH).set(dataStorePath);
                     if (dataStorePathRelativeTo != null) {
-                        defaultTimer.get(RELATIVE_TO).set(dataStorePathRelativeTo);
+                        timerServiceAdd.get(RELATIVE_TO).set(dataStorePathRelativeTo);
                     }
                     requireNoContent(reader);
                     break;
@@ -566,7 +572,7 @@ public class EJB3Subsystem11Parser implements XMLElementReader<List<ModelNode>>,
                 }
             }
         }
-        return timerService;
+        operations.add(timerServiceAdd);
     }
 
 
@@ -646,42 +652,45 @@ public class EJB3Subsystem11Parser implements XMLElementReader<List<ModelNode>>,
     }
 
     private ModelNode createSetDefaultSLSBPoolOperation(final String poolName) {
-        // create /subsystem=ejb3:set-default-slsb-instance-pool(name=poolName) operation
+        // create /subsystem=ejb3:write-attribute(name=default-mdb-instance-pool,value=poolName) operation
         final ModelNode setDefaultSLSBPoolOperation = new ModelNode();
-        setDefaultSLSBPoolOperation.get(OP).set(OPERATION_SET_DEFAULT_SLSB_INSTANCE_POOL);
+        setDefaultSLSBPoolOperation.get(OP).set(WRITE_ATTRIBUTE_OPERATION);
         // set the address for this operation
         setDefaultSLSBPoolOperation.get(OP_ADDR).set(this.getEJB3SubsystemAddress().toModelNode());
         // set the params for the operation
-        setDefaultSLSBPoolOperation.get(NAME).set(poolName);
+        setDefaultSLSBPoolOperation.get(NAME).set(DEFAULT_SLSB_INSTANCE_POOL);
+        setDefaultSLSBPoolOperation.get(VALUE).set(poolName);
 
         return setDefaultSLSBPoolOperation;
     }
 
     private ModelNode createSetDefaultMDBPoolOperation(final String poolName) {
-        // create /subsystem=ejb3:set-default-mdb-instance-pool(name=poolName) operation
+        // create /subsystem=ejb3:write-attribute(name=default-mdb-instance-pool,value=poolName) operation
         final ModelNode setDefaultMDBPoolOperation = new ModelNode();
-        setDefaultMDBPoolOperation.get(OP).set(OPERATION_SET_DEFAULT_MDB_INSTANCE_POOL);
+        setDefaultMDBPoolOperation.get(OP).set(WRITE_ATTRIBUTE_OPERATION);
         // set the address for this operation
         setDefaultMDBPoolOperation.get(OP_ADDR).set(this.getEJB3SubsystemAddress().toModelNode());
         // set the params for the operation
-        setDefaultMDBPoolOperation.get(NAME).set(poolName);
+        setDefaultMDBPoolOperation.get(NAME).set(DEFAULT_MDB_INSTANCE_POOL);
+        setDefaultMDBPoolOperation.get(VALUE).set(poolName);
 
         return setDefaultMDBPoolOperation;
     }
 
     private ModelNode createSetDefaultRAOperation(final String resourceAdapterName) {
-        // create /subsystem=ejb3:set-default-resource-adapter-name(name=poolName) operation
+        // create /subsystem=ejb3:write-attribute(name=default-resource-adapter-name,value=poolName) operation
         final ModelNode setDefaultRAName = new ModelNode();
-        setDefaultRAName.get(OP).set(OPERATION_SET_DEFAULT_RA_NAME);
+        setDefaultRAName.get(OP).set(WRITE_ATTRIBUTE_OPERATION);
         // set the address for this operation
         setDefaultRAName.get(OP_ADDR).set(this.getEJB3SubsystemAddress().toModelNode());
         // set the params for the operation
-        setDefaultRAName.get(NAME).set(resourceAdapterName);
+        setDefaultRAName.get(NAME).set(DEFAULT_RESOURCE_ADAPTER_NAME);
+        setDefaultRAName.get(VALUE).set(resourceAdapterName);
 
         return setDefaultRAName;
     }
 
-    private ModelNode createAddStrictMaxBeanInstancePoolOperation(final String name, final int maxPoolSize, final long timeout, final String timeoutUnit) {
+    private ModelNode createAddStrictMaxBeanInstancePoolOperation(final String name, final Integer maxPoolSize, final Long timeout, final String timeoutUnit) {
         // create /subsystem=ejb3/strict-max-bean-instance-pool=name:add(...)
         final ModelNode addStrictMaxPoolOperation = new ModelNode();
         addStrictMaxPoolOperation.get(OP).set(ADD);
@@ -689,31 +698,18 @@ public class EJB3Subsystem11Parser implements XMLElementReader<List<ModelNode>>,
         final PathAddress address = this.getEJB3SubsystemAddress().append(PathElement.pathElement(STRICT_MAX_BEAN_INSTANCE_POOL, name));
         addStrictMaxPoolOperation.get(OP_ADDR).set(address.toModelNode());
         // set the params for the operation
-        addStrictMaxPoolOperation.get(MAX_POOL_SIZE).set(maxPoolSize);
-        addStrictMaxPoolOperation.get(INSTANCE_ACQUISITION_TIMEOUT).set(timeout);
-        addStrictMaxPoolOperation.get(INSTANCE_ACQUISITION_TIMEOUT_UNIT).set(timeoutUnit);
+        if (maxPoolSize != null) {
+            addStrictMaxPoolOperation.get(MAX_POOL_SIZE).set(maxPoolSize);
+        }
+        if (timeout != null) {
+            addStrictMaxPoolOperation.get(INSTANCE_ACQUISITION_TIMEOUT).set(timeout);
+        }
+        if (timeoutUnit != null) {
+            addStrictMaxPoolOperation.get(INSTANCE_ACQUISITION_TIMEOUT_UNIT).set(timeoutUnit);
+        }
 
         return addStrictMaxPoolOperation;
     }
-
-//    private ModelNode createTimerServiceOperation(int coreThreads, final String dataStorePath, final String dataStorePathRelativeTo) {
-//        final ModelNode timerServiceOperation = new ModelNode();
-//        timerServiceOperation.get(OP).set(ADD);
-//        // set the address for this operation
-//        final PathAddress address = this.getEJB3SubsystemAddress();
-//        timerServiceOperation.get(OP_ADDR).set(address.toModelNode());
-//
-//        // set the operation params
-//        final ModelNode timerServiceModel = new ModelNode();
-//        timerServiceOperation.get(TIMER_SERVICE).set(timerServiceModel);
-//        timerServiceModel.get(THREAD_POOL).get(CORE_THREADS).set(coreThreads);
-//        timerServiceModel.get(TIMER_DATA_STORE_LOCATION).get(PATH).set(dataStorePath);
-//        if(dataStorePathRelativeTo != null) {
-//            timerServiceModel.get(TIMER_DATA_STORE_LOCATION).get(RELATIVE_TO).set(dataStorePathRelativeTo);
-//        }
-//
-//        return timerServiceOperation;
-//    }
 
     private PathAddress getEJB3SubsystemAddress() {
         PathAddress addr = PathAddress.pathAddress(PathElement.pathElement(SUBSYSTEM, EJB3Extension.SUBSYSTEM_NAME));
