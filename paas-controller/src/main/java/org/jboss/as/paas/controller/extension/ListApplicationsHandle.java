@@ -3,35 +3,15 @@
  */
 package org.jboss.as.paas.controller.extension;
 
-import static org.jboss.as.controller.client.helpers.ClientConstants.OP_ADDR;
-
-import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-
+import org.jboss.as.cli.operation.impl.DefaultOperationRequestBuilder;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
-import org.jboss.as.controller.PathAddress;
-import org.jboss.as.controller.PathElement;
-import org.jboss.as.controller.ServiceVerificationHandler;
 import org.jboss.as.controller.client.ModelControllerClient;
-import org.jboss.as.controller.client.helpers.ClientConstants;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
-import org.jboss.as.controller.registry.Resource;
-import org.jboss.as.cli.operation.OperationFormatException;
-import org.jboss.as.cli.operation.impl.DefaultOperationRequestBuilder;
 import org.jboss.as.paas.controller.Util;
-import org.jboss.as.paas.controller.deployment.PaasDeploymentProcessor;
-import org.jboss.as.server.AbstractDeploymentChainStep;
-import org.jboss.as.server.DeploymentProcessorTarget;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
-import org.jboss.logmanager.Level;
-import org.jboss.msc.service.ServiceController;
-import org.jboss.msc.service.ServiceRegistry;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -73,7 +53,7 @@ public class ListApplicationsHandle implements OperationStepHandler {
         try {
 
             DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
-            builder.operationName("read-children-names");
+            builder.setOperationName("read-children-names");
             builder.addProperty("child-type", "deployment");
 
             ModelNode request = builder.buildRequest();

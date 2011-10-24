@@ -41,4 +41,7 @@ public class LocalIaasDriver implements IaasDriver {
         return true;
     }
 
+    @Override
+    public void close() {}
+
 }

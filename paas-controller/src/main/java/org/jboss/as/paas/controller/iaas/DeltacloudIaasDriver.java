@@ -63,4 +63,12 @@ public class DeltacloudIaasDriver implements IaasDriver {
         }
     }
 
+    /* (non-Javadoc)
+     * @see org.jboss.as.paas.controller.iaas.IaasDriver#close()
+     */
+    @Override
+    public void close() {
+
+    }
+
 }

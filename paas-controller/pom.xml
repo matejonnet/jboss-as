@@ -172,5 +172,10 @@
         	<type>jar</type>
         	<scope>compile</scope>
         </dependency>
+        <dependency>
+        	<groupId>org.jclouds</groupId>
+        	<artifactId>jclouds-allcompute</artifactId>
+        	<version>1.2.1</version>
+        </dependency>
     </dependencies>
 </project>

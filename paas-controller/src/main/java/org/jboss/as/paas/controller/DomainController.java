@@ -26,19 +26,20 @@ public class DomainController {
         ModelControllerClient client = ModelControllerClient.Factory.create(hostIP, 9999);
 
         // /host=newnode:write-attribute(name=name, value=<hostIP>)
-        DefaultOperationRequestBuilder renameHostBuilder = new DefaultOperationRequestBuilder();
-        renameHostBuilder.addNode("host", "newnode");
-        renameHostBuilder.operationName("write-attribute");
-        renameHostBuilder.addProperty("name", "name");
-        renameHostBuilder.addProperty("value", hostIP);
-        client.execute(renameHostBuilder.buildRequest());
+        DefaultOperationRequestBuilder renameDefaultHost = new DefaultOperationRequestBuilder();
+        //default node name is newnode
+        renameDefaultHost.addNode("host", "newnode");
+        renameDefaultHost.setOperationName("write-attribute");
+        renameDefaultHost.addProperty("name", "name");
+        renameDefaultHost.addProperty("value", hostIP);
+        client.execute(renameDefaultHost.buildRequest());
 
         // /host=<hostIP>:write-remote-domain-controller(host=1.2.3.4, port=9999)
-        DefaultOperationRequestBuilder setDcBuilder = new DefaultOperationRequestBuilder();
-        renameHostBuilder.addNode("host", hostIP);
-        renameHostBuilder.operationName("write-remote-domain-controller");
-        renameHostBuilder.addProperty("host", dcIP);
-        renameHostBuilder.addProperty("port", "9999");
-        client.execute(renameHostBuilder.buildRequest());
+        DefaultOperationRequestBuilder setDc = new DefaultOperationRequestBuilder();
+        setDc.addNode("host", hostIP);
+        setDc.setOperationName("write-remote-domain-controller");
+        setDc.addProperty("host", dcIP);
+        setDc.addProperty("port", "9999");
+        client.execute(setDc.buildRequest());
     }
 }

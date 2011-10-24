@@ -13,6 +13,7 @@ import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.apache.deltacloud.client.DeltaCloudClientImpl;
 import org.apache.deltacloud.client.Instance;
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.paas.controller.domain.iaas.IaasProvider;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -22,12 +23,12 @@ public class IaasController {
     private static final IaasController INSTANCE = new IaasController();
     private Map<String, IaasProvider> providers = new HashMap<String, IaasProvider>();
 
-    public static void addProvider(String name, String driver, String deltacloudUrl, String deltacloudUser, String deltacloudPassword, String imageId, OperationContext context) throws MalformedURLException, DeltaCloudClientException {
+    public static void addProvider(String name, String driver, String url, String user, String password, String imageId, OperationContext context) throws MalformedURLException, DeltaCloudClientException {
         IaasProvider provier;
         if ("vm".equals(driver)) {
             provier = new IaasProvider(name, driver, context);
         } else {
-            provier = new IaasProvider(name, driver, deltacloudUrl, deltacloudUser, deltacloudPassword, imageId);
+            provier = new IaasProvider(name, driver, url, user, password, imageId);
         }
         INSTANCE.providers.put(name, provier);
     }
