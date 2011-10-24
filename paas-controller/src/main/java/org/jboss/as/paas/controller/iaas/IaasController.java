@@ -5,15 +5,11 @@ package org.jboss.as.paas.controller.iaas;
 
 import java.net.MalformedURLException;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 
-import org.apache.deltacloud.client.DeltaCloudClient;
 import org.apache.deltacloud.client.DeltaCloudClientException;
-import org.apache.deltacloud.client.DeltaCloudClientImpl;
-import org.apache.deltacloud.client.Instance;
 import org.jboss.as.controller.OperationContext;
-import org.jboss.as.paas.controller.domain.iaas.IaasProvider;
+import org.jboss.as.paas.controller.domain.IaasProvider;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>

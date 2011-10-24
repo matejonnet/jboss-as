@@ -6,7 +6,7 @@ package org.jboss.as.paas.controller.iaas;
 import java.net.MalformedURLException;
 
 import org.apache.deltacloud.client.DeltaCloudClientException;
-import org.jboss.as.paas.controller.domain.iaas.IaasProvider;
+import org.jboss.as.paas.controller.domain.IaasProvider;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>

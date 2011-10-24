@@ -1,7 +1,7 @@
 /**
  *
  */
-package org.jboss.as.paas.controller.domain.iaas;
+package org.jboss.as.paas.controller.domain;
 
 import java.util.List;
 
