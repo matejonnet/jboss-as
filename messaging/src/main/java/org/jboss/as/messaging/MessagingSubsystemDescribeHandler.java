@@ -34,6 +34,7 @@ import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
 import org.jboss.as.messaging.jms.ConnectionFactoryAdd;
 import org.jboss.as.messaging.jms.JMSQueueAdd;
 import org.jboss.as.messaging.jms.JMSTopicAdd;
@@ -46,6 +47,9 @@ import org.jboss.dmr.Property;
  * @author <a href="mailto:andy.taylor@jboss.com">Andy Taylor</a>
  */
 class MessagingSubsystemDescribeHandler implements OperationStepHandler, DescriptionProvider {
+
+    static final String[] TRANSPORT = new String[] {CommonAttributes.ACCEPTOR, CommonAttributes.REMOTE_ACCEPTOR, CommonAttributes.IN_VM_ACCEPTOR,
+                                CommonAttributes.CONNECTOR, CommonAttributes.REMOTE_CONNECTOR, CommonAttributes.IN_VM_CONNECTOR};
 
     static final MessagingSubsystemDescribeHandler INSTANCE = new MessagingSubsystemDescribeHandler();
 
@@ -63,13 +67,39 @@ class MessagingSubsystemDescribeHandler implements OperationStepHandler, Descrip
                 subsystemAdd.get(attrName).set(subModel.get(attrName));
             }
         }
-        for(final String attribute : MessagingSubsystemProviders.MESSAGING_ROOT_ATTRIBUTES) {
-            if(subModel.hasDefined(attribute)) {
-                subsystemAdd.get(attribute).set(subModel.get(attribute));
-            }
-        }
         final ModelNode result = context.getResult();
         result.add(subsystemAdd);
+
+        // acceptors / connectors
+        for(final String transport : TRANSPORT) {
+            if(subModel.hasDefined(transport)) {
+                for(final Property property : subModel.get(transport).asPropertyList()) {
+                    final ModelNode address = rootAddress.toModelNode();
+                    address.add(transport, property.getName());
+                    result.add(TransportConfigOperationHandlers.createAddOperation(address, property.getValue()));
+                }
+            }
+        }
+
+        // the paths
+        if(subModel.hasDefined(PATH)) {
+            final ModelNode paths = subModel.get(PATH);
+            for(final String pathName : CommonAttributes.PATHS) {
+                if(paths.hasDefined(pathName)) {
+                    final ModelNode address = rootAddress.toModelNode();
+                    address.add(PATH, pathName);
+                    result.add(MessagingPathHandlers.createAddOperation(address, paths.get(pathName)));
+                }
+            }
+        }
+
+        if(subModel.hasDefined(CommonAttributes.ADDRESS_SETTING)) {
+            for(final Property property : subModel.get(CommonAttributes.ADDRESS_SETTING).asPropertyList()) {
+                final ModelNode address = rootAddress.toModelNode();
+                address.add(CommonAttributes.ADDRESS_SETTING, property.getName());
+                result.add(AddressSettingAdd.createAddOperation(address, property.getValue()));
+            }
+        }
 
         if (subModel.hasDefined(CommonAttributes.BROADCAST_GROUP)) {
             for(final Property property : subModel.get(CommonAttributes.BROADCAST_GROUP).asPropertyList()) {
@@ -133,9 +163,9 @@ class MessagingSubsystemDescribeHandler implements OperationStepHandler, Descrip
                 final ModelNode csNode = property.getValue();
                 result.add(ConnectorServiceAdd.getAddOperation(address, csNode));
                 if (csNode.hasDefined(CommonAttributes.PARAM)) {
-                    for(final Property param : subModel.get(CommonAttributes.PARAM).asPropertyList()) {
+                    for(final Property param : csNode.get(CommonAttributes.PARAM).asPropertyList()) {
                         final ModelNode paramAddress = address.clone().add(CommonAttributes.PARAM, param.getName());
-                        result.add(ConnectorServiceParamAdd.getAddOperation(paramAddress, property.getValue()));
+                        result.add(ConnectorServiceParamAdd.getAddOperation(paramAddress, param.getValue()));
                     }
                 }
             }
@@ -170,6 +200,23 @@ class MessagingSubsystemDescribeHandler implements OperationStepHandler, Descrip
                 final ModelNode address = rootAddress.toModelNode();
                 address.add(CommonAttributes.JMS_TOPIC, property.getName());
                 result.add(JMSTopicAdd.getOperation(address, property.getValue()));
+            }
+        }
+
+        if(subModel.hasDefined(CommonAttributes.SECURITY_SETTING)) {
+            final ModelNode securitySettings = subModel.get(CommonAttributes.SECURITY_SETTING);
+            for(final Property setting : securitySettings.asPropertyList()) {
+                final ModelNode settingAddress = rootAddress.toModelNode();
+                settingAddress.add(CommonAttributes.SECURITY_SETTING, setting.getName());
+                result.add(SecuritySettingAdd.createAddOperation(settingAddress, setting.getValue()));
+                final ModelNode securitySetting = setting.getValue();
+                if(securitySetting.hasDefined(CommonAttributes.ROLE)) {
+                    for(final Property role : securitySetting.get(CommonAttributes.ROLE).asPropertyList()) {
+                        final ModelNode address = settingAddress.clone();
+                        address.add(CommonAttributes.ROLE, role.getName());
+                        result.add(SecurityRoleAdd.createAddOperation(address, role.getValue()));
+                    }
+                }
             }
         }
 

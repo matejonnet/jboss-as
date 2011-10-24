@@ -152,7 +152,7 @@
         </module-def>
 
         <module-def name="javax.faces.api">
-            <maven-resource group="org.jboss.spec.javax.faces" artifact="jboss-jsf-api_2.0_spec"/>
+            <maven-resource group="org.jboss.spec.javax.faces" artifact="jboss-jsf-api_2.1_spec"/>
         </module-def>
 
         <module-def name="javax.faces.api" slot="1.2">
@@ -173,6 +173,10 @@
 
         <module-def name="javax.jws.api">
             <maven-resource group="javax.jws" artifact="jsr181-api"/>
+        </module-def>
+
+        <module-def name="javax.management.j2ee.api">
+            <maven-resource group="org.jboss.spec.javax.management.j2ee" artifact="jboss-j2eemgmt-api_1.1_spec"/>
         </module-def>
 
         <module-def name="javax.mail.api">
@@ -391,7 +395,7 @@
 
         <module-def name="org.hibernate">
             <maven-resource group="org.hibernate" artifact="hibernate-core" />
-            <maven-resource group="org.hibernate" artifact="hibernate-commons-annotations" />
+            <maven-resource group="org.hibernate.common" artifact="hibernate-commons-annotations" />
             <maven-resource group="org.hibernate" artifact="hibernate-entitymanager" />
             <maven-resource group="org.hibernate" artifact="hibernate-infinispan" />
         </module-def>
@@ -538,6 +542,10 @@
             <maven-resource group="org.jboss.as" artifact="jboss-as-logging"/>
         </module-def>
 
+        <module-def name="org.jboss.as.mail">
+            <maven-resource group="org.jboss.as" artifact="jboss-as-mail"/>
+        </module-def>
+
         <module-def name="org.jboss.as.messaging">
             <maven-resource group="org.jboss.as" artifact="jboss-as-messaging"/>
         </module-def>
@@ -545,6 +553,10 @@
         <module-def name="org.jboss.as.modcluster">
             <maven-resource group="org.jboss.as" artifact="jboss-as-modcluster"/>
             <maven-resource group="org.jboss.mod_cluster" artifact="mod_cluster"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.pojo">
+            <maven-resource group="org.jboss.as" artifact="jboss-as-pojo"/>
         </module-def>
 
         <module-def name="org.jboss.as.naming">
@@ -555,8 +567,12 @@
             <maven-resource group="org.jboss.as" artifact="jboss-as-network"/>
         </module-def>
 
-     	  <module-def name="org.jboss.as.osgi">
+     	<module-def name="org.jboss.as.osgi">
             <maven-resource group="org.jboss.as" artifact="jboss-as-osgi-service"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.platform-mbean">
+            <maven-resource group="org.jboss.as" artifact="jboss-as-platform-mbean"/>
         </module-def>
 
         <module-def name="org.jboss.as.process-controller">
@@ -633,33 +649,9 @@
         </module-def>
 
         <module-def name="org.jboss.ejb3">
-            <!-- all maven artifacts that live on the org.jboss.ejb3 release cycle -->
-            <maven-resource group="org.jboss.ejb3" artifact="jboss-ejb3-cache"/>
-
-            <maven-resource group="org.jboss.ejb3" artifact="jboss-ejb3-core-pool"/>
 
             <!-- TODO: this is not the final API -->
             <maven-resource group="org.jboss.ejb3" artifact="jboss-ejb3-ext-api"/>
-
-
-            <maven-resource group="org.jboss.ejb3.context" artifact="jboss-ejb3-context-base"/>
-            <maven-resource group="org.jboss.ejb3.context" artifact="jboss-ejb3-context-spi"/>
-
-            <maven-resource group="org.jboss.ejb3.effigy" artifact="jboss-ejb3-effigy-api"/>
-            <maven-resource group="org.jboss.ejb3.effigy" artifact="jboss-ejb3-effigy-common"/>
-            <maven-resource group="org.jboss.ejb3.effigy" artifact="jboss-ejb3-effigy-int2"/>
-
-            <maven-resource group="org.jboss.ejb3.concurrency" artifact="jboss-ejb3-concurrency-spi"/>
-            <maven-resource group="org.jboss.ejb3.concurrency" artifact="jboss-ejb3-concurrency-impl"/>
-
-            <maven-resource group="org.jboss.ejb3.tx2" artifact="jboss-ejb3-tx2-impl"/>
-            <maven-resource group="org.jboss.ejb3.tx2" artifact="jboss-ejb3-tx2-spi"/>
-        </module-def>
-
-        <module-def name="org.jboss.ejb3.timerservice">
-            <maven-resource group="org.jboss.ejb3.timerservice" artifact="ejb31-calendar-expr-parser"/>
-            <maven-resource group="org.jboss.ejb3.timerservice" artifact="jboss-ejb3-timerservice-api"/>
-            <maven-resource group="org.jboss.ejb3.timerservice" artifact="jboss-ejb3-timerservice-mk2"/>
         </module-def>
 
         <module-def name="org.jboss.integration.ext-content">

@@ -25,9 +25,9 @@ import org.jboss.as.cli.CommandContext;
 import org.jboss.as.cli.CommandFormatException;
 import org.jboss.as.cli.impl.ArgumentWithValue;
 import org.jboss.as.cli.operation.OperationRequestCompleter;
-import org.jboss.as.cli.operation.OperationRequestParser;
+import org.jboss.as.cli.operation.CommandLineParser;
 import org.jboss.as.cli.operation.OperationRequestAddress;
-import org.jboss.as.cli.operation.impl.DefaultOperationCallbackHandler;
+import org.jboss.as.cli.operation.impl.DefaultCallbackHandler;
 
 /**
  *
@@ -43,13 +43,13 @@ public class PrefixHandler extends CommandHandlerWithHelp {
 
     public PrefixHandler(String command) {
         super(command, true);
-        nodePath = new ArgumentWithValue(this, OperationRequestCompleter.INSTANCE, 0, "--node-path");
+        nodePath = new ArgumentWithValue(this, OperationRequestCompleter.ARG_VALUE_COMPLETER, 0, "--node-path");
     }
 
     @Override
     protected void doHandle(CommandContext ctx) {
 
-        final String nodePath = this.nodePath.getValue(ctx.getParsedArguments());
+        final String nodePath = this.nodePath.getValue(ctx.getParsedCommandLine());
 
         OperationRequestAddress prefix = ctx.getPrefix();
 
@@ -58,9 +58,9 @@ public class PrefixHandler extends CommandHandlerWithHelp {
             return;
         }
 
-        OperationRequestParser.CallbackHandler handler = new DefaultOperationCallbackHandler(prefix);
+        CommandLineParser.CallbackHandler handler = new DefaultCallbackHandler(prefix);
         try {
-            ctx.getOperationRequestParser().parse(ctx.getArgumentsString(), handler);
+            ctx.getCommandLineParser().parse(ctx.getArgumentsString(), handler);
         } catch (CommandFormatException e) {
             ctx.printLine(e.getLocalizedMessage());
         }

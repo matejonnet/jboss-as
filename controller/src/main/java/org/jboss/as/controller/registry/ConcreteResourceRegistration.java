@@ -112,27 +112,27 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
     }
 
     @Override
-    OperationStepHandler getOperationHandler(final ListIterator<PathElement> iterator, final String operationName, OperationStepHandler inherited) {
+    OperationEntry getOperationEntry(final ListIterator<PathElement> iterator, final String operationName, OperationEntry inherited) {
         if (iterator.hasNext()) {
-            OperationStepHandler ourInherited = getInheritableOperationHandler(operationName);
-            OperationStepHandler inheritance = ourInherited == null ? inherited : ourInherited;
+            OperationEntry ourInherited = getInheritableOperationEntry(operationName);
+            OperationEntry inheritance = ourInherited == null ? inherited : ourInherited;
             final PathElement next = iterator.next();
             final NodeSubregistry subregistry = children.get(next.getKey());
             if (subregistry == null) {
                 return null;
             }
-            return subregistry.getOperationHandler(iterator, next.getValue(), operationName, inheritance);
+            return subregistry.getOperationEntry(iterator, next.getValue(), operationName, inheritance);
         } else {
             final OperationEntry entry = operationsUpdater.get(this, operationName);
-            return entry == null ? inherited : entry.getOperationHandler();
+            return entry == null ? inherited : entry;
         }
     }
 
     @Override
-    OperationStepHandler getInheritableOperationHandler(final String operationName) {
+    OperationEntry getInheritableOperationEntry(final String operationName) {
         final OperationEntry entry = operationsUpdater.get(this, operationName);
         if (entry != null && entry.isInherited()) {
-            return entry.getOperationHandler();
+            return entry;
         }
         return null;
     }
@@ -185,21 +185,42 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
 
     @Override
     public void registerReadWriteAttribute(final String attributeName, final OperationStepHandler readHandler, final OperationStepHandler writeHandler, AttributeAccess.Storage storage) {
-        if (attributesUpdater.putIfAbsent(this, attributeName, new AttributeAccess(AccessType.READ_WRITE, storage, readHandler, writeHandler)) != null) {
+        if (attributesUpdater.putIfAbsent(this, attributeName, new AttributeAccess(AccessType.READ_WRITE, storage, readHandler, writeHandler, null)) != null) {
+            throw new IllegalArgumentException("An attribute named '" + attributeName + "' is already registered at location '" + getLocationString() + "'");
+        }
+    }
+
+    @Override
+    public void registerReadWriteAttribute(final String attributeName, final OperationStepHandler readHandler, final OperationStepHandler writeHandler, EnumSet<AttributeAccess.Flag> flags) {
+        AttributeAccess.Storage storage = (flags != null && flags.contains(AttributeAccess.Flag.STORAGE_RUNTIME)) ? Storage.RUNTIME : Storage.CONFIGURATION;
+        if (attributesUpdater.putIfAbsent(this, attributeName, new AttributeAccess(AccessType.READ_WRITE, storage, readHandler, writeHandler, flags)) != null) {
             throw new IllegalArgumentException("An attribute named '" + attributeName + "' is already registered at location '" + getLocationString() + "'");
         }
     }
 
     @Override
     public void registerReadOnlyAttribute(final String attributeName, final OperationStepHandler readHandler, AttributeAccess.Storage storage) {
-        if (attributesUpdater.putIfAbsent(this, attributeName, new AttributeAccess(AccessType.READ_ONLY, storage, readHandler, null)) != null) {
+        if (attributesUpdater.putIfAbsent(this, attributeName, new AttributeAccess(AccessType.READ_ONLY, storage, readHandler, null, null)) != null) {
+            throw new IllegalArgumentException("An attribute named '" + attributeName + "' is already registered at location '" + getLocationString() + "'");
+        }
+    }
+
+    @Override
+    public void registerReadOnlyAttribute(final String attributeName, final OperationStepHandler readHandler, EnumSet<AttributeAccess.Flag> flags) {
+        AttributeAccess.Storage storage = (flags != null && flags.contains(AttributeAccess.Flag.STORAGE_RUNTIME)) ? Storage.RUNTIME : Storage.CONFIGURATION;
+        if (attributesUpdater.putIfAbsent(this, attributeName, new AttributeAccess(AccessType.READ_ONLY, storage, readHandler, null, null)) != null) {
             throw new IllegalArgumentException("An attribute named '" + attributeName + "' is already registered at location '" + getLocationString() + "'");
         }
     }
 
     @Override
     public void registerMetric(String attributeName, OperationStepHandler metricHandler) {
-        if (attributesUpdater.putIfAbsent(this, attributeName, new AttributeAccess(AccessType.METRIC, AttributeAccess.Storage.RUNTIME, metricHandler, null)) != null) {
+        registerMetric(attributeName, metricHandler, null);
+    }
+
+    @Override
+    public void registerMetric(String attributeName, OperationStepHandler metricHandler, EnumSet<AttributeAccess.Flag> flags) {
+        if (attributesUpdater.putIfAbsent(this, attributeName, new AttributeAccess(AccessType.METRIC, AttributeAccess.Storage.RUNTIME, metricHandler, null, flags)) != null) {
             throw new IllegalArgumentException("An attribute named '" + attributeName + "' is already registered at location '" + getLocationString() + "'");
         }
     }
@@ -236,66 +257,6 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
                 // otherwise, retry the loop because the map changed
             }
         }
-    }
-
-//    void registerProxyController(final ListIterator<PathElement> iterator, final ProxyController controller) {
-//        if (! iterator.hasNext()) {
-//            throw new IllegalArgumentException("Handlers have already been registered at location '" + getLocationString() + "'");
-//        }
-//        final PathElement element = iterator.next();
-//        getOrCreateSubregistry(element.getKey()).registerProxyController(element.getValue(), controller);
-//    }
-
-    @Override
-    DescriptionProvider getOperationDescription(final Iterator<PathElement> iterator, final String operationName, DescriptionProvider inherited) {
-        if (iterator.hasNext()) {
-            DescriptionProvider ourInherited = getInheritableOperationDescription(operationName);
-            DescriptionProvider inheritance = ourInherited == null ? inherited : ourInherited;
-            final PathElement next = iterator.next();
-            final NodeSubregistry subregistry = children.get(next.getKey());
-            if (subregistry == null) {
-                return null;
-            }
-            return subregistry.getOperationDescription(iterator, next.getValue(), operationName, inheritance);
-        } else {
-            final OperationEntry entry = operationsUpdater.get(this, operationName);
-            return entry == null ? inherited : entry.getDescriptionProvider();
-        }
-    }
-
-    @Override
-    DescriptionProvider getInheritableOperationDescription(final String operationName) {
-        final OperationEntry entry = operationsUpdater.get(this, operationName);
-        if (entry != null && entry.isInherited()) {
-            return entry.getDescriptionProvider();
-        }
-        return null;
-    }
-
-    @Override
-    Set<OperationEntry.Flag> getOperationFlags(ListIterator<PathElement> iterator, String operationName, Set<OperationEntry.Flag> inherited) {
-        if (iterator.hasNext()) {
-            Set<OperationEntry.Flag> ourInherited = getInheritableOperationFlags(operationName);
-            Set<OperationEntry.Flag> inheritance = ourInherited == null ? inherited : ourInherited;
-            final PathElement next = iterator.next();
-            final NodeSubregistry subregistry = children.get(next.getKey());
-            if (subregistry == null) {
-                return null;
-            }
-            return subregistry.getOperationFlags(iterator, next.getValue(), operationName, inheritance);
-        } else {
-            final OperationEntry entry = operationsUpdater.get(this, operationName);
-            return entry == null ? inherited : entry.getFlags();
-        }
-    }
-
-    @Override
-    Set<OperationEntry.Flag> getInheritableOperationFlags(String operationName) {
-        final OperationEntry entry = operationsUpdater.get(this, operationName);
-        if (entry != null && entry.isInherited()) {
-            return entry.getFlags();
-        }
-        return null;
     }
 
     @Override
@@ -349,7 +310,7 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
                 // in the valid attribute "foo" not being readable
                 final ModelNode desc = descriptionProvider.getModelDescription(null);
                 if (desc.has(ATTRIBUTES) && desc.get(ATTRIBUTES).keys().contains(attributeName)) {
-                    access = new AttributeAccess(AccessType.READ_ONLY, Storage.CONFIGURATION, null, null);
+                    access = new AttributeAccess(AccessType.READ_ONLY, Storage.CONFIGURATION, null, null, null);
                 }
             }
             return access;

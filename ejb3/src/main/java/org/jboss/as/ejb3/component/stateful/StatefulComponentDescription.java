@@ -61,7 +61,7 @@ public class StatefulComponentDescription extends SessionBeanComponentDescriptio
     private MethodDescription afterBegin;
     private MethodDescription afterCompletion;
     private MethodDescription beforeCompletion;
-    private Set<StatefulRemoveMethod> removeMethods = new HashSet<StatefulRemoveMethod>();
+    private final Set<StatefulRemoveMethod> removeMethods = new HashSet<StatefulRemoveMethod>();
     private StatefulTimeoutInfo statefulTimeout;
 
     public class StatefulRemoveMethod {
@@ -147,7 +147,7 @@ public class StatefulComponentDescription extends SessionBeanComponentDescriptio
                     final ComponentInstanceInterceptorFactory bmtComponentInterceptorFactory = new ComponentInstanceInterceptorFactory() {
                         @Override
                         protected Interceptor create(Component component, InterceptorFactoryContext context) {
-                            if (component instanceof StatefulSessionComponent == false) {
+                            if (!(component instanceof StatefulSessionComponent)) {
                                 throw new IllegalArgumentException("Component " + component + " with component class: " + component.getComponentClass() +
                                         " isn't a stateful component");
                             }

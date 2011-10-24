@@ -65,12 +65,17 @@ public class ApplyRemoteMasterDomainModelHandler implements OperationStepHandler
             for(final ModelNode resourceDescription : domainModel.asList()) {
                 appliedExensions = true;
                 final PathAddress resourceAddress = PathAddress.pathAddress(resourceDescription.require("domain-resource-address"));
-                final Resource resource = context.createResource(resourceAddress);
+                final Resource resource = resourceAddress.size() == 0 ? context.readResourceForUpdate(PathAddress.EMPTY_ADDRESS) : context.createResource(resourceAddress);
                 if(resourceAddress.size() == 1 && resourceAddress.getElement(0).getKey().equals(ModelDescriptionConstants.EXTENSION)) {
                     final String module = resourceAddress.getElement(0).getValue();
                     try {
                         for (final Extension extension : Module.loadServiceFromCallerModuleLoader(ModuleIdentifier.fromString(module), Extension.class)) {
-                            extension.initialize(extensionContext);
+                            ClassLoader oldTccl = SecurityActions.setThreadContextClassLoader(extension.getClass());
+                            try {
+                                extension.initialize(extensionContext);
+                            } finally {
+                                SecurityActions.setThreadContextClassLoader(oldTccl);
+                            }
                         }
                     } catch (ModuleLoadException e) {
                         throw new RuntimeException(e);

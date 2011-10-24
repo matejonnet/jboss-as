@@ -22,9 +22,10 @@
 
 package org.jboss.as.controller;
 
+import java.util.ResourceBundle;
+
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamWriter;
-import java.util.ResourceBundle;
 
 import org.jboss.as.controller.client.helpers.MeasurementUnit;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
@@ -47,11 +48,12 @@ public abstract class AttributeDefinition {
     private final boolean allowExpression;
     private final ModelNode defaultValue;
     private final MeasurementUnit measurementUnit;
+    private final String[] alternatives;
     private final ParameterValidator validator;
 
     protected AttributeDefinition(String name, String xmlName, final ModelNode defaultValue, final ModelType type,
                                final boolean allowNull, final boolean allowExpression, final MeasurementUnit measurementUnit,
-                               final ParameterValidator validator) {
+                               final ParameterValidator validator, final String[] alternatives) {
         this.name = name;
         this.xmlName = xmlName;
         this.type = type;
@@ -63,6 +65,7 @@ public abstract class AttributeDefinition {
         }
         this.defaultValue.protect();
         this.measurementUnit = measurementUnit;
+        this.alternatives = alternatives;
         this.validator = validator;
     }
 
@@ -98,23 +101,35 @@ public abstract class AttributeDefinition {
         return validator;
     }
 
+    public String[] getAlternatives() {
+        return alternatives;
+    }
+
+    /**
+     * Gets whether the given {@code resourceModel} has a value for this attribute that should be marshalled to XML.
+     * <p>
+     * This is the same as {@code isMarshallable(resourceModel, true)}.
+     * </p>
+     *
+     * @param resourceModel the model, a non-null node of {@link ModelType#OBJECT}.
+     *
+     * @return {@code true} if the given {@code resourceModel} has a defined value under this attribute's {@link #getName()} () name}.
+     */
+    public boolean isMarshallable(final ModelNode resourceModel) {
+        return isMarshallable(resourceModel, true);
+    }
+
     /**
      * Gets whether the given {@code resourceModel} has a value for this attribute that should be marshalled to XML.
      *
      * @param resourceModel the model, a non-null node of {@link ModelType#OBJECT}.
      * @param marshallDefault {@code true} if the value should be marshalled even if it matches the default value
      *
-     * @return {@true} if the given {@code resourceModel} has a defined value under this attribute's {@link #getName()} () name}
+     * @return {@code true} if the given {@code resourceModel} has a defined value under this attribute's {@link #getName()} () name}
      * and {@code marshallDefault} is {@code true} or that value differs from this attribute's {@link #getDefaultValue() default value}.
      */
     public boolean isMarshallable(final ModelNode resourceModel, final boolean marshallDefault) {
-         if (resourceModel.hasDefined(name)) {
-            ModelNode node = resourceModel.get(name);
-            if (marshallDefault || !node.equals(defaultValue)) {
-                return true;
-            }
-        }
-        return false;
+        return resourceModel.hasDefined(name) && (marshallDefault || !resourceModel.get(name).equals(defaultValue));
     }
 
     /**
@@ -126,58 +141,86 @@ public abstract class AttributeDefinition {
      * @return the value
      * @throws OperationFailedException if the value is not valid
      */
-    public ModelNode validateOperation(final ModelNode operationObject) throws OperationFailedException {
+    public final ModelNode validateOperation(final ModelNode operationObject) throws OperationFailedException {
 
         ModelNode node = new ModelNode();
         if (operationObject.has(name)) {
-            node.set(operationObject.get(name)) ;
+            node.set(operationObject.get(name));
         }
         if (!node.isDefined() && defaultValue.isDefined()) {
-            node.set(defaultValue);
+            validator.validateParameter(name, defaultValue);
+        } else {
+            validator.validateParameter(name, node);
         }
-        validator.validateParameter(name, node);
 
         return node;
     }
 
     /**
      * Finds a value in the given {@code operationObject} whose key matches this attribute's {@link #getName() name},
-     * validates it using this attribute's {@link #getValidator() validator}, and, if
-     * {@link org.jboss.dmr.ModelNode#isDefined() defined} stores under this attribute's name in the given {@code model}.
+     * validates it using this attribute's {@link #getValidator() validator}, and, stores it under this attribute's name in the given {@code model}.
      *
      * @param operationObject model node of type {@link ModelType#OBJECT}, typically representing an operation request
-     * @parm model model node in which the value should be stored
+     * @param model model node in which the value should be stored
      *
      * @throws OperationFailedException if the value is not valid
      */
-    public void validateAndSet(final ModelNode operationObject, final ModelNode model) throws OperationFailedException {
+    public final void validateAndSet(final ModelNode operationObject, final ModelNode model) throws OperationFailedException {
 
         ModelNode node = validateOperation(operationObject);
-        if (node.isDefined()) {
-            model.get(name).set(node);
-        }
+        model.get(name).set(node);
     }
 
     /**
      * Finds a value in the given {@code operationObject} whose key matches this attribute's {@link #getName() name},
-     * resolves it and validates it using this attribute's {@link #getValidator() validator}.
+     * resolves it and validates it using this attribute's {@link #getValidator() validator}. If the value is
+     * undefined and a {@link #getDefaultValue() default value} is available, the default value is used.
      *
      * @param operationObject model node of type {@link ModelType#OBJECT}, typically representing an operation request
      *
-     * @return the resolved value
+     * @return the resolved value, possibly the default value if the operation does not have a defined value matching
+     *              this attribute's name
      * @throws OperationFailedException if the value is not valid
      */
-    public ModelNode validateResolvedOperation(final ModelNode operationObject) throws OperationFailedException {
+    public final ModelNode validateResolvedOperation(final ModelNode operationObject) throws OperationFailedException {
         ModelNode node = new ModelNode();
         if (operationObject.has(name)) {
-            node.set(operationObject.get(name)) ;
+            node.set(operationObject.get(name));
         }
         if (!node.isDefined() && defaultValue.isDefined()) {
             node.set(defaultValue);
         }
-        validator.validateParameter(name, node);
+        final ModelNode resolved = node.resolve();
+        validator.validateParameter(name, resolved);
 
-        return node.resolve();
+        return resolved;
+    }
+
+    public boolean isAllowed(final ModelNode operationObject) {
+        if(alternatives != null) {
+            for(final String alternative : alternatives) {
+                if(operationObject.has(alternative)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    public boolean isRequired(final ModelNode operationObject) {
+        final boolean required = ! allowNull;
+        return required ? ! hasAlternative(operationObject) : required;
+    }
+
+    public boolean hasAlternative(final ModelNode operationObject) {
+        if(alternatives != null) {
+            for(final String alternative : alternatives) {
+                if(operationObject.has(alternative)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -186,7 +229,7 @@ public abstract class AttributeDefinition {
      *
      * @param resourceModel the model, a non-null node of {@link org.jboss.dmr.ModelType#OBJECT}.
      * @param writer stream writer to use for writing the attribute
-     * @throws javax.xml.stream.XMLStreamException
+     * @throws javax.xml.stream.XMLStreamException if thrown by {@code writer}
      */
     public abstract void marshallAsElement(final ModelNode resourceModel, final XMLStreamWriter writer) throws XMLStreamException;
 
@@ -202,10 +245,9 @@ public abstract class AttributeDefinition {
      */
     public ModelNode addResourceAttributeDescription(final ResourceBundle bundle, final String prefix, final ModelNode resourceDescription) {
         final ModelNode attr = new ModelNode();
-        attr.get(ModelDescriptionConstants.TYPE).set(attr.getType());
+        attr.get(ModelDescriptionConstants.TYPE).set(type);
         attr.get(ModelDescriptionConstants.DESCRIPTION).set(getAttributeTextDescription(bundle, prefix));
-        // TODO enable when this metadata is finalized
-//        attr.get(ModelDescriptionConstants.EXPRESSIONS_ALLOWED).set(isAllowExpression());
+        attr.get(ModelDescriptionConstants.EXPRESSIONS_ALLOWED).set(isAllowExpression());
         attr.get(ModelDescriptionConstants.NILLABLE).set(isAllowNull());
         if (defaultValue != null && defaultValue.isDefined()) {
             attr.get(ModelDescriptionConstants.DEFAULT).set(defaultValue);
@@ -213,8 +255,13 @@ public abstract class AttributeDefinition {
         if (measurementUnit != MeasurementUnit.NONE) {
             attr.get(ModelDescriptionConstants.UNIT).set(measurementUnit.getName());
         }
-        resourceDescription.get(ModelDescriptionConstants.ATTRIBUTES, getName()).set(attr);
-        return attr;
+        if (alternatives != null) {
+            for(final String alternative : alternatives) {
+                attr.get(ModelDescriptionConstants.ALTERNATIVES).add(alternative);
+            }
+        }
+        final ModelNode result = resourceDescription.get(ModelDescriptionConstants.ATTRIBUTES, getName()).set(attr);
+        return result;
     }
 
     /**
@@ -231,22 +278,23 @@ public abstract class AttributeDefinition {
         final ModelNode param = new ModelNode();
         param.get(ModelDescriptionConstants.TYPE).set(type);
         param.get(ModelDescriptionConstants.DESCRIPTION).set(getAttributeTextDescription(bundle, prefix));
-        // TODO enable when this metadata is finalized
-//        param.get(ModelDescriptionConstants.EXPRESSIONS_ALLOWED).set(isAllowExpression());
+        param.get(ModelDescriptionConstants.EXPRESSIONS_ALLOWED).set(isAllowExpression());
         param.get(ModelDescriptionConstants.REQUIRED).set(!isAllowNull());
         param.get(ModelDescriptionConstants.NILLABLE).set(isAllowNull());
         if (measurementUnit != MeasurementUnit.NONE) {
             param.get(ModelDescriptionConstants.UNIT).set(measurementUnit.getName());
         }
-        operationDescription.get(ModelDescriptionConstants.REQUEST_PROPERTIES, getName()).set(param);
-        return param;
+        if (alternatives != null) {
+            for(final String alternative : alternatives) {
+                param.get(ModelDescriptionConstants.ALTERNATIVES).add(alternative);
+            }
+        }
+        final ModelNode result = operationDescription.get(ModelDescriptionConstants.REQUEST_PROPERTIES, getName()).set(param);
+        return result;
     }
 
     public String getAttributeTextDescription(final ResourceBundle bundle, final String prefix) {
         final String bundleKey = prefix == null ? name : (prefix + "." + name);
         return bundle.getString(bundleKey);
     }
-
-
-
 }

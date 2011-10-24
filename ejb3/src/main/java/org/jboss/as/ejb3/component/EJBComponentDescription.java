@@ -36,6 +36,7 @@ import org.jboss.as.ejb3.deployment.EjbDeploymentAttachmentKeys;
 import org.jboss.as.ejb3.deployment.EjbJarConfiguration;
 import org.jboss.as.ejb3.deployment.EjbJarDescription;
 import org.jboss.as.ejb3.security.EJBSecurityViewConfigurator;
+import org.jboss.as.ejb3.timerservice.AutoTimer;
 import org.jboss.as.ejb3.timerservice.NonFunctionalTimerService;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
@@ -43,6 +44,7 @@ import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.invocation.ImmediateInterceptorFactory;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
+import org.jboss.metadata.ejb.spec.EnterpriseBeanMetaData;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceName;
 
@@ -56,6 +58,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -74,6 +77,11 @@ public abstract class EJBComponentDescription extends ComponentDescription {
     private TransactionManagementType transactionManagementType = TransactionManagementType.CONTAINER;
 
     private final Map<MethodIntf, TransactionAttributeType> txPerViewStyle1 = new HashMap<MethodIntf, TransactionAttributeType>();
+
+    /**
+     * The deployment descriptor information for this bean, if any
+     */
+    private EnterpriseBeanMetaData descriptorData;
 
     /**
      * The security-domain, if any, for this bean
@@ -141,6 +149,17 @@ public abstract class EJBComponentDescription extends ComponentDescription {
     private final List<String> aroundInvokeDDMethods = new ArrayList<String>(0);
     private final List<String> preDestroyDDMethods = new ArrayList<String>(0);
     private final List<String> postConstructDDMethods = new ArrayList<String>(0);
+
+
+    /**
+     * @Schedule methods
+     */
+    private final Map<Method, List<AutoTimer>> scheduleMethods = new IdentityHashMap<Method, List<AutoTimer>>();
+
+    /**
+     * The actual timeout method
+     */
+    private Method timeoutMethod;
 
     /**
      * TODO: this should not be part of the description
@@ -333,7 +352,7 @@ public abstract class EJBComponentDescription extends ComponentDescription {
             public void configure(DeploymentPhaseContext context, ComponentConfiguration componentConfiguration, ViewDescription description, ViewConfiguration configuration) throws DeploymentUnitProcessingException {
                 final Method TO_STRING_METHOD;
                 try {
-                    TO_STRING_METHOD = Object.class.getMethod("toString", new Class<?>[0]);
+                    TO_STRING_METHOD = Object.class.getMethod("toString");
                 } catch (NoSuchMethodException nsme) {
                     throw new DeploymentUnitProcessingException(nsme);
                 }
@@ -747,6 +766,35 @@ public abstract class EJBComponentDescription extends ComponentDescription {
 
     public void setTimerService(final TimerService timerService) {
         this.timerService = timerService;
+    }
+
+    public EnterpriseBeanMetaData getDescriptorData() {
+        return descriptorData;
+    }
+
+    public void setDescriptorData(final EnterpriseBeanMetaData descriptorData) {
+        this.descriptorData = descriptorData;
+    }
+
+
+    public Method getTimeoutMethod() {
+        return timeoutMethod;
+    }
+
+    public void setTimeoutMethod(final Method timeoutMethod) {
+        this.timeoutMethod = timeoutMethod;
+    }
+
+    public Map<Method, List<AutoTimer>> getScheduleMethods() {
+        return Collections.unmodifiableMap(scheduleMethods);
+    }
+
+    public void addScheduleMethod(final Method method, final AutoTimer timer) {
+        List<AutoTimer> schedules = scheduleMethods.get(method);
+        if(schedules == null) {
+            scheduleMethods.put(method, schedules = new ArrayList<AutoTimer>(1));
+        }
+        schedules.add(timer);
     }
 
     @Override

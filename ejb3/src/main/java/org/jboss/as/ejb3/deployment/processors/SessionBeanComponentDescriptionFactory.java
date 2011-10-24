@@ -22,7 +22,10 @@
 
 package org.jboss.as.ejb3.deployment.processors;
 
+import org.jboss.as.ee.component.Attachments;
+import org.jboss.as.ee.component.ComponentDescription;
 import org.jboss.as.ee.component.EEModuleDescription;
+import org.jboss.as.ee.metadata.MetadataCompleteMarker;
 import org.jboss.as.ejb3.component.session.SessionBeanComponentDescription;
 import org.jboss.as.ejb3.component.singleton.SingletonComponentDescription;
 import org.jboss.as.ejb3.component.stateful.StatefulComponentDescription;
@@ -66,6 +69,10 @@ public class SessionBeanComponentDescriptionFactory extends EJBComponentDescript
     @Override
     protected void processAnnotations(final DeploymentUnit deploymentUnit, final CompositeIndex compositeIndex) throws DeploymentUnitProcessingException {
 
+        if(MetadataCompleteMarker.isMetadataComplete(deploymentUnit)) {
+            return;
+        }
+
         // Find and process any @Stateless bean annotations
         final List<AnnotationInstance> slsbAnnotations = compositeIndex.getAnnotations(STATELESS_ANNOTATION);
         if (!slsbAnnotations.isEmpty()) {
@@ -93,7 +100,6 @@ public class SessionBeanComponentDescriptionFactory extends EJBComponentDescript
     }
 
     private void processSessionBeans(final DeploymentUnit deploymentUnit, final List<AnnotationInstance> sessionBeanAnnotations, final SessionBeanComponentDescription.SessionBeanType annotatedSessionBeanType) {
-        final EEModuleDescription moduleDescription = deploymentUnit.getAttachment(org.jboss.as.ee.component.Attachments.EE_MODULE_DESCRIPTION);
 
         final EjbJarDescription ejbJarDescription = getEjbJarDescription(deploymentUnit);
         final ServiceName deploymentUnitServiceName = deploymentUnit.getServiceName();
@@ -191,11 +197,19 @@ public class SessionBeanComponentDescriptionFactory extends EJBComponentDescript
 
     private void processSessionBeanMetaData(final DeploymentUnit deploymentUnit, final SessionBeanMetaData sessionBean) throws DeploymentUnitProcessingException {
         final EjbJarDescription ejbJarDescription = getEjbJarDescription(deploymentUnit);
+        final EEModuleDescription eeModuleDescription = deploymentUnit.getAttachment(Attachments.EE_MODULE_DESCRIPTION);
 
         final String beanName = sessionBean.getName();
         // the important bit is to skip already processed EJBs via annotations
-        if (ejbJarDescription.hasComponent(beanName))
+        if (ejbJarDescription.hasComponent(beanName)) {
+            final ComponentDescription description = eeModuleDescription.getComponentByName(beanName);
+            if(description instanceof SessionBeanComponentDescription) {
+                ((SessionBeanComponentDescription)description).setDescriptorData(sessionBean);
+            } else {
+                throw new DeploymentUnitProcessingException("Session bean with name " + beanName + " referenced in ejb-jar.xml could not be created, as existing non session bean component with same name already exists: " + description);
+            }
             return;
+        }
 
         final SessionType sessionType = sessionBean.getSessionType();
         if (sessionType == null) {
@@ -217,6 +231,7 @@ public class SessionBeanComponentDescriptionFactory extends EJBComponentDescript
                 throw new IllegalArgumentException("Unknown session bean type: " + sessionType);
         }
         ejbJarDescription.getEEModuleDescription().addComponent(sessionBeanDescription);
+        sessionBeanDescription.setDescriptorData(sessionBean);
     }
 
 }

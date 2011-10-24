@@ -42,7 +42,7 @@ public abstract class CommandHandlerWithHelp extends CommandHandlerWithArguments
 
     private final String filename;
     private final boolean connectionRequired;
-    protected final ArgumentWithoutValue helpArg = new ArgumentWithoutValue(this, "--help", "-h");
+    protected ArgumentWithoutValue helpArg = new ArgumentWithoutValue(this, "--help", "-h");
 
     public CommandHandlerWithHelp(String command) {
         this(command, false);
@@ -71,7 +71,7 @@ public abstract class CommandHandlerWithHelp extends CommandHandlerWithArguments
     @Override
     public void handle(CommandContext ctx) throws CommandFormatException {
 
-        if(helpArg.isPresent(ctx.getParsedArguments())) {
+        if(helpArg.isPresent(ctx.getParsedCommandLine())) {
             printHelp(ctx);
             return;
         }

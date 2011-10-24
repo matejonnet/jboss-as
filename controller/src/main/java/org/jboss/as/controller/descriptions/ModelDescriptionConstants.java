@@ -37,6 +37,7 @@ public class ModelDescriptionConstants {
     public static final String ADD = "add";
     public static final String ADDRESS = "address";
     public static final String ALLOWED = "allowed";
+    public static final String ALTERNATIVES = "alternatives";
     public static final String ANY = "any";
     public static final String ANY_ADDRESS = "any-address";
     public static final String ANY_IPV4_ADDRESS = "any-ipv4-address";
@@ -97,6 +98,7 @@ public class ModelDescriptionConstants {
     public static final String INCLUDE = "include";
     public static final String INCLUDES = "includes";
     public static final String INCLUDE_RUNTIME = "include-runtime";
+    public static final String INCLUDE_DEFAULTS = "include-defaults";
     public static final String INET_ADDRESS = "inet-address";
     public static final String INHERITED = "inherited";
     public static final String INITIAL_CONTEXT_FACTORY = "initial-context-factory";
@@ -118,6 +120,7 @@ public class ModelDescriptionConstants {
     public static final String MAX_LENGTH = "max-length";
     public static final String MAX_OCCURS = "max-occurs";
     public static final String MAX_THREADS = "max-threads";
+    public static final String MAX_VALUE = "max-value";
     public static final String MIN = "min";
     public static final String MIN_LENGTH = "min-length";
     public static final String MIN_OCCURS = "min-occurs";
@@ -146,6 +149,7 @@ public class ModelDescriptionConstants {
     public static final String PASSWORD = "password";
     public static final String PATH = "path";
     public static final String PERSISTENT = "persistent";
+    public static final String PLATFORM_MBEAN = "platform-mbean";
     public static final String PORT = "port";
     public static final String PORT_OFFSET = "port-offset";
     public static final String PRIORITY = "priority";
@@ -161,6 +165,7 @@ public class ModelDescriptionConstants {
     public static final String READ_CHILDREN_TYPES_OPERATION = "read-children-types";
     public static final String READ_CHILDREN_RESOURCES_OPERATION = "read-children-resources";
     public static final String READ_CONFIG_AS_XML_OPERATION = "read-config-as-xml";
+    public static final String READ_ONLY = "read-only";
     public static final String READ_OPERATION_DESCRIPTION_OPERATION = "read-operation-description";
     public static final String READ_OPERATION_NAMES_OPERATION = "read-operation-names";
     public static final String READ_RESOURCE_DESCRIPTION_OPERATION = "read-resource-description";
@@ -177,6 +182,7 @@ public class ModelDescriptionConstants {
     public static final String REQUIRED = "required";
     public static final String RESPONSE = "response";
     public static final String RESPONSE_HEADERS = "response-headers";
+    public static final String RESTART_REQUIRED = "restart-required";
     public static final String RESULT = "result";
     public static final String ROLLBACK_ACROSS_GROUPS = "rollback-across-groups";
     public static final String ROLLBACK_FAILURE_DESCRIPTION = "rollback-failure-description";

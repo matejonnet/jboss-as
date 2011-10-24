@@ -25,18 +25,18 @@ import org.jboss.as.ee.component.Component;
 import org.jboss.as.ee.component.ComponentInstance;
 import org.jboss.as.ee.component.ComponentViewInstance;
 import org.jboss.as.ejb3.component.CancellationFlag;
-import org.jboss.ejb3.context.CurrentInvocationContext;
-import org.jboss.ejb3.context.base.BaseSessionInvocationContext;
-import org.jboss.ejb3.context.spi.InvocationContext;
-import org.jboss.ejb3.context.spi.SessionContext;
-import org.jboss.ejb3.context.spi.SessionInvocationContext;
-import org.jboss.ejb3.tx2.spi.TransactionalInvocationContext;
+import org.jboss.as.ejb3.context.CurrentInvocationContext;
+import org.jboss.as.ejb3.context.base.BaseSessionInvocationContext;
+import org.jboss.as.ejb3.context.spi.InvocationContext;
+import org.jboss.as.ejb3.context.spi.SessionContext;
+import org.jboss.as.ejb3.context.spi.SessionInvocationContext;
+import org.jboss.as.ejb3.tx.ApplicationExceptionDetails;
+import org.jboss.as.ejb3.tx.TransactionalInvocationContext;
 import org.jboss.invocation.ImmediateInterceptorFactory;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
 import org.jboss.invocation.InterceptorFactory;
 
-import javax.ejb.ApplicationException;
 import javax.ejb.TransactionAttributeType;
 import java.lang.reflect.Method;
 import java.security.Principal;
@@ -76,7 +76,7 @@ public class SessionInvocationContextInterceptor implements Interceptor {
     }
 
     protected static class CustomSessionInvocationContext extends BaseSessionInvocationContext implements TransactionalInvocationContext {
-        private InterceptorContext context;
+        private final InterceptorContext context;
 
         protected CustomSessionInvocationContext(boolean lifecycleCallback, InterceptorContext context, Class<?> invokedBusinessInterface, Method method, Object[] parameters) {
             super(lifecycleCallback, invokedBusinessInterface, method, parameters);
@@ -85,7 +85,7 @@ public class SessionInvocationContextInterceptor implements Interceptor {
         }
 
         @Override
-        public ApplicationException getApplicationException(Class<?> e) {
+        public ApplicationExceptionDetails getApplicationException(Class<?> e) {
             return getComponent().getApplicationException(e, getMethod());
         }
 

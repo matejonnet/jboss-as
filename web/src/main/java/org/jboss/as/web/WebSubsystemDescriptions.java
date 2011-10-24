@@ -22,13 +22,27 @@
 
 package org.jboss.as.web;
 
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ATTRIBUTES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CHILDREN;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEFAULT;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIPTION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HEAD_COMMENT_ALLOWED;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MAX_OCCURS;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAMESPACE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NILLABLE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATION_NAME;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUEST_PROPERTIES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUIRED;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TAIL_COMMENT_ALLOWED;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
+
 import java.util.Locale;
 import java.util.ResourceBundle;
 
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
-
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.*;
 
 /**
  * The web subsystem description providers.
@@ -355,6 +369,20 @@ class WebSubsystemDescriptions {
         node.get(type, Constants.VIRTUAL_SERVER, DESCRIPTION).set(bundle.getString("web.connector.virtual-server"));
         node.get(type, Constants.VIRTUAL_SERVER, REQUIRED).set(false);
 
+        /* add the stats descriptions */
+        node.get(type, Constants.BYTES_SENT, TYPE).set(ModelType.INT);
+        node.get(type, Constants.BYTES_SENT, DESCRIPTION).set(bundle.getString("web.connector.stats.bytes-sent"));
+        node.get(type, Constants.BYTES_RECEIVED, TYPE).set(ModelType.INT);
+        node.get(type, Constants.BYTES_RECEIVED, DESCRIPTION).set(bundle.getString("web.connector.stats.bytes-received"));
+        node.get(type, Constants.PROCESSING_TIME, TYPE).set(ModelType.INT);
+        node.get(type, Constants.PROCESSING_TIME, DESCRIPTION).set(bundle.getString("web.connector.stats.processing-time"));
+        node.get(type, Constants.ERROR_COUNT, TYPE).set(ModelType.INT);
+        node.get(type, Constants.ERROR_COUNT, DESCRIPTION).set(bundle.getString("web.connector.stats.error-count"));
+        node.get(type, Constants.MAX_TIME, TYPE).set(ModelType.INT);
+        node.get(type, Constants.MAX_TIME, DESCRIPTION).set(bundle.getString("web.connector.stats.max-time"));
+        node.get(type, Constants.REQUEST_COUNT, TYPE).set(ModelType.INT);
+        node.get(type, Constants.REQUEST_COUNT, DESCRIPTION).set(bundle.getString("web.connector.request-count"));
+
         getSSLCommonDescription(node.get(type, Constants.SSL), type, bundle);
 
         if (ATTRIBUTES.equals(type)) {
@@ -482,6 +510,28 @@ class WebSubsystemDescriptions {
 
         getAccessLogCommonDescription(node.get(type, Constants.ACCESS_LOG), type, bundle);
         getRewriteCommonDescription(node.get(type, Constants.REWRITE), type, bundle);
+        getSsoCommonDescription(node.get(type, Constants.SSO), type, bundle);
+
+        return node;
+    }
+
+    static ModelNode getSsoCommonDescription(final ModelNode node, final String type, final ResourceBundle bundle) {
+        node.get(TYPE).set(ModelType.OBJECT);
+        node.get(DESCRIPTION).set(bundle.getString("web.virtual-server.sso"));
+        node.get(REQUIRED).set(false);
+
+        node.get(type, Constants.CACHE_CONTAINER, TYPE).set(ModelType.STRING);
+        node.get(type, Constants.CACHE_CONTAINER, DESCRIPTION).set(bundle.getString("web.virtual-server.sso.cache-container"));
+        node.get(type, Constants.CACHE_CONTAINER, REQUIRED).set(false);
+
+        node.get(type, Constants.DOMAIN, TYPE).set(ModelType.STRING);
+        node.get(type, Constants.DOMAIN, DESCRIPTION).set(bundle.getString("web.virtual-server.sso.domain"));
+        node.get(type, Constants.DOMAIN, REQUIRED).set(false);
+
+        node.get(type, Constants.REAUTHENTICATE, TYPE).set(ModelType.BOOLEAN);
+        node.get(type, Constants.REAUTHENTICATE, DESCRIPTION).set(bundle.getString("web.virtual-server.sso.reauthenticate"));
+        node.get(type, Constants.REAUTHENTICATE, REQUIRED).set(false);
+        node.get(type, Constants.REAUTHENTICATE, DEFAULT).set(false);
 
         return node;
     }

@@ -25,7 +25,9 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ACC
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ATTRIBUTES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CHILDREN;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CHILD_TYPE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEFAULT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.FAILURE_DESCRIPTION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INCLUDE_DEFAULTS;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INCLUDE_RUNTIME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INHERITED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.LOCALE;
@@ -36,8 +38,10 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPE
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PROXIES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_ATTRIBUTE_OPERATION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_ONLY;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_RESOURCE_OPERATION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RECURSIVE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESTART_REQUIRED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESULT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.STORAGE;
 
@@ -53,8 +57,8 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 import org.jboss.as.controller.OperationContext;
-import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
@@ -116,6 +120,7 @@ public class GlobalOperationHandlers {
             validator.registerValidator(RECURSIVE, new ModelTypeValidator(ModelType.BOOLEAN, true));
             validator.registerValidator(INCLUDE_RUNTIME, new ModelTypeValidator(ModelType.BOOLEAN, true));
             validator.registerValidator(PROXIES, new ModelTypeValidator(ModelType.BOOLEAN, true));
+            validator.registerValidator(INCLUDE_DEFAULTS, new ModelTypeValidator(ModelType.BOOLEAN, true));
         }
 
         @Override
@@ -129,6 +134,7 @@ public class GlobalOperationHandlers {
             final boolean recursive = operation.get(RECURSIVE).asBoolean(false);
             final boolean queryRuntime = !recursive && operation.get(INCLUDE_RUNTIME).asBoolean(false);
             final boolean proxies = operation.get(PROXIES).asBoolean(false);
+            final boolean defaults = operation.get(INCLUDE_DEFAULTS).asBoolean(true);
 
             // Attributes read directly from the model with no special read handler step in the middle
             final Map<String, ModelNode> directAttributes = new HashMap<String, ModelNode>();
@@ -152,14 +158,32 @@ public class GlobalOperationHandlers {
             // Get the model for this resource.
             final ModelNode model = resource.getModel();
 
-            final Map<String, Set<String>> childrenByType = registry != null ? getChildAddresses(registry, resource, null): Collections.<String, Set<String>>emptyMap();
 
-            if(model.isDefined()) {
+            final Map<String, Set<String>> childrenByType = registry != null ? getChildAddresses(registry, resource, null) : Collections.<String, Set<String>>emptyMap();
+
+            if (model.isDefined()) {
                 // Store direct attributes first
                 for (String key : model.keys()) {
                     // In case someone put some garbage in it
-                    if(! childrenByType.containsKey(key)) {
+                    if (!childrenByType.containsKey(key)) {
                         directAttributes.put(key, model.get(key));
+                    }
+                }
+                if (defaults) {
+                    //get the model description
+                    final DescriptionProvider descriptionProvider = registry.getModelDescription(PathAddress.EMPTY_ADDRESS);
+                    final Locale locale = getLocale(operation);
+                    final ModelNode nodeDescription = descriptionProvider.getModelDescription(locale);
+
+                    if (nodeDescription.isDefined() && nodeDescription.hasDefined(ATTRIBUTES)) {
+                        for (String key : nodeDescription.get(ATTRIBUTES).keys()) {
+                            if ((!childrenByType.containsKey(key)) &&
+                                    (!directAttributes.containsKey(key) || !directAttributes.get(key).isDefined()) &&
+                                    nodeDescription.get(ATTRIBUTES).hasDefined(key) &&
+                                    nodeDescription.get(ATTRIBUTES, key).hasDefined(DEFAULT)) {
+                                directAttributes.put(key, nodeDescription.get(ATTRIBUTES, key, DEFAULT));
+                            }
+                        }
                     }
                 }
             }
@@ -178,7 +202,7 @@ public class GlobalOperationHandlers {
                             PathElement childPE = PathElement.pathElement(childType, child);
                             PathAddress relativeAddr = PathAddress.pathAddress(childPE);
                             ImmutableManagementResourceRegistration childReg = registry.getSubModel(relativeAddr);
-                            if(childReg == null) {
+                            if (childReg == null) {
                                 throw new OperationFailedException(new ModelNode().set(String.format("no child registry for (%s, %s)", childType, child)));
                             }
                             // We only invoke runtime resources if they are remote proxies
@@ -215,13 +239,13 @@ public class GlobalOperationHandlers {
 
             // Last, handle attributes with read handlers registered
             final Set<String> attributeNames = registry != null ? registry.getAttributeNames(PathAddress.EMPTY_ADDRESS) : Collections.<String>emptySet();
-            for(final String attributeName : attributeNames) {
+            for (final String attributeName : attributeNames) {
                 final AttributeAccess access = registry.getAttributeAccess(PathAddress.EMPTY_ADDRESS, attributeName);
-                if(access == null) {
+                if (access == null) {
                     continue;
                 } else {
                     final AttributeAccess.Storage storage = access.getStorageType();
-                    if(!queryRuntime && storage != AttributeAccess.Storage.CONFIGURATION) {
+                    if (!queryRuntime && storage != AttributeAccess.Storage.CONFIGURATION) {
                         continue;
                     }
                     final AccessType type = access.getAccessType();
@@ -247,7 +271,9 @@ public class GlobalOperationHandlers {
             }
             context.completeStep();
         }
-    };
+    }
+
+    ;
 
     /**
      * Assembles the response to a read-resource request from the components gathered by earlier steps.
@@ -265,15 +291,15 @@ public class GlobalOperationHandlers {
          * of the given maps.
          *
          * @param directAttributes
-         * @param metrics map of attributes of AccessType.METRIC. Keys are the attribute names, values are the full
-         *                read-attribute response from invoking the attribute's read handler. Will not be {@code null}
-         * @param otherAttributes map of attributes not of AccessType.METRIC that have a read handler registered. Keys
-*                        are the attribute names, values are the full read-attribute response from invoking the
-*                        attribute's read handler. Will not be {@code null}
+         * @param metrics          map of attributes of AccessType.METRIC. Keys are the attribute names, values are the full
+         *                         read-attribute response from invoking the attribute's read handler. Will not be {@code null}
+         * @param otherAttributes  map of attributes not of AccessType.METRIC that have a read handler registered. Keys
+         *                         are the attribute names, values are the full read-attribute response from invoking the
+         *                         attribute's read handler. Will not be {@code null}
          * @param directChildren
-         * @param childResources read-resource response from child resources, where the key is the PathAddress
-*                       relative to the address of the operation this handler is handling and the
-*                       value is the full read-resource response. Will not be {@code null}
+         * @param childResources   read-resource response from child resources, where the key is the PathAddress
+         *                         relative to the address of the operation this handler is handling and the
+         *                         value is the full read-resource response. Will not be {@code null}
          */
         private ReadResourceAssemblyHandler(final Map<String, ModelNode> directAttributes, final Map<String, ModelNode> metrics,
                                             final Map<String, ModelNode> otherAttributes, Map<String, ModelNode> directChildren, final Map<PathElement, ModelNode> childResources) {
@@ -353,38 +379,101 @@ public class GlobalOperationHandlers {
      */
     public static class ReadAttributeHandler extends AbstractMultiTargetHandler implements OperationStepHandler {
 
+        private ParametersValidator validator = new ParametersValidator();
+
+        public ReadAttributeHandler() {
+            validator.registerValidator(NAME, new StringLengthValidator(1));
+            validator.registerValidator(INCLUDE_DEFAULTS, new ModelTypeValidator(ModelType.BOOLEAN, true));
+        }
+
         @Override
         public void doExecute(OperationContext context, ModelNode operation) throws OperationFailedException {
-
+            validator.validate(operation);
             final String attributeName = operation.require(NAME).asString();
+            final boolean defaults = operation.get(INCLUDE_DEFAULTS).asBoolean(true);
+
             final ModelNode subModel = safeReadModel(context);
-            final AttributeAccess attributeAccess = context.getResourceRegistration().getAttributeAccess(PathAddress.EMPTY_ADDRESS, attributeName);
+            final ImmutableManagementResourceRegistration registry = context.getResourceRegistration();
+            final AttributeAccess attributeAccess = registry.getAttributeAccess(PathAddress.EMPTY_ADDRESS, attributeName);
+
+
             if (attributeAccess == null) {
                 final Set<String> children = context.getResourceRegistration().getChildNames(PathAddress.EMPTY_ADDRESS);
-                if(children.contains(attributeName)) {
+                if (children.contains(attributeName)) {
                     throw new OperationFailedException(new ModelNode().set(String.format("'%s' is a registered child of resource (%s)", attributeName, operation.get(OP_ADDR)))); // TODO i18n
-                } else if(subModel.has(attributeName)) {
+                } else if (subModel.hasDefined(attributeName)) {
                     final ModelNode result = subModel.get(attributeName);
                     context.getResult().set(result);
-                    context.completeStep();
                 } else {
-                    throw new OperationFailedException(new ModelNode().set(String.format("No known attribute %s", attributeName))); // TODO i18n
+                    // No defined value in the model. See if we should reply with a default from the metadata,
+                    // reply with undefined, or fail because it's a non-existent attribute name
+                    final ModelNode nodeDescription = getNodeDescription(registry, operation);
+                    if (defaults && nodeDescription.get(ATTRIBUTES).hasDefined(attributeName) &&
+                            nodeDescription.get(ATTRIBUTES, attributeName).hasDefined(DEFAULT)) {
+                        final ModelNode result = nodeDescription.get(ATTRIBUTES, attributeName, DEFAULT);
+                        context.getResult().set(result);
+                    } else if (subModel.has(attributeName) || nodeDescription.get(ATTRIBUTES).has(attributeName)) {
+                        // model had no defined value, but we treat its existence in the model or the metadata
+                        // as proof that it's a legit attribute name
+                        context.getResult(); // this initializes the "result" to ModelType.UNDEFINED
+                    } else {
+                        throw new OperationFailedException(new ModelNode().set(String.format("No known attribute %s", attributeName))); // TODO i18n
+                    }
                 }
+                // Complete the step for the unregistered attribute case
+                context.completeStep();
             } else if (attributeAccess.getReadHandler() == null) {
-                final ModelNode result = subModel.get(attributeName);
-                context.getResult().set(result);
+                // We know the attribute name is legit as it's in the registry, so this case is simpler
+                if (subModel.hasDefined(attributeName) || !defaults) {
+                    final ModelNode result = subModel.get(attributeName);
+                    context.getResult().set(result);
+                } else {
+                    // It wasn't in the model, but user wants a default value from metadata if there is one
+                    final ModelNode nodeDescription = getNodeDescription(registry, operation);
+                    if (nodeDescription.get(ATTRIBUTES).hasDefined(attributeName) &&
+                            nodeDescription.get(ATTRIBUTES, attributeName).hasDefined(DEFAULT)) {
+                        final ModelNode result = nodeDescription.get(ATTRIBUTES, attributeName, DEFAULT);
+                        context.getResult().set(result);
+                    } else {
+                        context.getResult(); // this initializes the "result" to ModelType.UNDEFINED
+                    }
+                }
+                // Complete the step for the "registered attribute but default read handler" case
                 context.completeStep();
             } else {
-                attributeAccess.getReadHandler().execute(context, operation);
+                OperationStepHandler handler = attributeAccess.getReadHandler();
+                ClassLoader oldTccl = SecurityActions.setThreadContextClassLoader(handler.getClass());
+                try {
+                    handler.execute(context, operation);
+                } finally {
+                    SecurityActions.setThreadContextClassLoader(oldTccl);
+                }
+                // no context.completeStep() here as that's the read handler's job
             }
         }
-    };
+
+        private ModelNode getNodeDescription(ImmutableManagementResourceRegistration registry, ModelNode operation) {
+            final DescriptionProvider descriptionProvider = registry.getModelDescription(PathAddress.EMPTY_ADDRESS);
+            final Locale locale = getLocale(operation);
+            return descriptionProvider.getModelDescription(locale);
+        }
+    }
+
+    ;
 
     /**
      * {@link org.jboss.as.controller.OperationStepHandler} writing a single attribute. The required request parameter "name" represents the attribute name.
      */
     public static class WriteAttributeHandler implements OperationStepHandler {
+
+        private ParametersValidator nameValidator = new ParametersValidator();
+
+        public WriteAttributeHandler() {
+            nameValidator.registerValidator(NAME, new StringLengthValidator(1));
+        }
+
         public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
+            nameValidator.validate(operation);
             final String attributeName = operation.require(NAME).asString();
             final AttributeAccess attributeAccess = context.getResourceRegistration().getAttributeAccess(PathAddress.EMPTY_ADDRESS, attributeName);
             if (attributeAccess == null) {
@@ -392,10 +481,18 @@ public class GlobalOperationHandlers {
             } else if (attributeAccess.getAccessType() != AccessType.READ_WRITE) {
                 throw new OperationFailedException(new ModelNode().set("Attribute " + attributeName + " is not writeable")); // TODO i18n
             } else {
-                attributeAccess.getWriteHandler().execute(context, operation);
+                OperationStepHandler handler = attributeAccess.getWriteHandler();
+                ClassLoader oldTccl = SecurityActions.setThreadContextClassLoader(handler.getClass());
+                try {
+                    handler.execute(context, operation);
+                } finally {
+                    SecurityActions.setThreadContextClassLoader(oldTccl);
+                }
             }
         }
-    };
+    }
+
+    ;
 
     /**
      * {@link org.jboss.as.controller.OperationStepHandler} querying the children names of a given "child-type".
@@ -430,7 +527,9 @@ public class GlobalOperationHandlers {
 
             context.completeStep();
         }
-    };
+    }
+
+    ;
 
     /**
      * {@link org.jboss.as.controller.OperationStepHandler} querying the children resources of a given "child-type".
@@ -444,6 +543,7 @@ public class GlobalOperationHandlers {
             validator.registerValidator(RECURSIVE, new ModelTypeValidator(ModelType.BOOLEAN, true));
             validator.registerValidator(INCLUDE_RUNTIME, new ModelTypeValidator(ModelType.BOOLEAN, true));
             validator.registerValidator(PROXIES, new ModelTypeValidator(ModelType.BOOLEAN, true));
+            validator.registerValidator(INCLUDE_DEFAULTS, new ModelTypeValidator(ModelType.BOOLEAN, true));
         }
 
         @Override
@@ -459,7 +559,7 @@ public class GlobalOperationHandlers {
             final Map<PathElement, ModelNode> resources = new HashMap<PathElement, ModelNode>();
 
             final Resource resource = context.readResource(PathAddress.EMPTY_ADDRESS);
-            if (! resource.hasChildren(childType)) {
+            if (!resource.hasChildren(childType)) {
                 context.getResult().setEmptyObject();
             } else {
                 // We're going to add a bunch of steps that should immediately follow this one. We are going to add them
@@ -471,14 +571,14 @@ public class GlobalOperationHandlers {
 
                 final PathAddress address = PathAddress.pathAddress(operation.get(OP_ADDR));
                 for (final String key : resource.getChildrenNames(childType)) {
-                    final PathElement childPath =  PathElement.pathElement(childType, key);
+                    final PathElement childPath = PathElement.pathElement(childType, key);
                     final PathAddress childAddress = PathAddress.EMPTY_ADDRESS.append(PathElement.pathElement(childType, key));
 
                     final ModelNode readOp = new ModelNode();
                     readOp.get(OP).set(READ_RESOURCE_OPERATION);
                     readOp.get(OP_ADDR).set(PathAddress.pathAddress(address, childPath).toModelNode());
 
-                    if(operation.hasDefined(INCLUDE_RUNTIME)) {
+                    if (operation.hasDefined(INCLUDE_RUNTIME)) {
                         readOp.get(INCLUDE_RUNTIME).set(operation.get(INCLUDE_RUNTIME));
                     }
                     if (operation.hasDefined(RECURSIVE)) {
@@ -487,8 +587,11 @@ public class GlobalOperationHandlers {
                     if (operation.hasDefined(PROXIES)) {
                         readOp.get(PROXIES).set(operation.get(PROXIES));
                     }
+                    if (operation.hasDefined(INCLUDE_DEFAULTS)) {
+                        readOp.get(INCLUDE_DEFAULTS).set(operation.get(INCLUDE_DEFAULTS));
+                    }
                     final OperationStepHandler handler = context.getResourceRegistration().getOperationHandler(childAddress, READ_RESOURCE_OPERATION);
-                    if(handler == null) {
+                    if (handler == null) {
                         throw new OperationFailedException(new ModelNode().set("no operation handler"));
                     }
                     ModelNode rrRsp = new ModelNode();
@@ -499,12 +602,14 @@ public class GlobalOperationHandlers {
 
             context.completeStep();
         }
-    };
+    }
+
+    ;
 
     /**
      * Assembles the response to a read-resource request from the components gathered by earlier steps.
      */
-    private static class ReadChildrenResourcesAssemblyHandler implements OperationStepHandler {
+    public static class ReadChildrenResourcesAssemblyHandler implements OperationStepHandler {
 
         private final Map<PathElement, ModelNode> resources;
 
@@ -513,10 +618,10 @@ public class GlobalOperationHandlers {
          * of the given maps.
          *
          * @param resources read-resource response from child resources, where the key is the path of the resource
-*                       relative to the address of the operation this handler is handling and the
-*                       value is the full read-resource response. Will not be {@code null}
+         *                  relative to the address of the operation this handler is handling and the
+         *                  value is the full read-resource response. Will not be {@code null}
          */
-        private ReadChildrenResourcesAssemblyHandler(final Map<PathElement, ModelNode> resources) {
+        public ReadChildrenResourcesAssemblyHandler(final Map<PathElement, ModelNode> resources) {
             this.resources = resources;
         }
 
@@ -578,8 +683,8 @@ public class GlobalOperationHandlers {
 
             final ModelNode result = new ModelNode();
             if (operations.size() > 0) {
-                for(final Entry<String, OperationEntry> entry : operations.entrySet()) {
-                    if(entry.getValue().getType() == OperationEntry.EntryType.PUBLIC) {
+                for (final Entry<String, OperationEntry> entry : operations.entrySet()) {
+                    if (entry.getValue().getType() == OperationEntry.EntryType.PUBLIC) {
                         result.add(entry.getKey());
                     }
                 }
@@ -602,11 +707,17 @@ public class GlobalOperationHandlers {
             String operationName = operation.require(NAME).asString();
 
             final ImmutableManagementResourceRegistration registry = context.getResourceRegistration();
-            final DescriptionProvider descriptionProvider = registry.getOperationDescription(PathAddress.EMPTY_ADDRESS, operationName);
+            OperationEntry operationEntry = registry.getOperationEntry(PathAddress.EMPTY_ADDRESS, operationName);
+            if (operationEntry == null) {
+                throw new OperationFailedException(new ModelNode().set(String.format("There is no operation %s registered at address %s",
+                        operationName, PathAddress.pathAddress(operation.require(OP_ADDR)))));
+            } else {
+                final ModelNode result = operationEntry.getDescriptionProvider().getModelDescription(getLocale(operation));
+                Set<OperationEntry.Flag> flags = operationEntry.getFlags();
+                result.get(READ_ONLY).set(flags.contains(OperationEntry.Flag.READ_ONLY));
 
-            final ModelNode result = descriptionProvider == null ? new ModelNode() : descriptionProvider.getModelDescription(getLocale(operation));
-
-            context.getResult().set(result);
+                context.getResult().set(result);
+            }
             context.completeStep();
         }
     };
@@ -616,6 +727,7 @@ public class GlobalOperationHandlers {
      */
     public static final OperationStepHandler READ_RESOURCE_DESCRIPTION = new OperationStepHandler() {
         private final ParametersValidator validator = new ParametersValidator();
+
         {
             validator.registerValidator(RECURSIVE, new ModelTypeValidator(ModelType.BOOLEAN, true));
             validator.registerValidator(PROXIES, new ModelTypeValidator(ModelType.BOOLEAN, true));
@@ -626,7 +738,7 @@ public class GlobalOperationHandlers {
         @Override
         public void execute(final OperationContext context, final ModelNode operation) throws OperationFailedException {
             final PathAddress address = PathAddress.pathAddress(operation.get(OP_ADDR));
-            if(address.isMultiTarget()) {
+            if (address.isMultiTarget()) {
                 // Format wildcard queries as list
                 final ModelNode result = context.getResult().setEmptyList();
                 context.addStep(new ModelNode(), AbstractMultiTargetHandler.FAKE_OPERATION, new RegistrationAddressResolver(operation, result,
@@ -636,7 +748,7 @@ public class GlobalOperationHandlers {
                                 // step handler bypassing further wildcard resolution
                                 doExecute(context, operation);
                             }
-                        }) , OperationContext.Stage.IMMEDIATE);
+                        }), OperationContext.Stage.IMMEDIATE);
                 // Add a handler at the end of the chain to aggregate the result
                 context.addStep(new OperationStepHandler() {
                     @Override
@@ -679,7 +791,7 @@ public class GlobalOperationHandlers {
 
             if (ops) {
                 for (final Map.Entry<String, OperationEntry> entry : registry.getOperationDescriptions(PathAddress.EMPTY_ADDRESS, inheritedOps).entrySet()) {
-                    if(entry.getValue().getType() == OperationEntry.EntryType.PUBLIC) {
+                    if (entry.getValue().getType() == OperationEntry.EntryType.PUBLIC) {
                         final DescriptionProvider provider = entry.getValue().getDescriptionProvider();
                         operations.put(entry.getKey(), provider.getModelDescription(locale));
                     }
@@ -696,8 +808,21 @@ public class GlobalOperationHandlers {
                     // in the valid attribute "foo" not being readable
                     final AccessType accessType = access == null ? AccessType.READ_ONLY : access.getAccessType();
                     final Storage storage = access == null ? Storage.CONFIGURATION : access.getStorageType();
-                    nodeDescription.get(ATTRIBUTES, attr, ACCESS_TYPE).set(accessType.toString()); //TODO i18n
-                    nodeDescription.get(ATTRIBUTES, attr, STORAGE).set(storage.toString());
+                    final ModelNode attrNode = nodeDescription.get(ATTRIBUTES, attr);
+                    attrNode.get(ACCESS_TYPE).set(accessType.toString()); //TODO i18n
+                    attrNode.get(STORAGE).set(storage.toString());
+                    if (accessType == AccessType.READ_WRITE) {
+                        Set<AttributeAccess.Flag> flags = access.getFlags();
+                        if (flags.contains(AttributeAccess.Flag.RESTART_ALL_SERVICES)) {
+                            attrNode.get(RESTART_REQUIRED).set("all-services");
+                        } else if (flags.contains(AttributeAccess.Flag.RESTART_RESOURCE_SERVICES)) {
+                            attrNode.get(RESTART_REQUIRED).set("resource-services");
+                        } else if (flags.contains(AttributeAccess.Flag.RESTART_JVM)) {
+                            attrNode.get(RESTART_REQUIRED).set("jvm");
+                        } else {
+                            attrNode.get(RESTART_REQUIRED).set("no-services");
+                        }
+                    }
                 }
             }
 
@@ -756,10 +881,10 @@ public class GlobalOperationHandlers {
          * of the given maps.
          *
          * @param nodeDescription basic description of the node, of its attributes and of its child types
-         * @param operations descriptions of the resource's operations
-         * @param childResources read-resource-description response from child resources, where the key is the PathAddress
-*                       relative to the address of the operation this handler is handling and the
-*                       value is the full read-resource response. Will not be {@code null}
+         * @param operations      descriptions of the resource's operations
+         * @param childResources  read-resource-description response from child resources, where the key is the PathAddress
+         *                        relative to the address of the operation this handler is handling and the
+         *                        value is the full read-resource response. Will not be {@code null}
          */
         private ReadResourceDescriptionAssemblyHandler(final ModelNode nodeDescription, final Map<String, ModelNode> operations, final Map<PathElement, ModelNode> childResources) {
             this.nodeDescription = nodeDescription;
@@ -793,6 +918,7 @@ public class GlobalOperationHandlers {
     public abstract static class AbstractMultiTargetHandler implements OperationStepHandler {
 
         public static final ModelNode FAKE_OPERATION;
+
         static {
             final ModelNode resolve = new ModelNode();
             resolve.get(OP).set("resolve");
@@ -806,16 +932,16 @@ public class GlobalOperationHandlers {
             final PathAddress address = PathAddress.pathAddress(operation.require(OP_ADDR));
             // In case if it's a multiTarget operation, resolve the address first
             // This only works for model resources, which can be resolved into a concrete addresses
-            if(address.isMultiTarget()) {
+            if (address.isMultiTarget()) {
                 // The final result should be a list of executed operations
                 final ModelNode result = context.getResult().setEmptyList();
                 // Trick the context to give us the model-root
                 context.addStep(new ModelNode(), FAKE_OPERATION, new ModelAddressResolver(operation, result, new OperationStepHandler() {
-                            @Override
-                            public void execute(final OperationContext context, final ModelNode operation) throws OperationFailedException {
-                                doExecute(context, operation);
-                            }
-                        }), OperationContext.Stage.IMMEDIATE);
+                    @Override
+                    public void execute(final OperationContext context, final ModelNode operation) throws OperationFailedException {
+                        doExecute(context, operation);
+                    }
+                }), OperationContext.Stage.IMMEDIATE);
                 // Add a handler at the end of the chain to aggregate the result
                 context.addStep(new OperationStepHandler() {
                     @Override
@@ -832,7 +958,7 @@ public class GlobalOperationHandlers {
         /**
          * Execute the actual operation if it is not addressed to multiple targets.
          *
-         * @param context the operation context
+         * @param context   the operation context
          * @param operation the original operation
          * @throws OperationFailedException
          */
@@ -844,13 +970,16 @@ public class GlobalOperationHandlers {
         private final ModelNode operation;
         private final ModelNode result;
         private final OperationStepHandler handler; // handler bypassing further wildcard resolution
+
         public ModelAddressResolver(final ModelNode operation, final ModelNode result, final OperationStepHandler delegate) {
             this.operation = operation;
             this.result = result;
             this.handler = delegate;
         }
 
-        /** {@inheritDoc} */
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void execute(final OperationContext context, final ModelNode ignored) throws OperationFailedException {
             final PathAddress address = PathAddress.pathAddress(operation.require(OP_ADDR));
@@ -862,12 +991,12 @@ public class GlobalOperationHandlers {
             final Resource resource = context.readResource(base);
             final PathAddress current = address.subAddress(base.size());
             final Iterator<PathElement> iterator = current.iterator();
-            if(iterator.hasNext()) {
+            if (iterator.hasNext()) {
                 final PathElement element = iterator.next();
-                if(element.isMultiTarget()) {
+                if (element.isMultiTarget()) {
                     final String childType = element.getKey().equals("*") ? null : element.getKey();
                     final ImmutableManagementResourceRegistration registration = context.getResourceRegistration().getSubModel(base);
-                    if(registration.isRemote() || registration.isRuntimeOnly()) {
+                    if (registration.isRemote() || registration.isRuntimeOnly()) {
                         // At least for proxies it should use the proxy operation handler
                         throw new IllegalStateException();
                     }
@@ -875,21 +1004,21 @@ public class GlobalOperationHandlers {
                     for (Map.Entry<String, Set<String>> entry : resolved.entrySet()) {
                         final String key = entry.getKey();
                         final Set<String> children = entry.getValue();
-                        if(children.isEmpty()) {
+                        if (children.isEmpty()) {
                             continue;
                         }
-                        if(element.isWildcard()) {
-                            for(final String child : children) {
+                        if (element.isWildcard()) {
+                            for (final String child : children) {
                                 // Double check if the child actually exists
-                                if(resource.hasChild(PathElement.pathElement(key, child))) {
+                                if (resource.hasChild(PathElement.pathElement(key, child))) {
                                     execute(address, base.append(PathElement.pathElement(key, child)), context);
                                 }
                             }
                         } else {
-                            for(final String segment : element.getSegments()) {
-                                if(children.contains(segment)) {
+                            for (final String segment : element.getSegments()) {
+                                if (children.contains(segment)) {
                                     // Double check if the child actually exists
-                                    if(resource.hasChild(PathElement.pathElement(key, segment))) {
+                                    if (resource.hasChild(PathElement.pathElement(key, segment))) {
                                         execute(address, base.append(PathElement.pathElement(key, segment)), context);
                                     }
                                 }
@@ -898,7 +1027,7 @@ public class GlobalOperationHandlers {
                     }
                 } else {
                     // Double check if the child actually exists
-                    if(resource.hasChild(element)) {
+                    if (resource.hasChild(element)) {
                         execute(address, base.append(element), context);
                     }
                 }
@@ -920,6 +1049,7 @@ public class GlobalOperationHandlers {
         private final ModelNode operation;
         private final ModelNode result;
         private final OperationStepHandler handler; // handler bypassing further wildcard resolution
+
         RegistrationAddressResolver(final ModelNode operation, final ModelNode result, final OperationStepHandler delegate) {
             this.operation = operation;
             this.result = result;
@@ -936,16 +1066,16 @@ public class GlobalOperationHandlers {
         void execute(final PathAddress address, PathAddress base, final OperationContext context) {
             final PathAddress current = address.subAddress(base.size());
             final Iterator<PathElement> iterator = current.iterator();
-            if(iterator.hasNext()) {
+            if (iterator.hasNext()) {
                 final PathElement element = iterator.next();
-                if(element.isMultiTarget()) {
+                if (element.isMultiTarget()) {
                     final Set<PathElement> children = context.getResourceRegistration().getChildAddresses(base);
-                    if(children == null || children.isEmpty()) {
+                    if (children == null || children.isEmpty()) {
                         return;
                     }
                     final String childType = element.getKey().equals("*") ? null : element.getKey();
-                    for(final PathElement path : children) {
-                        if(childType != null && ! childType.equals(path.getKey())) {
+                    for (final PathElement path : children) {
+                        if (childType != null && !childType.equals(path.getKey())) {
                             continue;
                         }
                         execute(address, base.append(path), context);
@@ -981,15 +1111,15 @@ public class GlobalOperationHandlers {
     /**
      * Gets the addresses of the child resources under the given resource.
      *
-     * @param registry  registry entry representing the resource
-     * @param resource the current resource
+     * @param registry       registry entry representing the resource
+     * @param resource       the current resource
      * @param validChildType a single child type to which the results should be limited. If {@code null} the result
      *                       should include all child types
      * @return map where the keys are the child types and the values are a set of child names associated with a type
      */
-    private static Map<String,Set<String>> getChildAddresses(final ImmutableManagementResourceRegistration registry, Resource resource, final String validChildType) {
+    private static Map<String, Set<String>> getChildAddresses(final ImmutableManagementResourceRegistration registry, Resource resource, final String validChildType) {
 
-        Map<String,Set<String>> result = new HashMap<String, Set<String>>();
+        Map<String, Set<String>> result = new HashMap<String, Set<String>>();
         Set<PathElement> elements = registry.getChildAddresses(PathAddress.EMPTY_ADDRESS);
         for (PathElement element : elements) {
             String childType = element.getKey();
@@ -1000,7 +1130,7 @@ public class GlobalOperationHandlers {
             if (set == null) {
                 set = new HashSet<String>();
                 result.put(childType, set);
-                if(resource.hasChildren(childType)) {
+                if (resource.hasChildren(childType)) {
                     set.addAll(resource.getChildrenNames(childType));
                 }
             }

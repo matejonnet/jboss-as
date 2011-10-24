@@ -128,6 +128,10 @@ public abstract class AbstractSubsystemTest {
 
     }
 
+    public String getMainSubsystemName() {
+        return mainSubsystemName;
+    }
+
     @Before
     public void initializeParser() throws Exception {
         //Initialize the parser
@@ -634,6 +638,11 @@ public abstract class AbstractSubsystemTest {
         }
 
         @Override
+        public OperationEntry getOperationEntry(PathAddress address, String operationName) {
+            return null;
+        }
+
+        @Override
         public OperationStepHandler getOperationHandler(PathAddress address, String operationName) {
             return null;
         }
@@ -709,6 +718,11 @@ public abstract class AbstractSubsystemTest {
 
         @Override
         public void registerOperationHandler(String operationName, OperationStepHandler handler,
+                DescriptionProvider descriptionProvider, EnumSet<Flag> flags) {
+        }
+
+        @Override
+        public void registerOperationHandler(String operationName, OperationStepHandler handler,
                 DescriptionProvider descriptionProvider, boolean inherited) {
         }
 
@@ -728,11 +742,23 @@ public abstract class AbstractSubsystemTest {
         }
 
         @Override
+        public void registerReadWriteAttribute(String attributeName, OperationStepHandler readHandler, OperationStepHandler writeHandler, EnumSet<AttributeAccess.Flag> flags) {
+        }
+
+        @Override
         public void registerReadOnlyAttribute(String attributeName, OperationStepHandler readHandler, Storage storage) {
         }
 
         @Override
+        public void registerReadOnlyAttribute(String attributeName, OperationStepHandler readHandler, EnumSet<AttributeAccess.Flag> flags) {
+        }
+
+        @Override
         public void registerMetric(String attributeName, OperationStepHandler metricHandler) {
+        }
+
+        @Override
+        public void registerMetric(String attributeName, OperationStepHandler metricHandler, EnumSet<AttributeAccess.Flag> flags) {
         }
 
         @Override

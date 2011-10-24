@@ -29,13 +29,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.jboss.as.cli.CommandArgument;
 import org.jboss.as.cli.CommandContext;
 import org.jboss.as.cli.CommandFormatException;
-import org.jboss.as.cli.CommandLineCompleter;
-import org.jboss.as.cli.ParsedArguments;
 import org.jboss.as.cli.Util;
 import org.jboss.as.cli.impl.ArgumentWithValue;
 import org.jboss.as.cli.impl.ArgumentWithoutValue;
@@ -43,14 +40,17 @@ import org.jboss.as.cli.impl.DefaultCompleter;
 import org.jboss.as.cli.impl.DefaultCompleter.CandidatesProvider;
 import org.jboss.as.cli.operation.OperationFormatException;
 import org.jboss.as.cli.operation.OperationRequestAddress;
-import org.jboss.as.cli.operation.OperationRequestParser;
-import org.jboss.as.cli.operation.impl.DefaultOperationCallbackHandler;
+import org.jboss.as.cli.operation.CommandLineParser;
+import org.jboss.as.cli.operation.ParsedCommandLine;
+import org.jboss.as.cli.operation.impl.DefaultCallbackHandler;
 import org.jboss.as.cli.operation.impl.DefaultOperationRequestAddress;
 import org.jboss.as.cli.operation.impl.DefaultOperationRequestBuilder;
-import org.jboss.as.cli.operation.impl.DefaultOperationRequestParser;
+import org.jboss.as.cli.parsing.ParserUtil;
 import org.jboss.as.controller.client.ModelControllerClient;
 import org.jboss.dmr.ModelNode;
+import org.jboss.dmr.ModelType;
 import org.jboss.dmr.Property;
+
 
 /**
  *
@@ -72,7 +72,10 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
     protected final ArgumentWithoutValue helpProperties;
     protected final ArgumentWithoutValue helpCommands;
 
-    protected final CommandLineCompleter genericCompleter;
+    // these are caching vars
+    private final List<CommandArgument> staticArgs = new ArrayList<CommandArgument>();
+    private List<CommandArgument> nodeProps;
+    private Map<String, List<CommandArgument>> propsByOp;
 
     public GenericTypeOperationHandler(String nodeType, String idProperty) {
         this(nodeType, idProperty, Arrays.asList("read-attribute", "read-children-names", "read-children-resources",
@@ -84,11 +87,20 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
 
         super("generic-type-operation", true);
 
-        helpArg.setExclusive(false);
+        helpArg = new ArgumentWithoutValue(this, "--help", "-h") {
+            @Override
+            public boolean canAppearNext(CommandContext ctx) throws CommandFormatException {
+                if(ctx.isDomainMode() && !profile.isValueComplete(ctx.getParsedCommandLine())) {
+                    return false;
+                }
+                return super.canAppearNext(ctx);
+            }
+        };
+
         nodePath = new DefaultOperationRequestAddress();
-        OperationRequestParser.CallbackHandler handler = new DefaultOperationCallbackHandler(nodePath);
+        CommandLineParser.CallbackHandler handler = new DefaultCallbackHandler(nodePath);
         try {
-            DefaultOperationRequestParser.INSTANCE.parse(nodeType, handler);
+            ParserUtil.parseOperationRequest(nodeType, handler);
         } catch (CommandFormatException e) {
             throw new IllegalArgumentException("Failed to parse nodeType: " + e.getMessage());
         }
@@ -117,41 +129,15 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
                 return super.canAppearNext(ctx);
             }
         };
-        profile.addCantAppearAfter(helpArg);
+        //profile.addCantAppearAfter(helpArg);
 
         operation = new ArgumentWithValue(this, new DefaultCompleter(new CandidatesProvider(){
                 @Override
                 public List<String> getAllCandidates(CommandContext ctx) {
-
-                    final boolean writeAttribute;
-                    try {
-                        writeAttribute = name.isPresent(ctx.getParsedArguments());
-                    } catch (CommandFormatException e) {
-                        return Collections.emptyList();
-                    }
-
-                    if(writeAttribute) {
-                        Set<String> specified;
-                        try {
-                            specified = ctx.getParsedArguments().getArgumentNames();
-                        } catch (CommandFormatException e) {
-                            return Collections.emptyList();
-                        }
-                        final List<String> theProps = new ArrayList<String>();
-                        for(Property prop : getNodeProperties(ctx)) {
-                            final String propName = "--" + prop.getName();
-                            if(!specified.contains(propName) && prop.getValue().has("access-type") &&
-                                    prop.getValue().get("access-type").asString().contains("write")) {
-                                theProps.add(propName + "=");
-                            }
-                        }
-                        return theProps;
-                    }
-
                     DefaultOperationRequestAddress address = new DefaultOperationRequestAddress();
                     if(ctx.isDomainMode()) {
-                        final String profileName = profile.getValue(ctx.getParsedArguments());
-                        if(profile == null) {
+                        final String profileName = profile.getValue(ctx.getParsedCommandLine());
+                        if(profileName == null) {
                             return Collections.emptyList();
                         }
                         address.toNode("profile", profileName);
@@ -161,13 +147,13 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
                         address.toNode(node.getType(), node.getName());
                     }
                     address.toNode(type, "?");
-                    List<String> ops = ctx.getOperationCandidatesProvider().getOperationNames(address);
+                    List<String> ops = ctx.getOperationCandidatesProvider().getOperationNames(ctx, address);
                     ops.removeAll(excludeOps);
                     return ops;
                 }}), 0, "--operation") {
             @Override
             public boolean canAppearNext(CommandContext ctx) throws CommandFormatException {
-                if(ctx.isDomainMode() && !profile.isPresent(ctx.getParsedArguments())) {
+                if(ctx.isDomainMode() && !profile.isValueComplete(ctx.getParsedCommandLine())) {
                     return false;
                 }
                 return super.canAppearNext(ctx);
@@ -185,7 +171,7 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
 
                 DefaultOperationRequestAddress address = new DefaultOperationRequestAddress();
                 if(ctx.isDomainMode()) {
-                    final String profileName = profile.getValue(ctx.getParsedArguments());
+                    final String profileName = profile.getValue(ctx.getParsedCommandLine());
                     if(profile == null) {
                         return Collections.emptyList();
                     }
@@ -201,7 +187,7 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
             }), "--" + idProperty) {
             @Override
             public boolean canAppearNext(CommandContext ctx) throws CommandFormatException {
-                if(ctx.isDomainMode() && !profile.isPresent(ctx.getParsedArguments())) {
+                if(ctx.isDomainMode() && !profile.isValueComplete(ctx.getParsedCommandLine())) {
                     return false;
                 }
                 return super.canAppearNext(ctx);
@@ -223,71 +209,75 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
 
 
         ///
+        staticArgs.add(helpArg);
+        staticArgs.add(helpCommands);
+        staticArgs.add(helpProperties);
+        staticArgs.add(profile);
+        staticArgs.add(name);
+        staticArgs.add(operation);
+    }
 
-        genericCompleter = new BaseArgumentTabCompleter(){
-            private final List<CommandArgument> staticArgs = new ArrayList<CommandArgument>();
-            {
-                staticArgs.add(helpArg);
-                staticArgs.add(helpCommands);
-                staticArgs.add(helpProperties);
-                staticArgs.add(profile);
-                staticArgs.add(name);
-                staticArgs.add(operation);
+    @Override
+    public List<CommandArgument> getArguments(CommandContext ctx) {
+
+        ParsedCommandLine args = ctx.getParsedCommandLine();
+
+        try {
+            if(!name.isValueComplete(args)) {
+                return staticArgs;
             }
+        } catch (CommandFormatException e) {
+            return Collections.emptyList();
+        }
 
-            private List<CommandArgument> nodeProps;
-            private Map<String, List<CommandArgument>> propsByOp;
-
-            @Override
-            protected Iterable<CommandArgument> getAllArguments(CommandContext ctx) {
-
-                ParsedArguments args = ctx.getParsedArguments();
-
-                final String theName = name.getValue(args);
-                if(theName == null) {
-                    return staticArgs;
-                }
-
-                final String op = operation.getValue(args);
-                if(op == null) {
-                    // list node properties
-                    if(nodeProps == null) {
-                        nodeProps = new ArrayList<CommandArgument>();
-                        for(Property prop : getNodeProperties(ctx)) {
-                            final ModelNode propDescr = prop.getValue();
-                            if(propDescr.has("access-type") && "read-write".equals(propDescr.get("access-type").asString())) {
-                                nodeProps.add(new ArgumentWithValue(GenericTypeOperationHandler.this, "--" + prop.getName()));
-                            }
-                        }
-                    }
-                    return nodeProps;
-                } else {
-                    // list operation properties
-                    if(propsByOp == null) {
-                        propsByOp = new HashMap<String, List<CommandArgument>>();
-                    }
-                    List<CommandArgument> opProps = propsByOp.get(op);
-                    if(opProps == null) {
-                        final ModelNode descr;
-                        try {
-                            descr = getOperationDescription(ctx, op);
-                        } catch (IOException e1) {
-                            return Collections.emptyList();
-                        }
-
-                        if(descr == null || !descr.has("request-properties")) {
-                            opProps = Collections.emptyList();
+        final String op = operation.getValue(args);
+        if(op == null) {
+            // list node properties
+            if(nodeProps == null) {
+                nodeProps = new ArrayList<CommandArgument>();
+                for(Property prop : getNodeProperties(ctx)) {
+                    final ModelNode propDescr = prop.getValue();
+                    if(propDescr.has("access-type") && "read-write".equals(propDescr.get("access-type").asString())) {
+                        if(propDescr.has("type") && ModelType.BOOLEAN == propDescr.get("type").asType()) {
+                            nodeProps.add(new ArgumentWithValue(GenericTypeOperationHandler.this, SimpleTabCompleter.BOOLEAN,"--" + prop.getName()));
                         } else {
-                            opProps = new ArrayList<CommandArgument>();
-                            for (Property prop : descr.get("request-properties").asPropertyList()) {
-                                opProps.add(new ArgumentWithValue(GenericTypeOperationHandler.this, "--" + prop.getName()));
-                            }
+                            nodeProps.add(new ArgumentWithValue(GenericTypeOperationHandler.this, "--" + prop.getName()));
                         }
-                        propsByOp.put(op, opProps);
                     }
-                    return opProps;
                 }
-            }};
+            }
+            return nodeProps;
+        } else {
+            // list operation properties
+            if(propsByOp == null) {
+                propsByOp = new HashMap<String, List<CommandArgument>>();
+            }
+            List<CommandArgument> opProps = propsByOp.get(op);
+            if(opProps == null) {
+                final ModelNode descr;
+                try {
+                    descr = getOperationDescription(ctx, op);
+                } catch (IOException e1) {
+                    return Collections.emptyList();
+                }
+
+                if(descr == null || !descr.has("request-properties")) {
+                    opProps = Collections.emptyList();
+                } else {
+                    opProps = new ArrayList<CommandArgument>();
+                    for (Property prop : descr.get("request-properties").asPropertyList()) {
+                        final ModelNode propDescr = prop.getValue();
+                        if(propDescr.has("type") && ModelType.BOOLEAN == propDescr.get("type").asType()) {
+                            opProps.add(new ArgumentWithValue(GenericTypeOperationHandler.this, SimpleTabCompleter.BOOLEAN, "--" + prop.getName()));
+                        } else {
+                            opProps.add(new ArgumentWithValue(GenericTypeOperationHandler.this, "--" + prop.getName()));
+                        }
+                    }
+                }
+                propsByOp.put(op, opProps);
+            }
+            return opProps;
+        }
     }
 
     @Override
@@ -300,21 +290,12 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
         return true;
     }
 
-    @Override
-    public CommandLineCompleter getArgumentCompleter() {
-        return genericCompleter;
-    }
-
-    protected BaseArgumentTabCompleter initArgumentCompleter() {
-        return null;
-    }
-
     public void addArgument(CommandArgument arg) {
     }
 
     @Override
     public ModelNode buildRequest(CommandContext ctx) throws CommandFormatException {
-        final String operation = this.operation.getValue(ctx.getParsedArguments());
+        final String operation = this.operation.getValue(ctx.getParsedCommandLine());
         if(operation == null) {
             return buildWritePropertyRequest(ctx);
         }
@@ -323,14 +304,14 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
 
     protected ModelNode buildWritePropertyRequest(CommandContext ctx) throws CommandFormatException {
 
-        final String name = this.name.getValue(ctx.getParsedArguments(), true);
+        final String name = this.name.getValue(ctx.getParsedCommandLine(), true);
 
         ModelNode composite = new ModelNode();
         composite.get("operation").set("composite");
         composite.get("address").setEmptyList();
         ModelNode steps = composite.get("steps");
 
-        ParsedArguments args = ctx.getParsedArguments();
+        ParsedCommandLine args = ctx.getParsedCommandLine();
 
         final String profile;
         if(ctx.isDomainMode()) {
@@ -342,12 +323,12 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
             profile = null;
         }
 
-        for(String argName : args.getArgumentNames()) {
+        for(String argName : args.getPropertyNames()) {
             if(argName.equals("--profile") || this.name.getFullName().equals(argName)) {
                 continue;
             }
 
-            final String valueString = args.getArgument(argName);
+            final String valueString = args.getPropertyValue(argName);
             if(valueString == null) {
                 continue;
             }
@@ -398,7 +379,7 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
 
     protected ModelNode buildOperationRequest(CommandContext ctx, final String operation) throws CommandFormatException {
 
-        ParsedArguments args = ctx.getParsedArguments();
+        ParsedCommandLine args = ctx.getParsedCommandLine();
 
         DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
         if(ctx.isDomainMode()) {
@@ -409,7 +390,7 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
             builder.addNode("profile", profile);
         }
 
-        final String name = this.name.getValue(ctx.getParsedArguments(), true);
+        final String name = this.name.getValue(ctx.getParsedCommandLine(), true);
 
         for(OperationRequestAddress.Node node : nodePath) {
             builder.addNode(node.getType(), node.getName());
@@ -418,12 +399,12 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
 
         builder.setOperationName(operation);
 
-        for(String argName : args.getArgumentNames()) {
+        for(String argName : args.getPropertyNames()) {
             if(argName.equals("--profile")) {
                 continue;
             }
 
-            final String valueString = args.getArgument(argName);
+            final String valueString = args.getPropertyValue(argName);
             if(valueString == null) {
                 continue;
             }
@@ -461,7 +442,7 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
 
     protected void printHelp(CommandContext ctx) {
 
-        ParsedArguments args = ctx.getParsedArguments();
+        ParsedCommandLine args = ctx.getParsedCommandLine();
         try {
             if(helpProperties.isPresent(args)) {
                 printAttributes(ctx);
@@ -700,7 +681,7 @@ public class GenericTypeOperationHandler extends BatchModeCommandHandler {
         ModelNode request = new ModelNode();
         ModelNode address = request.get("address");
         if(ctx.isDomainMode()) {
-            final String profileName = profile.getValue(ctx.getParsedArguments());
+            final String profileName = profile.getValue(ctx.getParsedCommandLine());
             if(profile == null) {
                 ctx.printLine("--profile argument is required to get the node description.");
                 return null;

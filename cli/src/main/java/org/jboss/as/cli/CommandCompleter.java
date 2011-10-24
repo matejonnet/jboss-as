@@ -25,7 +25,10 @@ package org.jboss.as.cli;
 import java.util.Collections;
 import java.util.List;
 
+import org.jboss.as.cli.impl.CommandCandidatesProvider;
+import org.jboss.as.cli.operation.OperationCandidatesProvider;
 import org.jboss.as.cli.operation.OperationRequestCompleter;
+import org.jboss.as.cli.operation.impl.DefaultCallbackHandler;
 
 import jline.Completor;
 
@@ -38,11 +41,13 @@ public class CommandCompleter implements Completor, CommandLineCompleter {
 
     private final CommandContext ctx;
     private final CommandRegistry cmdRegistry;
+    private final CommandCandidatesProvider cmdProvider;
 
     public CommandCompleter(CommandRegistry cmdRegistry, CommandContext ctx) {
         if(cmdRegistry == null)
             throw new IllegalArgumentException("Command registry can't be null.");
         this.cmdRegistry = cmdRegistry;
+        this.cmdProvider = new CommandCandidatesProvider(cmdRegistry);
         this.ctx = ctx;
     }
 
@@ -55,74 +60,48 @@ public class CommandCompleter implements Completor, CommandLineCompleter {
     @Override
     public int complete(CommandContext ctx, String buffer, int cursor, List<String> candidates) {
 
-        int cmdFirstIndex = 0;
-        while(cmdFirstIndex < buffer.length()) {
-            if(!Character.isWhitespace(buffer.charAt(cmdFirstIndex))) {
-                break;
-            }
-            ++cmdFirstIndex;
+/*        if(cursor != buffer.length()) {
+            return -1;
         }
-
-        if(cmdFirstIndex == buffer.length()) {
+*/
+        if(buffer.isEmpty()) {
             for(String cmd : cmdRegistry.getTabCompletionCommands()) {
                 CommandHandler handler = cmdRegistry.getCommandHandler(cmd);
                 if(handler.isAvailable(ctx)) {
                     candidates.add(cmd);
                 }
             }
-            return cmdFirstIndex;
+            Collections.sort(candidates);
+            return 0;
         }
 
-        char firstChar = buffer.charAt(cmdFirstIndex);
-        if(firstChar == '.' || firstChar == ':' || firstChar == '/') {
-            return OperationRequestCompleter.INSTANCE.complete(ctx, buffer, cursor, candidates);
+        final DefaultCallbackHandler parsedCmd = (DefaultCallbackHandler) ctx.getParsedCommandLine();
+        try {
+            parsedCmd.parse(ctx.getPrefix(), buffer);
+        } catch(CommandFormatException e) {
+            if(!parsedCmd.endsOnAddressOperationNameSeparator() || !parsedCmd.endsOnSeparator()) {
+                return -1;
+            }
         }
 
-        int cmdLastIndex = cmdFirstIndex + 1;
-        while(cmdLastIndex < buffer.length() && !Character.isWhitespace(buffer.charAt(cmdLastIndex))) {
-            ++cmdLastIndex;
-        }
-
-        String cmd = buffer.substring(cmdFirstIndex, cmdLastIndex);
-        if(cmdLastIndex < buffer.length()) {
-            CommandHandler handler = cmdRegistry.getCommandHandler(cmd);
-            if (handler != null) {
-                CommandLineCompleter argsCompleter = handler.getArgumentCompleter();
-                if (argsCompleter != null) {
-
-                    int nextCharIndex = cmdLastIndex + 1;
-                    while (nextCharIndex < buffer.length()) {
-                        if (!Character.isWhitespace(buffer.charAt(nextCharIndex))) {
-                            break;
-                        }
-                        ++nextCharIndex;
-                    }
-
-                    String cmdBuffer = buffer.substring(nextCharIndex);
-                    int result = argsCompleter.complete(ctx, cmdBuffer, cursor - nextCharIndex, candidates);
-                    if (result >= 0) {
-                        return nextCharIndex + result;
-                    } else {
-                        return result;
-                    }
+        final OperationCandidatesProvider candidatesProvider;
+        if(buffer.isEmpty()) {
+            candidatesProvider = cmdProvider;
+        } else {
+            int cmdFirstIndex = 0;
+            while(cmdFirstIndex < buffer.length()) {
+                if(!Character.isWhitespace(buffer.charAt(cmdFirstIndex))) {
+                    break;
                 }
+                ++cmdFirstIndex;
+            }
+            final char firstChar = buffer.charAt(cmdFirstIndex);
+            if(firstChar == '.' || firstChar == ':' || firstChar == '/') {
+                candidatesProvider = ctx.getOperationCandidatesProvider();
+            } else {
+                candidatesProvider = cmdProvider;
             }
         }
-
-        if(cmdLastIndex < buffer.length()) {
-            cmd = buffer.substring(cmdFirstIndex);
-        }
-        for(String command : cmdRegistry.getTabCompletionCommands()) {
-            if (!command.startsWith(cmd)) {
-                continue;
-            }
-
-            CommandHandler handler = cmdRegistry.getCommandHandler(command);
-            if(handler.isAvailable(ctx)) {
-                candidates.add(command);
-            }
-        }
-        Collections.sort(candidates);
-        return buffer.length() - cmd.length();
+        return OperationRequestCompleter.INSTANCE.complete(ctx, parsedCmd, candidatesProvider, buffer, cursor, candidates);
     }
 }

@@ -22,8 +22,8 @@
 
 package org.jboss.as.ejb3.deployment.processors;
 
-import org.jboss.as.ee.component.AbstractComponentConfigProcessor;
 import org.jboss.as.ee.component.ComponentDescription;
+import org.jboss.as.ee.component.deployers.AbstractComponentConfigProcessor;
 import org.jboss.as.ejb3.component.session.SessionBeanComponentDescription;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
@@ -51,7 +51,7 @@ import java.util.List;
  */
 public class ImplicitLocalViewProcessor extends AbstractComponentConfigProcessor {
 
-    private static Logger logger = Logger.getLogger(ImplicitLocalViewProcessor.class);
+    private static final Logger logger = Logger.getLogger(ImplicitLocalViewProcessor.class);
 
     @Override
     protected void processComponentConfig(DeploymentUnit deploymentUnit, DeploymentPhaseContext phaseContext, CompositeIndex index, ComponentDescription componentDescription) throws DeploymentUnitProcessingException {

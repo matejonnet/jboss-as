@@ -31,15 +31,15 @@ import org.jboss.as.cli.CommandFormatException;
 import org.jboss.as.cli.CommandHandler;
 import org.jboss.as.cli.CommandLineCompleter;
 import org.jboss.as.cli.CommandRegistry;
-import org.jboss.as.cli.ParsedArguments;
 import org.jboss.as.cli.Util;
 import org.jboss.as.cli.impl.ArgumentWithValue;
 import org.jboss.as.cli.impl.DefaultCompleter;
 import org.jboss.as.cli.impl.DefaultCompleter.CandidatesProvider;
 import org.jboss.as.cli.operation.OperationRequestAddress;
 import org.jboss.as.cli.operation.OperationRequestCompleter;
-import org.jboss.as.cli.operation.impl.DefaultOperationCallbackHandler;
-import org.jboss.as.cli.operation.impl.DefaultOperationRequestParser;
+import org.jboss.as.cli.operation.ParsedCommandLine;
+import org.jboss.as.cli.operation.impl.DefaultCallbackHandler;
+import org.jboss.as.cli.parsing.ParserUtil;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
 
@@ -57,6 +57,8 @@ public class CommandCommandHandler extends CommandHandlerWithHelp {
 
     private final CommandRegistry cmdRegistry;
 
+    private DefaultCallbackHandler callback;
+
     public CommandCommandHandler(CommandRegistry cmdRegistry) {
         super("command", true);
         this.cmdRegistry = cmdRegistry;
@@ -73,7 +75,7 @@ public class CommandCommandHandler extends CommandHandlerWithHelp {
                 if(!ctx.isDomainMode()) {
                     return false;
                 }
-                final String actionName = action.getValue(ctx.getParsedArguments());
+                final String actionName = action.getValue(ctx.getParsedCommandLine());
                 if(actionName == null || !"add".equals(actionName)) {
                     return false;
                 }
@@ -87,7 +89,7 @@ public class CommandCommandHandler extends CommandHandlerWithHelp {
             public int complete(CommandContext ctx, String buffer, int cursor, List<String> candidates) {
                 int offset = 0;
                 if(ctx.isDomainMode()) {
-                    final String profileName = profile.getValue(ctx.getParsedArguments());
+                    final String profileName = profile.getValue(ctx.getParsedCommandLine());
                     if(profileName == null) {
                         return -1;
                     }
@@ -97,14 +99,19 @@ public class CommandCommandHandler extends CommandHandlerWithHelp {
                     buf.append(buffer);
                     buffer = buf.toString();
                 }
-                return OperationRequestCompleter.INSTANCE.complete(ctx, buffer, cursor + offset, candidates) - offset;
+
+                int result = OperationRequestCompleter.ARG_VALUE_COMPLETER.complete(ctx, buffer, cursor + offset, candidates) - offset;
+                if(result < 0) {
+                    return result;
+                }
+                return result;
             }}, "--node-type") {
             @Override
             public boolean canAppearNext(CommandContext ctx) throws CommandFormatException {
-                if(ctx.isDomainMode() && !profile.isPresent(ctx.getParsedArguments())) {
+                if(ctx.isDomainMode() && !profile.isValueComplete(ctx.getParsedCommandLine())) {
                     return false;
                 }
-                return "add".equals(action.getValue(ctx.getParsedArguments())) && super.canAppearNext(ctx);
+                return "add".equals(action.getValue(ctx.getParsedCommandLine())) && super.canAppearNext(ctx);
             }
         };
 
@@ -128,28 +135,31 @@ public class CommandCommandHandler extends CommandHandlerWithHelp {
         idProperty.addRequiredPreceding(nodePath);
 
         commandName = new ArgumentWithValue(this, new DefaultCompleter(new CandidatesProvider(){
+
+            private final DefaultCallbackHandler callback = new DefaultCallbackHandler();
+
             @Override
             public List<String> getAllCandidates(CommandContext ctx) {
 
-                final String actionName = action.getValue(ctx.getParsedArguments());
+                final String actionName = action.getValue(ctx.getParsedCommandLine());
                 if(actionName == null) {
                     return Collections.emptyList();
                 }
 
                 if (actionName.equals("add")) {
-                   final String thePath = nodePath.getValue(ctx.getParsedArguments());
+                   final String thePath = nodePath.getValue(ctx.getParsedCommandLine());
                    if (thePath == null) {
                       return Collections.emptyList();
                    }
 
-                   DefaultOperationCallbackHandler handler = new DefaultOperationCallbackHandler();
+                   callback.reset();
                    try {
-                       DefaultOperationRequestParser.INSTANCE.parse(thePath, handler);
+                       ParserUtil.parseOperationRequest(thePath, callback);
                    } catch (CommandFormatException e) {
                        return Collections.emptyList();
                    }
 
-                   OperationRequestAddress typeAddress = handler.getAddress();
+                   OperationRequestAddress typeAddress = callback.getAddress();
                    if (!typeAddress.endsOnType()) {
                        return Collections.emptyList();
                    }
@@ -163,7 +173,7 @@ public class CommandCommandHandler extends CommandHandlerWithHelp {
             }}), "--command-name") {
             @Override
             public boolean canAppearNext(CommandContext ctx) throws CommandFormatException {
-                ParsedArguments args = ctx.getParsedArguments();
+                ParsedCommandLine args = ctx.getParsedCommandLine();
                 if(isPresent(args)) {
                     return false;
                 }
@@ -172,7 +182,7 @@ public class CommandCommandHandler extends CommandHandlerWithHelp {
                     return false;
                 }
                 if("add".equals(actionStr)) {
-                    return idProperty.isPresent(args);
+                    return idProperty.isValueComplete(args);
                 }
                 if("remove".equals(actionStr)) {
                     return true;
@@ -188,7 +198,7 @@ public class CommandCommandHandler extends CommandHandlerWithHelp {
     @Override
     protected void doHandle(CommandContext ctx) throws CommandFormatException {
 
-        final ParsedArguments args = ctx.getParsedArguments();
+        final ParsedCommandLine args = ctx.getParsedCommandLine();
         final String action = this.action.getValue(args);
         if(action == null) {
             ctx.printLine("Command is missing.");
@@ -270,7 +280,7 @@ public class CommandCommandHandler extends CommandHandlerWithHelp {
         ModelNode address = request.get("address");
 
         if(ctx.isDomainMode()) {
-            final String profileName = profile.getValue(ctx.getParsedArguments());
+            final String profileName = profile.getValue(ctx.getParsedCommandLine());
             if(profile == null) {
                 ctx.printLine("--profile argument is required to get the node description.");
                 return null;
@@ -278,15 +288,19 @@ public class CommandCommandHandler extends CommandHandlerWithHelp {
             address.add("profile", profileName);
         }
 
-        final String type = nodePath.getValue(ctx.getParsedArguments());
-        DefaultOperationCallbackHandler handler = new DefaultOperationCallbackHandler();
+        final String type = nodePath.getValue(ctx.getParsedCommandLine());
+        if(callback == null) {
+            callback = new DefaultCallbackHandler();
+        } else {
+            callback.reset();
+        }
         try {
-            DefaultOperationRequestParser.INSTANCE.parse(type, handler);
+            ParserUtil.parseOperationRequest(type, callback);
         } catch (CommandFormatException e) {
             throw new IllegalArgumentException("Failed to parse nodeType: " + e.getMessage());
         }
 
-        OperationRequestAddress typeAddress = handler.getAddress();
+        OperationRequestAddress typeAddress = callback.getAddress();
         if(!typeAddress.endsOnType()) {
             return null;
         }
@@ -308,15 +322,20 @@ public class CommandCommandHandler extends CommandHandlerWithHelp {
             address.add("profile", profileName);
         }
 
-        DefaultOperationCallbackHandler handler = new DefaultOperationCallbackHandler();
+        if(callback == null) {
+            callback = new DefaultCallbackHandler();
+        } else {
+            callback.reset();
+        }
+
         try {
-            DefaultOperationRequestParser.INSTANCE.parse(typePath, handler);
+            ParserUtil.parseOperationRequest(typePath, callback);
         } catch (CommandFormatException e) {
             ctx.printLine("Failed to validate input: " + e.getLocalizedMessage());
             return false;
         }
 
-        OperationRequestAddress typeAddress = handler.getAddress();
+        OperationRequestAddress typeAddress = callback.getAddress();
         if(!typeAddress.endsOnType()) {
             ctx.printLine("Node path '" + typePath + "' doesn't appear to end on a type.");
             return false;

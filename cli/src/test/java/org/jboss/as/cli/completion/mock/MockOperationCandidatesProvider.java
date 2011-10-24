@@ -26,8 +26,13 @@ import java.util.Collections;
 
 import java.util.List;
 
+import org.jboss.as.cli.CommandArgument;
+import org.jboss.as.cli.CommandContext;
+import org.jboss.as.cli.CommandFormatException;
+import org.jboss.as.cli.CommandLineCompleter;
 import org.jboss.as.cli.operation.OperationCandidatesProvider;
 import org.jboss.as.cli.operation.OperationRequestAddress;
+import org.jboss.as.cli.operation.ParsedCommandLine;
 
 /**
 *
@@ -46,7 +51,7 @@ public class MockOperationCandidatesProvider implements OperationCandidatesProvi
     }
 
     @Override
-    public List<String> getNodeNames(OperationRequestAddress prefix) {
+    public List<String> getNodeNames(CommandContext ctx, OperationRequestAddress prefix) {
 
         if(prefix.isEmpty()) {
             throw new IllegalArgumentException("Can't call getNodeNames() with an empty prefix.");
@@ -73,7 +78,7 @@ public class MockOperationCandidatesProvider implements OperationCandidatesProvi
     }
 
     @Override
-    public List<String> getNodeTypes(OperationRequestAddress prefix) {
+    public List<String> getNodeTypes(CommandContext ctx, OperationRequestAddress prefix) {
 
         if(prefix.endsOnType()) {
             throw new IllegalArgumentException("The prefix isn't expected to end on a type.");
@@ -96,16 +101,85 @@ public class MockOperationCandidatesProvider implements OperationCandidatesProvi
     }
 
     @Override
-    public List<String> getOperationNames(OperationRequestAddress prefix) {
+    public List<String> getOperationNames(CommandContext ctx, OperationRequestAddress prefix) {
         return new ArrayList<String>(root.getOperationNames());
     }
 
     @Override
-    public List<String> getPropertyNames(String operationName, OperationRequestAddress address) {
+    public List<CommandArgument> getProperties(CommandContext ctx, String operationName, OperationRequestAddress address) {
         MockOperation operation = root.getOperation(operationName);
         if(operation == null) {
             return Collections.emptyList();
         }
-        return new ArrayList<String>(operation.getPropertyNames());
+
+        final List<String> names = operation.getPropertyNames();
+        final List<CommandArgument> result = new ArrayList<CommandArgument>(names.size());
+        for(final String name : names) {
+            result.add(new CommandArgument(){
+                @Override
+                public String getFullName() {
+                    return name;
+                }
+
+                @Override
+                public String getShortName() {
+                    return null;
+                }
+
+                @Override
+                public int getIndex() {
+                    return -1;
+                }
+
+                @Override
+                public boolean isPresent(ParsedCommandLine args)
+                        throws CommandFormatException {
+                    return args.hasProperty(name);
+                }
+
+                @Override
+                public boolean canAppearNext(CommandContext ctx) throws CommandFormatException {
+                    ParsedCommandLine args = ctx.getParsedCommandLine();
+                    if (isPresent(args)) {
+                        return !isValueComplete(args);
+                    }
+                    return true;
+                }
+
+                @Override
+                public String getValue(ParsedCommandLine args) throws CommandFormatException {
+                    return args.getPropertyValue(name);
+                }
+
+                @Override
+                public String getValue(ParsedCommandLine args, boolean required) throws CommandFormatException {
+                    if(!isPresent(args)) {
+                        throw new CommandFormatException("Property '" + name + "' is missing required value.");
+                    }
+                    return args.getPropertyValue(name);
+                }
+
+                @Override
+                public boolean isValueComplete(ParsedCommandLine args) throws CommandFormatException {
+                    if(!isPresent(args)) {
+                        return false;
+                    }
+                    if(name.equals(args.getLastParsedPropertyName())) {
+                        return false;
+                    }
+                    return true;
+                }
+
+                @Override
+                public boolean isValueRequired() {
+                    return true;
+                }
+
+                @Override
+                public CommandLineCompleter getValueCompleter() {
+                    return null;
+                }});
+        }
+        return result;
     }
 }

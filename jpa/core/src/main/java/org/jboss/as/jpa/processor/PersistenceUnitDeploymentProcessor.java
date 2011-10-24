@@ -40,7 +40,7 @@ import org.jboss.as.jpa.transaction.JtaManagerImpl;
 import org.jboss.as.jpa.validator.SerializableValidatorFactory;
 import org.jboss.as.naming.ManagedReference;
 import org.jboss.as.naming.ManagedReferenceFactory;
-import org.jboss.as.naming.NamingStore;
+import org.jboss.as.naming.ServiceBasedNamingStore;
 import org.jboss.as.naming.ValueManagedReferenceFactory;
 import org.jboss.as.naming.deployment.ContextNames;
 import org.jboss.as.naming.service.BinderService;
@@ -262,18 +262,18 @@ public class PersistenceUnitDeploymentProcessor implements DeploymentUnitProcess
                         final String jtaDataSource = adjustJndi(pu.getJtaDataSourceName());
                         final String nonJtaDataSource = adjustJndi(pu.getNonJtaDataSourceName());
 
-                        if (jtaDataSource != null) {
+                        if (jtaDataSource != null && jtaDataSource.length() > 0) {
                             if (jtaDataSource.startsWith("java:")) {
-                                builder.addDependency(ContextNames.serviceNameOfContext(eeModuleDescription.getApplicationName(), eeModuleDescription.getModuleName(), eeModuleDescription.getModuleName(), jtaDataSource), ManagedReferenceFactory.class, new ManagedReferenceFactoryInjector(service.getJtaDataSourceInjector()));
+                                builder.addDependency(ContextNames.bindInfoFor(eeModuleDescription.getApplicationName(), eeModuleDescription.getModuleName(), eeModuleDescription.getModuleName(), jtaDataSource).getBinderServiceName(), ManagedReferenceFactory.class, new ManagedReferenceFactoryInjector(service.getJtaDataSourceInjector()));
                                 useDefaultDataSource = false;
                             } else {
                                 builder.addDependency(AbstractDataSourceService.SERVICE_NAME_BASE.append(jtaDataSource), new CastingInjector<DataSource>(service.getJtaDataSourceInjector(), DataSource.class));
                                 useDefaultDataSource = false;
                             }
                         }
-                        if (nonJtaDataSource != null) {
+                        if (nonJtaDataSource != null && nonJtaDataSource.length() > 0) {
                             if (nonJtaDataSource.startsWith("java:")) {
-                                builder.addDependency(ContextNames.serviceNameOfContext(eeModuleDescription.getApplicationName(), eeModuleDescription.getModuleName(), eeModuleDescription.getModuleName(), nonJtaDataSource), ManagedReferenceFactory.class, new ManagedReferenceFactoryInjector(service.getNonJtaDataSourceInjector()));
+                                builder.addDependency(ContextNames.bindInfoFor(eeModuleDescription.getApplicationName(), eeModuleDescription.getModuleName(), eeModuleDescription.getModuleName(), nonJtaDataSource).getBinderServiceName(), ManagedReferenceFactory.class, new ManagedReferenceFactoryInjector(service.getNonJtaDataSourceInjector()));
                                 useDefaultDataSource = false;
                             } else {
                                 builder.addDependency(AbstractDataSourceService.SERVICE_NAME_BASE.append(nonJtaDataSource), new CastingInjector<DataSource>(service.getNonJtaDataSourceInjector(), DataSource.class));
@@ -297,10 +297,10 @@ public class PersistenceUnitDeploymentProcessor implements DeploymentUnitProcess
 
                         if (pu.getProperties().containsKey(JNDI_PROPERTY)) {
                             String jndiName = pu.getProperties().get(JNDI_PROPERTY).toString();
-                            final ServiceName bindingServiceName = ContextNames.serviceNameOfContext(eeModuleDescription.getApplicationName(), eeModuleDescription.getModuleName(), eeModuleDescription.getModuleName(), jndiName);
-                            final BinderService binderService = new BinderService(jndiName);
-                            serviceTarget.addService(bindingServiceName, binderService)
-                                    .addDependency(ContextNames.serviceNameOfNamingStore(eeModuleDescription.getApplicationName(), eeModuleDescription.getModuleName(), eeModuleDescription.getModuleName(), jndiName), NamingStore.class, binderService.getNamingStoreInjector())
+                            final ContextNames.BindInfo bindingInfo = ContextNames.bindInfoFor(eeModuleDescription.getApplicationName(), eeModuleDescription.getModuleName(), eeModuleDescription.getModuleName(), jndiName);
+                            final BinderService binderService = new BinderService(bindingInfo.getBindName());
+                            serviceTarget.addService(bindingInfo.getBinderServiceName(), binderService)
+                                    .addDependency(bindingInfo.getParentContextServiceName(), ServiceBasedNamingStore.class, binderService.getNamingStoreInjector())
                                     .addDependency(puServiceName, PersistenceUnitService.class, new Injector<PersistenceUnitService>() {
                                         @Override
                                         public void inject(final PersistenceUnitService value) throws InjectionException {
@@ -336,7 +336,7 @@ public class PersistenceUnitDeploymentProcessor implements DeploymentUnitProcess
     }
 
     private String adjustJndi(String dataSourceName) {
-        if (dataSourceName != null && !dataSourceName.startsWith("java:")) {
+        if (dataSourceName != null && dataSourceName.length() > 0 && !dataSourceName.startsWith("java:")) {
             if (dataSourceName.startsWith("jboss/")) {
                 return "java:" + dataSourceName;
             }

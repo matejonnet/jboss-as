@@ -24,9 +24,6 @@ package org.jboss.as.messaging;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELATIVE_TO;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
-import static org.jboss.as.messaging.CommonAttributes.ACCEPTOR;
-import static org.jboss.as.messaging.CommonAttributes.ADDRESS_FULL_MESSAGE_POLICY;
 import static org.jboss.as.messaging.CommonAttributes.ADDRESS_SETTING;
 import static org.jboss.as.messaging.CommonAttributes.ALLOW_FAILBACK;
 import static org.jboss.as.messaging.CommonAttributes.ASYNC_CONNECTION_EXECUTION_ENABLED;
@@ -37,17 +34,8 @@ import static org.jboss.as.messaging.CommonAttributes.CLUSTER_PASSWORD;
 import static org.jboss.as.messaging.CommonAttributes.CLUSTER_USER;
 import static org.jboss.as.messaging.CommonAttributes.CONNECTION_FACTORY;
 import static org.jboss.as.messaging.CommonAttributes.CONNECTION_TTL_OVERRIDE;
-import static org.jboss.as.messaging.CommonAttributes.CONNECTOR;
-import static org.jboss.as.messaging.CommonAttributes.CONSUME_NAME;
-import static org.jboss.as.messaging.CommonAttributes.CREATEDURABLEQUEUE_NAME;
 import static org.jboss.as.messaging.CommonAttributes.CREATE_BINDINGS_DIR;
 import static org.jboss.as.messaging.CommonAttributes.CREATE_JOURNAL_DIR;
-import static org.jboss.as.messaging.CommonAttributes.CREATE_NON_DURABLE_QUEUE_NAME;
-import static org.jboss.as.messaging.CommonAttributes.DEAD_LETTER_ADDRESS;
-import static org.jboss.as.messaging.CommonAttributes.DELETEDURABLEQUEUE_NAME;
-import static org.jboss.as.messaging.CommonAttributes.DELETE_NON_DURABLE_QUEUE_NAME;
-import static org.jboss.as.messaging.CommonAttributes.EXPIRY_ADDRESS;
-import static org.jboss.as.messaging.CommonAttributes.FACTORY_CLASS;
 import static org.jboss.as.messaging.CommonAttributes.FAILBACK_DELAY;
 import static org.jboss.as.messaging.CommonAttributes.FAILOVER_ON_SHUTDOWN;
 import static org.jboss.as.messaging.CommonAttributes.ID_CACHE_SIZE;
@@ -69,77 +57,61 @@ import static org.jboss.as.messaging.CommonAttributes.JOURNAL_TYPE;
 import static org.jboss.as.messaging.CommonAttributes.LARGE_MESSAGES_DIRECTORY;
 import static org.jboss.as.messaging.CommonAttributes.LIVE_CONNECTOR_REF;
 import static org.jboss.as.messaging.CommonAttributes.LOG_JOURNAL_WRITE_RATE;
-import static org.jboss.as.messaging.CommonAttributes.LVQ;
 import static org.jboss.as.messaging.CommonAttributes.MANAGEMENT_ADDRESS;
 import static org.jboss.as.messaging.CommonAttributes.MANAGEMENT_NOTIFICATION_ADDRESS;
-import static org.jboss.as.messaging.CommonAttributes.MANAGE_NAME;
-import static org.jboss.as.messaging.CommonAttributes.MAX_DELIVERY_ATTEMPTS;
-import static org.jboss.as.messaging.CommonAttributes.MAX_SIZE_BYTES_NODE_NAME;
 import static org.jboss.as.messaging.CommonAttributes.MEMORY_MEASURE_INTERVAL;
 import static org.jboss.as.messaging.CommonAttributes.MEMORY_WARNING_THRESHOLD;
 import static org.jboss.as.messaging.CommonAttributes.MESSAGE_COUNTER_ENABLED;
-import static org.jboss.as.messaging.CommonAttributes.MESSAGE_COUNTER_HISTORY_DAY_LIMIT;
 import static org.jboss.as.messaging.CommonAttributes.MESSAGE_COUNTER_MAX_DAY_HISTORY;
 import static org.jboss.as.messaging.CommonAttributes.MESSAGE_COUNTER_SAMPLE_PERIOD;
 import static org.jboss.as.messaging.CommonAttributes.MESSAGE_EXPIRY_SCAN_PERIOD;
 import static org.jboss.as.messaging.CommonAttributes.MESSAGE_EXPIRY_THREAD_PRIORITY;
 import static org.jboss.as.messaging.CommonAttributes.NAME_OPTIONAL;
-import static org.jboss.as.messaging.CommonAttributes.PAGE_SIZE_BYTES_NODE_NAME;
 import static org.jboss.as.messaging.CommonAttributes.PAGING_DIRECTORY;
-import static org.jboss.as.messaging.CommonAttributes.PARAM;
 import static org.jboss.as.messaging.CommonAttributes.PERF_BLAST_PAGES;
 import static org.jboss.as.messaging.CommonAttributes.PERSISTENCE_ENABLED;
 import static org.jboss.as.messaging.CommonAttributes.PERSIST_DELIVERY_COUNT_BEFORE_DELIVERY;
 import static org.jboss.as.messaging.CommonAttributes.PERSIST_ID_CACHE;
 import static org.jboss.as.messaging.CommonAttributes.POOLED_CONNECTION_FACTORY;
 import static org.jboss.as.messaging.CommonAttributes.QUEUE;
-import static org.jboss.as.messaging.CommonAttributes.REDELIVERY_DELAY;
-import static org.jboss.as.messaging.CommonAttributes.REDISTRIBUTION_DELAY;
 import static org.jboss.as.messaging.CommonAttributes.RUN_SYNC_SPEED_TEST;
 import static org.jboss.as.messaging.CommonAttributes.SCHEDULED_THREAD_POOL_MAX_SIZE;
 import static org.jboss.as.messaging.CommonAttributes.SECURITY_ENABLED;
 import static org.jboss.as.messaging.CommonAttributes.SECURITY_INVALIDATION_INTERVAL;
 import static org.jboss.as.messaging.CommonAttributes.SECURITY_SETTING;
-import static org.jboss.as.messaging.CommonAttributes.SEND_NAME;
-import static org.jboss.as.messaging.CommonAttributes.SEND_TO_DLA_ON_NO_ROUTE;
 import static org.jboss.as.messaging.CommonAttributes.SERVER_DUMP_INTERVAL;
-import static org.jboss.as.messaging.CommonAttributes.SERVER_ID;
 import static org.jboss.as.messaging.CommonAttributes.SHARED_STORE;
-import static org.jboss.as.messaging.CommonAttributes.SOCKET_BINDING;
 import static org.jboss.as.messaging.CommonAttributes.THREAD_POOL_MAX_SIZE;
 import static org.jboss.as.messaging.CommonAttributes.TRANSACTION_TIMEOUT;
 import static org.jboss.as.messaging.CommonAttributes.TRANSACTION_TIMEOUT_SCAN_PERIOD;
 import static org.jboss.as.messaging.CommonAttributes.WILD_CARD_ROUTING_ENABLED;
 
-import javax.management.MBeanServer;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import javax.management.MBeanServer;
+
+import org.hornetq.api.core.DiscoveryGroupConfiguration;
 import org.hornetq.api.core.SimpleString;
-import org.hornetq.api.core.TransportConfiguration;
+import org.hornetq.core.config.BroadcastGroupConfiguration;
 import org.hornetq.core.config.Configuration;
 import org.hornetq.core.config.impl.ConfigurationImpl;
-import org.hornetq.core.remoting.impl.invm.InVMAcceptorFactory;
-import org.hornetq.core.remoting.impl.invm.InVMConnectorFactory;
-import org.hornetq.core.remoting.impl.netty.NettyAcceptorFactory;
-import org.hornetq.core.remoting.impl.netty.NettyConnectorFactory;
 import org.hornetq.core.security.Role;
 import org.hornetq.core.server.HornetQServer;
 import org.hornetq.core.server.JournalType;
-import org.hornetq.core.settings.impl.AddressFullMessagePolicy;
 import org.hornetq.core.settings.impl.AddressSettings;
-import org.jboss.as.controller.AbstractAddStepHandler;
 import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
+import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.ServiceVerificationHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
-import org.jboss.as.messaging.MessagingServices.TransportConfigType;
+import org.jboss.as.controller.registry.Resource;
 import org.jboss.as.messaging.jms.JMSService;
 import org.jboss.as.network.SocketBinding;
 import org.jboss.as.server.services.path.RelativePathService;
@@ -159,11 +131,11 @@ import org.jboss.msc.service.ServiceTarget;
  * @author <a href="mailto:andy.taylor@jboss.com">Andy Taylor</a>
  * @author Brian Stansberry (c) 2011 Red Hat Inc.
  */
-class MessagingSubsystemAdd extends AbstractAddStepHandler implements DescriptionProvider {
+class MessagingSubsystemAdd implements OperationStepHandler, DescriptionProvider {
 
     private static final String DEFAULT_PATH = "messaging";
     private static final String DEFAULT_RELATIVE_TO = "jboss.server.data.dir";
-    private static final ServiceName PATH_BASE = MessagingServices.JBOSS_MESSAGING.append("paths");
+    static final ServiceName PATH_BASE = MessagingServices.JBOSS_MESSAGING.append("paths");
 
     static final String DEFAULT_BINDINGS_DIR = "bindings";
     static final String DEFAULT_JOURNAL_DIR = "journal";
@@ -175,53 +147,63 @@ class MessagingSubsystemAdd extends AbstractAddStepHandler implements Descriptio
     private MessagingSubsystemAdd() {
     }
 
-    protected void populateModel(ModelNode operation, ModelNode model) throws OperationFailedException {
-        model.setEmptyObject();
+    /** {@inheritDoc */
+    public void execute(final OperationContext context, final ModelNode operation) throws OperationFailedException {
+
+        // We use a custom Resource impl so we can expose runtime HQ components (e.g. AddressControl) as child resources
+        final HornetQServerResource resource = new HornetQServerResource();
+        context.addResource(PathAddress.EMPTY_ADDRESS, resource);
+        final ModelNode model = resource.getModel();
 
         for (final AttributeDefinition attributeDefinition : CommonAttributes.SIMPLE_ROOT_RESOURCE_ATTRIBUTES) {
             attributeDefinition.validateAndSet(operation, model);
         }
 
-        for (final String attribute : CommonAttributes.COMPLEX_ROOT_RESOURCE_ATTRIBUTES) {
-            if (operation.hasDefined(attribute)) {
-                model.get(attribute).set(operation.get(attribute));
-            }
-        }
-
-        model.get(QUEUE);
+        model.get(QUEUE).setEmptyObject();
         model.get(CONNECTION_FACTORY).setEmptyObject();
         model.get(JMS_QUEUE).setEmptyObject();
         model.get(JMS_TOPIC).setEmptyObject();
         model.get(POOLED_CONNECTION_FACTORY).setEmptyObject();
+
+        if (context.getType() == OperationContext.Type.SERVER) {
+            context.addStep(new OperationStepHandler() {
+                public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
+                    final List<ServiceController<?>> controllers = new ArrayList<ServiceController<?>>();
+                    final ServiceVerificationHandler verificationHandler = new ServiceVerificationHandler();
+                    performRuntime(context, resource, verificationHandler, controllers);
+
+                    context.addStep(verificationHandler, OperationContext.Stage.VERIFY);
+
+                    if (context.completeStep() == OperationContext.ResultAction.ROLLBACK) {
+                        for(ServiceController<?> controller : controllers) {
+                            context.removeService(controller.getName());
+                        }
+                    }
+                }
+            }, OperationContext.Stage.RUNTIME);
+        }
+        context.completeStep();
     }
 
-    protected void performRuntime(final OperationContext context, final ModelNode operation, final ModelNode model,
+    private void performRuntime(final OperationContext context, final HornetQServerResource resource,
                                   final ServiceVerificationHandler verificationHandler,
                                   final List<ServiceController<?>> newControllers) throws OperationFailedException {
-        final ServiceTarget serviceTarget = context.getServiceTarget();
-
-        // Create path services
-        // TODO move into child resource handlers
-        final ServiceName bindingsPath = createDirectoryService(DEFAULT_BINDINGS_DIR, operation.get(BINDINGS_DIRECTORY), serviceTarget);
-        final ServiceName journalPath = createDirectoryService(DEFAULT_JOURNAL_DIR, operation.get(JOURNAL_DIRECTORY), serviceTarget);
-        final ServiceName largeMessagePath = createDirectoryService(DEFAULT_LARGE_MESSSAGE_DIR, operation.get(LARGE_MESSAGES_DIRECTORY), serviceTarget);
-        final ServiceName pagingPath = createDirectoryService(DEFAULT_PAGING_DIR, operation.get(PAGING_DIRECTORY), serviceTarget);
-
         // Add a RUNTIME step to actually install the HQ Service. This will execute after the runtime step
         // added by any child resources whose ADD handler executes after this one in the model stage.
         context.addStep(new OperationStepHandler() {
             @Override
             public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
+                final ServiceTarget serviceTarget = context.getServiceTarget();
 
-                // Transform the configuration
+                // Transform the configuration based on the recursive model
+                final ModelNode model = Resource.Tools.readModel(resource);
                 final Configuration configuration = transformConfig(model);
 
-                // Process acceptors and connectors
-                // TODO move into child resource handlers
-                final Set<String> socketBindings = new HashSet<String>();
-                processAcceptors(configuration, operation, socketBindings);
-                processConnectors(configuration, operation, socketBindings);
-
+                // Create path services
+                final ServiceName bindingsPath = createDirectoryService(DEFAULT_BINDINGS_DIR, model.get(PATH, BINDINGS_DIRECTORY), serviceTarget);
+                final ServiceName journalPath = createDirectoryService(DEFAULT_JOURNAL_DIR, model.get(PATH, JOURNAL_DIRECTORY), serviceTarget);
+                final ServiceName largeMessagePath = createDirectoryService(DEFAULT_LARGE_MESSSAGE_DIR, model.get(PATH, LARGE_MESSAGES_DIRECTORY), serviceTarget);
+                final ServiceName pagingPath = createDirectoryService(DEFAULT_PAGING_DIR, model.get(PATH, PAGING_DIRECTORY), serviceTarget);
 
                 // Create the HornetQ Service
                 final HornetQService hqService = new HornetQService();
@@ -231,24 +213,47 @@ class MessagingSubsystemAdd extends AbstractAddStepHandler implements Descriptio
                 final ServiceBuilder<HornetQServer> serviceBuilder = serviceTarget.addService(MessagingServices.JBOSS_MESSAGING, hqService)
                         .addDependency(DependencyType.OPTIONAL, ServiceName.JBOSS.append("mbean", "server"), MBeanServer.class, hqService.getMBeanServer());
 
-                // Depend on path services
-                // TODO once the above "path service" installs are moved to child resource handlers,
-                // in this step handler we have to ensure the paths exist, creating them if not
                 serviceBuilder.addDependency(bindingsPath, String.class, hqService.getPathInjector(DEFAULT_BINDINGS_DIR));
                 serviceBuilder.addDependency(journalPath, String.class, hqService.getPathInjector(DEFAULT_JOURNAL_DIR));
                 serviceBuilder.addDependency(largeMessagePath, String.class, hqService.getPathInjector(DEFAULT_LARGE_MESSSAGE_DIR));
                 serviceBuilder.addDependency(pagingPath, String.class, hqService.getPathInjector(DEFAULT_PAGING_DIR));
+
+                // Process acceptors and connectors
+                final Set<String> socketBindings = new HashSet<String>();
+                TransportConfigOperationHandlers.processAcceptors(configuration, model, socketBindings);
+                TransportConfigOperationHandlers.processConnectors(configuration, model, socketBindings);
 
                 for (final String socketBinding : socketBindings) {
                     final ServiceName socketName = SocketBinding.JBOSS_BINDING_NAME.append(socketBinding);
                     serviceBuilder.addDependency(socketName, SocketBinding.class, hqService.getSocketBindingInjector(socketBinding));
                 }
 
+                final List<BroadcastGroupConfiguration> broadcastGroupConfigurations = configuration.getBroadcastGroupConfigurations();
+                final Map<String, DiscoveryGroupConfiguration> discoveryGroupConfigurations = configuration.getDiscoveryGroupConfigurations();
+
+                if(broadcastGroupConfigurations != null) {
+                    for(final BroadcastGroupConfiguration config : broadcastGroupConfigurations) {
+                        final String name = config.getName();
+                        final ServiceName groupBinding = GroupBindingService.BROADCAST.append(name);
+                        serviceBuilder.addDependency(groupBinding, SocketBinding.class, hqService.getGroupBindingInjector("broadcast" + name));
+                    }
+                }
+                if(discoveryGroupConfigurations != null) {
+                    for(final DiscoveryGroupConfiguration config : discoveryGroupConfigurations.values()) {
+                        final String name = config.getName();
+                        final ServiceName groupBinding = GroupBindingService.DISCOVERY.append(name);
+                        serviceBuilder.addDependency(groupBinding, SocketBinding.class, hqService.getGroupBindingInjector("discovery" + name));
+                    }
+                }
+
                 serviceBuilder.addListener(verificationHandler);
 
                 // Install the HornetQ Service
-                newControllers.add(serviceBuilder.install());
+                ServiceController<HornetQServer> hqServerServiceController = serviceBuilder.install();
+                // Provide our custom Resource impl a ref to the HornetQServer so it can create child runtime resources
+                resource.setHornetQServerServiceController(hqServerServiceController);
 
+                newControllers.add(hqServerServiceController);
                 newControllers.add(JMSService.addService(serviceTarget, verificationHandler));
 
                 context.completeStep();
@@ -358,130 +363,24 @@ class MessagingSubsystemAdd extends AbstractAddStepHandler implements Descriptio
     }
 
     /**
-     * Process the acceptor information.
-     *
-     * @param configuration the hornetQ configuration
-     * @param params        the detyped operation parameters
-     * @param bindings      the referenced socket bindings
-     */
-    static void processAcceptors(final Configuration configuration, final ModelNode params, final Set<String> bindings) {
-        if (params.hasDefined(ACCEPTOR)) {
-            final Map<String, TransportConfiguration> acceptors = new HashMap<String, TransportConfiguration>();
-            for (final Property property : params.get(ACCEPTOR).asPropertyList()) {
-                final String acceptorName = property.getName();
-                final ModelNode config = property.getValue();
-                final Map<String, Object> parameters = new HashMap<String, Object>();
-                if (config.get(PARAM).isDefined()) {
-                    for (final Property parameter : config.get(PARAM).asPropertyList()) {
-                        parameters.put(parameter.getName(), parameter.getValue().asString());
-                    }
-                }
-                final TransportConfigType type = TransportConfigType.valueOf(config.get(TYPE).asString());
-                final String clazz;
-                switch (type) {
-                    case Remote: {
-                        clazz = NettyAcceptorFactory.class.getName();
-                        final String binding = config.get(SOCKET_BINDING).asString();
-                        parameters.put(SOCKET_BINDING, binding);
-                        bindings.add(binding);
-                        break;
-                    }
-                    case InVM: {
-                        clazz = InVMAcceptorFactory.class.getName();
-                        parameters.put(SERVER_ID, config.get(SERVER_ID).asInt());
-                        break;
-                    }
-                    case Generic: {
-                        clazz = config.get(FACTORY_CLASS.getName()).asString();
-                        break;
-                    }
-                    default: {
-                        clazz = null;
-                        break;
-                    }
-                }
-                acceptors.put(acceptorName, new TransportConfiguration(clazz, parameters, acceptorName));
-            }
-            configuration.setAcceptorConfigurations(new HashSet<TransportConfiguration>(acceptors.values()));
-        }
-    }
-
-    /**
-     * Process the connector information.
-     *
-     * @param configuration the hornetQ configuration
-     * @param params        the detyped operation parameters
-     * @param bindings      the referenced socket bindings
-     */
-    static void processConnectors(final Configuration configuration, final ModelNode params, final Set<String> bindings) {
-        if (params.hasDefined(CONNECTOR)) {
-            final Map<String, TransportConfiguration> connectors = new HashMap<String, TransportConfiguration>();
-            for (final Property property : params.get(CONNECTOR).asPropertyList()) {
-                final String connectorName = property.getName();
-                final ModelNode config = property.getValue();
-                final Map<String, Object> parameters = new HashMap<String, Object>();
-                if (config.get(PARAM).isDefined()) {
-                    for (final Property parameter : config.get(PARAM).asPropertyList()) {
-                        parameters.put(parameter.getName(), parameter.getValue().asString());
-                    }
-                }
-                final TransportConfigType type = TransportConfigType.valueOf(config.get(TYPE).asString());
-                final String clazz;
-                switch (type) {
-                    case Remote: {
-                        clazz = NettyConnectorFactory.class.getName();
-                        final String binding = config.get(SOCKET_BINDING).asString();
-                        parameters.put(SOCKET_BINDING, binding);
-                        bindings.add(binding);
-                        break;
-                    }
-                    case InVM: {
-                        clazz = InVMConnectorFactory.class.getName();
-                        parameters.put(SERVER_ID, config.get(SERVER_ID).asInt());
-                        break;
-                    }
-                    case Generic: {
-                        clazz = config.get(FACTORY_CLASS.getName()).asString();
-                        break;
-                    }
-                    default: {
-                        clazz = null;
-                        break;
-                    }
-                }
-                connectors.put(connectorName, new TransportConfiguration(clazz, parameters, connectorName));
-            }
-            configuration.setConnectorConfigurations(connectors);
-        }
-    }
-
-    /**
      * Process the address settings.
      *
      * @param configuration the hornetQ configuration
      * @param params        the detyped operation parameters
      */
-    static void processAddressSettings(final Configuration configuration, final ModelNode params) {
-        if (params.get(ADDRESS_SETTING).isDefined()) {
+    /**
+     * Process the address settings.
+     *
+     * @param configuration the hornetQ configuration
+     * @param params        the detyped operation parameters
+     * @throws OperationFailedException
+     */
+    static void processAddressSettings(final Configuration configuration, final ModelNode params) throws OperationFailedException {
+        if (params.hasDefined(ADDRESS_SETTING)) {
             for (final Property property : params.get(ADDRESS_SETTING).asPropertyList()) {
                 final String match = property.getName();
                 final ModelNode config = property.getValue();
-
-                final AddressSettings settings = new AddressSettings();
-                final AddressFullMessagePolicy addressPolicy = config.hasDefined(ADDRESS_FULL_MESSAGE_POLICY) ?
-                        AddressFullMessagePolicy.valueOf(config.get(ADDRESS_FULL_MESSAGE_POLICY).asString()) : AddressSettings.DEFAULT_ADDRESS_FULL_MESSAGE_POLICY;
-                settings.setAddressFullMessagePolicy(addressPolicy);
-                settings.setDeadLetterAddress(asSimpleString(config.get(DEAD_LETTER_ADDRESS), null));
-                settings.setLastValueQueue(config.get(LVQ).asBoolean(AddressSettings.DEFAULT_LAST_VALUE_QUEUE));
-                settings.setMaxDeliveryAttempts(config.get(MAX_DELIVERY_ATTEMPTS).asInt(AddressSettings.DEFAULT_MAX_DELIVERY_ATTEMPTS));
-                settings.setMaxSizeBytes(config.get(MAX_SIZE_BYTES_NODE_NAME).asInt((int) AddressSettings.DEFAULT_MAX_SIZE_BYTES));
-                settings.setMessageCounterHistoryDayLimit(config.get(MESSAGE_COUNTER_HISTORY_DAY_LIMIT).asInt(AddressSettings.DEFAULT_MESSAGE_COUNTER_HISTORY_DAY_LIMIT));
-                settings.setExpiryAddress(asSimpleString(config.get(EXPIRY_ADDRESS), null));
-                settings.setRedeliveryDelay(config.get(REDELIVERY_DELAY).asInt((int) AddressSettings.DEFAULT_REDELIVER_DELAY));
-                settings.setRedistributionDelay(config.get(REDISTRIBUTION_DELAY).asInt((int) AddressSettings.DEFAULT_REDISTRIBUTION_DELAY));
-                settings.setPageSizeBytes(config.get(PAGE_SIZE_BYTES_NODE_NAME).asInt((int) AddressSettings.DEFAULT_PAGE_SIZE));
-                settings.setSendToDLAOnNoRoute(config.get(SEND_TO_DLA_ON_NO_ROUTE).asBoolean(AddressSettings.DEFAULT_SEND_TO_DLA_ON_NO_ROUTE));
-
+                final AddressSettings settings = AddressSettingAdd.createSettings(config);
                 configuration.getAddressesSettings().put(match, settings);
             }
         }
@@ -498,15 +397,11 @@ class MessagingSubsystemAdd extends AbstractAddStepHandler implements Descriptio
             for (final Property property : params.get(SECURITY_SETTING).asPropertyList()) {
                 final String match = property.getName();
                 final ModelNode config = property.getValue();
-                if (config.getType() != ModelType.UNDEFINED) {
+
+                if(config.hasDefined(CommonAttributes.ROLE)) {
                     final Set<Role> roles = new HashSet<Role>();
-                    for (final Property role : config.asPropertyList()) {
-                        final String name = role.getName();
-                        final ModelNode value = role.getValue();
-                        roles.add(new Role(name, value.get(SEND_NAME).asBoolean(false),
-                                value.get(CONSUME_NAME).asBoolean(false), value.get(CREATEDURABLEQUEUE_NAME).asBoolean(false),
-                                value.get(DELETEDURABLEQUEUE_NAME).asBoolean(false), value.get(CREATE_NON_DURABLE_QUEUE_NAME).asBoolean(false),
-                                value.get(DELETE_NON_DURABLE_QUEUE_NAME).asBoolean(false), value.get(MANAGE_NAME).asBoolean(false)));
+                    for (final Property role : config.get(CommonAttributes.ROLE).asPropertyList()) {
+                        roles.add(SecurityRoleAdd.transform(role.getName(), role.getValue()));
                     }
                     configuration.getSecurityRoles().put(match, roles);
                 }

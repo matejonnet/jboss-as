@@ -24,18 +24,20 @@ package org.jboss.as.ejb3.component;
 import org.jboss.as.ee.component.BasicComponent;
 import org.jboss.as.ee.component.ComponentView;
 import org.jboss.as.ee.component.ComponentViewInstance;
+import org.jboss.as.ejb3.context.CurrentInvocationContext;
+import org.jboss.as.ejb3.context.spi.InvocationContext;
 import org.jboss.as.ejb3.security.EJBSecurityMetaData;
+import org.jboss.as.ejb3.timerservice.spi.TimedObjectInvoker;
+import org.jboss.as.ejb3.tx.ApplicationExceptionDetails;
 import org.jboss.as.naming.context.NamespaceContextSelector;
 import org.jboss.as.security.service.SimpleSecurityManager;
 import org.jboss.as.server.CurrentServiceContainer;
-import org.jboss.ejb3.context.CurrentInvocationContext;
-import org.jboss.ejb3.context.spi.InvocationContext;
+import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.proxy.MethodIdentifier;
 import org.jboss.logging.Logger;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceName;
 
-import javax.ejb.ApplicationException;
 import javax.ejb.EJBHome;
 import javax.ejb.EJBLocalHome;
 import javax.ejb.TimerService;
@@ -49,7 +51,6 @@ import javax.transaction.SystemException;
 import javax.transaction.TransactionManager;
 import javax.transaction.TransactionSynchronizationRegistry;
 import javax.transaction.UserTransaction;
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.security.Principal;
 import java.util.Collections;
@@ -58,35 +59,23 @@ import java.util.Map;
 /**
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
  */
-public abstract class EJBComponent extends BasicComponent implements org.jboss.ejb3.context.spi.EJBComponent {
-    private static Logger log = Logger.getLogger(EJBComponent.class);
+public abstract class EJBComponent extends BasicComponent implements org.jboss.as.ejb3.context.spi.EJBComponent {
+    private static final Logger log = Logger.getLogger(EJBComponent.class);
 
-    private static final ApplicationException APPLICATION_EXCEPTION = new ApplicationException() {
-        @Override
-        public boolean inherited() {
-            return true;
-        }
-
-        @Override
-        public boolean rollback() {
-            return false;
-        }
-
-        @Override
-        public Class<? extends Annotation> annotationType() {
-            return ApplicationException.class;
-        }
-    };
+    private static final ApplicationExceptionDetails APPLICATION_EXCEPTION = new ApplicationExceptionDetails("java.lang.Exception", true, false);
 
     private final Map<MethodTransactionAttributeKey, TransactionAttributeType> txAttrs;
 
     private final EJBUtilities utilities;
     private final boolean isBeanManagedTransaction;
-    private static volatile boolean youHaveBeenWarnedEJBTHREE2120 = false;
-    private final Map<Class<?>, ApplicationException> applicationExceptions;
+    private final Map<Class<?>, ApplicationExceptionDetails> applicationExceptions;
     private final EJBSecurityMetaData securityMetaData;
     private final Map<String, ServiceName> viewServices;
     private final TimerService timerService;
+    protected final Map<Method, InterceptorFactory> timeoutInterceptors;
+    private final Method timeoutMethod;
+
+
 
     /**
      * Construct a new instance.
@@ -102,7 +91,7 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.e
         this.utilities = ejbComponentCreateService.getEJBUtilities();
 
         final Map<MethodTransactionAttributeKey, TransactionAttributeType> txAttrs = ejbComponentCreateService.getTxAttrs();
-        if(txAttrs == null || txAttrs.isEmpty()) {
+        if (txAttrs == null || txAttrs.isEmpty()) {
             this.txAttrs = Collections.emptyMap();
         } else {
             this.txAttrs = txAttrs;
@@ -113,6 +102,8 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.e
         this.securityMetaData = ejbComponentCreateService.getSecurityMetaData();
         this.viewServices = ejbComponentCreateService.getViewServices();
         this.timerService = ejbComponentCreateService.getTimerService();
+        this.timeoutInterceptors = ejbComponentCreateService.getTimeoutInterceptors();
+        this.timeoutMethod = ejbComponentCreateService.getTimeoutMethod();
     }
 
     protected <T> T createViewInstanceProxy(final Class<T> viewInterface, final Map<Object, Object> contextData) {
@@ -128,8 +119,8 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.e
         }
     }
 
-    public ApplicationException getApplicationException(Class<?> exceptionClass, Method invokedMethod) {
-        ApplicationException applicationException = this.applicationExceptions.get(exceptionClass);
+    public ApplicationExceptionDetails getApplicationException(Class<?> exceptionClass, Method invokedMethod) {
+        ApplicationExceptionDetails applicationException = this.applicationExceptions.get(exceptionClass);
         if (applicationException != null) {
             return applicationException;
         }
@@ -141,7 +132,7 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.e
             // is an application exception only if the inherited attribute on the parent application exception
             // is set to true.
             if (applicationException != null) {
-                if (applicationException.inherited()) {
+                if (applicationException.isInherited()) {
                     return applicationException;
                 }
                 // Once we find a super class which is an application exception,
@@ -247,7 +238,7 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.e
     }
 
     public TransactionAttributeType getTransactionAttributeType(MethodIntf methodIntf, Method method) {
-       TransactionAttributeType txAttr = txAttrs.get(new MethodTransactionAttributeKey(methodIntf, MethodIdentifier.getIdentifierForMethod(method)));
+        TransactionAttributeType txAttr = txAttrs.get(new MethodTransactionAttributeKey(methodIntf, MethodIdentifier.getIdentifierForMethod(method)));
         if (txAttr == null)
             return TransactionAttributeType.REQUIRED;
         return txAttr;
@@ -356,5 +347,13 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.e
 
     public EJBSecurityMetaData getSecurityMetaData() {
         return this.securityMetaData;
+    }
+
+    public TimedObjectInvoker getTimedObjectInvoker() {
+        return null;
+    }
+
+    public Method getTimeoutMethod() {
+        return timeoutMethod;
     }
 }

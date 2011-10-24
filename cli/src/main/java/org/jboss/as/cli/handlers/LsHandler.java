@@ -30,8 +30,9 @@ import org.jboss.as.cli.impl.ArgumentWithValue;
 import org.jboss.as.cli.impl.ArgumentWithoutValue;
 import org.jboss.as.cli.operation.OperationRequestAddress;
 import org.jboss.as.cli.operation.OperationRequestCompleter;
-import org.jboss.as.cli.operation.OperationRequestParser;
-import org.jboss.as.cli.operation.impl.DefaultOperationCallbackHandler;
+import org.jboss.as.cli.operation.CommandLineParser;
+import org.jboss.as.cli.operation.ParsedCommandLine;
+import org.jboss.as.cli.operation.impl.DefaultCallbackHandler;
 import org.jboss.as.cli.operation.impl.DefaultOperationRequestAddress;
 
 /**
@@ -50,20 +51,31 @@ public class LsHandler extends CommandHandlerWithHelp {
     public LsHandler(String command) {
         super(command, true);
         l = new ArgumentWithoutValue(this, "-l");
-        nodePath = new ArgumentWithValue(this, OperationRequestCompleter.INSTANCE, 0, "--node-path");
+        nodePath = new ArgumentWithValue(this, OperationRequestCompleter.ARG_VALUE_COMPLETER, 0, "--node-path");
     }
 
     @Override
     protected void doHandle(CommandContext ctx) throws CommandFormatException {
 
-        final String nodePath = this.nodePath.getValue(ctx.getParsedArguments());
+        final ParsedCommandLine parsedCmd = ctx.getParsedCommandLine();
+        String nodePath = this.nodePath.getValue(parsedCmd);
 
         final OperationRequestAddress address;
         if (nodePath != null) {
             address = new DefaultOperationRequestAddress(ctx.getPrefix());
-            OperationRequestParser.CallbackHandler handler = new DefaultOperationCallbackHandler(address);
+            CommandLineParser.CallbackHandler handler = new DefaultCallbackHandler(address);
+            nodePath = ctx.getArgumentsString();
+            if(l.isPresent(parsedCmd)) {
+                nodePath = nodePath.trim();
+                if(nodePath.startsWith("-l ")) {
+                    nodePath = nodePath.substring(3);
+                } else {
+                    nodePath = nodePath.substring(0, nodePath.length() - 3);
+                }
+            }
+
             try {
-                ctx.getOperationRequestParser().parse(nodePath, handler);
+                ctx.getCommandLineParser().parse(nodePath, handler);
             } catch (CommandFormatException e) {
                 ctx.printLine(e.getLocalizedMessage());
             }
@@ -80,6 +92,6 @@ public class LsHandler extends CommandHandlerWithHelp {
             names = Util.getNodeTypes(ctx.getModelControllerClient(), address);
         }
 
-        printList(ctx, names, l.isPresent(ctx.getParsedArguments()));
+        printList(ctx, names, l.isPresent(parsedCmd));
     }
 }

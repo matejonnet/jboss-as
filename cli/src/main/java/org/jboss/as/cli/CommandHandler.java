@@ -21,6 +21,8 @@
  */
 package org.jboss.as.cli;
 
+import java.util.List;
+
 
 /**
  *
@@ -36,12 +38,6 @@ public interface CommandHandler {
      * @return  true if the command can be executed in the current context, false - otherwise.
      */
     boolean isAvailable(CommandContext ctx);
-
-    /**
-     * The tab-completer for the argument value.
-     * @return  the tab-completer for the argument value or null if the completer is not available for the argument.
-     */
-    CommandLineCompleter getArgumentCompleter();
 
     /**
      * Whether the command supports batch mode or not.
@@ -67,4 +63,6 @@ public interface CommandHandler {
      * @return  true if the handler accepts an argument with the specified index, otherwise - false.
      */
     boolean hasArgument(int index);
+
+    List<CommandArgument> getArguments(CommandContext ctx);
 }

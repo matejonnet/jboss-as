@@ -22,7 +22,7 @@
 package org.jboss.as.threads;
 
 import java.util.Locale;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.OperationFailedException;
@@ -92,7 +92,7 @@ public class BoundedQueueThreadPoolAdd implements OperationStepHandler, Descript
         if (params.getQueueLength() != null) {
             model.get(QUEUE_LENGTH).set(operation.get(QUEUE_LENGTH));
         } else {
-            throw new OperationFailedException(new ModelNode().set("Parameter " + QUEUE_LENGTH + " may not be null "));
+            throw new OperationFailedException(new ModelNode().set("Parameter " + QUEUE_LENGTH + " may not be null."));
         }
 
         if (params.getCoreThreads() != null) {
@@ -116,7 +116,7 @@ public class BoundedQueueThreadPoolAdd implements OperationStepHandler, Descript
 
                     //TODO add the handoffExceutor injection
 
-                    final ServiceBuilder<Executor> serviceBuilder = target.addService(serviceName, service);
+                    final ServiceBuilder<ExecutorService> serviceBuilder = target.addService(serviceName, service);
                     ThreadsSubsystemThreadPoolOperationUtils.addThreadFactoryDependency(params.getThreadFactory(), serviceName, serviceBuilder, service.getThreadFactoryInjector(), target, params.getName() + "-threads");
                     serviceBuilder.addListener(verificationHandler);
                     serviceBuilder.install();

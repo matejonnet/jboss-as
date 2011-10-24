@@ -23,17 +23,17 @@ package org.jboss.as.ejb3.component.messagedriven;
 
 import org.jboss.as.ee.component.Component;
 import org.jboss.as.ee.component.ComponentInstance;
-import org.jboss.ejb3.context.CurrentInvocationContext;
-import org.jboss.ejb3.context.base.BaseInvocationContext;
-import org.jboss.ejb3.context.spi.InvocationContext;
-import org.jboss.ejb3.context.spi.MessageDrivenContext;
-import org.jboss.ejb3.tx2.spi.TransactionalInvocationContext;
+import org.jboss.as.ejb3.context.CurrentInvocationContext;
+import org.jboss.as.ejb3.context.base.BaseInvocationContext;
+import org.jboss.as.ejb3.context.spi.InvocationContext;
+import org.jboss.as.ejb3.context.spi.MessageDrivenContext;
+import org.jboss.as.ejb3.tx.ApplicationExceptionDetails;
+import org.jboss.as.ejb3.tx.TransactionalInvocationContext;
 import org.jboss.invocation.ImmediateInterceptorFactory;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
 import org.jboss.invocation.InterceptorFactory;
 
-import javax.ejb.ApplicationException;
 import javax.ejb.TransactionAttributeType;
 import java.lang.reflect.Method;
 import java.util.Map;
@@ -65,7 +65,7 @@ class MessageDrivenInvocationContextInterceptor implements Interceptor {
     }
 
     protected static class CustomInvocationContext extends BaseInvocationContext implements TransactionalInvocationContext {
-        private InterceptorContext context;
+        private final InterceptorContext context;
 
         protected CustomInvocationContext(InterceptorContext context, Method method, Object[] parameters) {
             super(method, parameters);
@@ -74,7 +74,7 @@ class MessageDrivenInvocationContextInterceptor implements Interceptor {
         }
 
         @Override
-        public ApplicationException getApplicationException(Class<?> e) {
+        public ApplicationExceptionDetails getApplicationException(Class<?> e) {
             return getComponent().getApplicationException(e, getMethod());
         }
 

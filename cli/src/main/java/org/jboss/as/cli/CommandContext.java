@@ -27,7 +27,8 @@ import org.jboss.as.cli.batch.BatchManager;
 import org.jboss.as.cli.batch.BatchedCommand;
 import org.jboss.as.cli.operation.OperationCandidatesProvider;
 import org.jboss.as.cli.operation.OperationRequestAddress;
-import org.jboss.as.cli.operation.OperationRequestParser;
+import org.jboss.as.cli.operation.CommandLineParser;
+import org.jboss.as.cli.operation.ParsedCommandLine;
 import org.jboss.as.cli.operation.PrefixFormatter;
 import org.jboss.as.controller.client.ModelControllerClient;
 
@@ -39,12 +40,6 @@ import org.jboss.as.controller.client.ModelControllerClient;
 public interface CommandContext {
 
     /**
-     * Returns the current command.
-     * @return the current command.
-     */
-    String getCommand();
-
-    /**
      * Returns the current command's arguments as a string.
      * @return current command's arguments as a string or null if the command was entered w/o arguments.
      */
@@ -54,7 +49,7 @@ public interface CommandContext {
      * Parsed command line arguments.
      * @return  parsed command line arguments.
      */
-    ParsedArguments getParsedArguments();
+    ParsedCommandLine getParsedCommandLine();
 
     /**
      * Prints a string to the CLI's output.
@@ -155,7 +150,7 @@ public interface CommandContext {
      * Returns the current operation request parser.
      * @return  current operation request parser.
      */
-    OperationRequestParser getOperationRequestParser();
+    CommandLineParser getCommandLineParser();
 
     /**
      * Returns the current prefix.

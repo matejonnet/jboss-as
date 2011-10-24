@@ -26,9 +26,12 @@ import org.jboss.as.ee.component.BasicComponentInstance;
 import org.jboss.as.ee.component.Component;
 import org.jboss.as.ejb3.component.EJBBusinessMethod;
 import org.jboss.as.ejb3.component.session.SessionBeanComponent;
+import org.jboss.as.ejb3.concurrency.AccessTimeoutDetails;
+import org.jboss.as.ejb3.concurrency.LockableComponent;
+import org.jboss.as.ejb3.timerservice.SingletonTimedObjectInvokerImpl;
+import org.jboss.as.ejb3.timerservice.spi.TimedObjectInvoker;
 import org.jboss.as.naming.ManagedReference;
 import org.jboss.as.server.CurrentServiceContainer;
-import org.jboss.ejb3.concurrency.spi.LockableComponent;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
@@ -37,12 +40,10 @@ import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.StopContext;
 
-import javax.ejb.AccessTimeout;
 import javax.ejb.LockType;
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.Collections;
-import java.util.IdentityHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -59,17 +60,15 @@ public class SingletonComponent extends SessionBeanComponent implements Lockable
 
     private volatile SingletonComponentInstance singletonComponentInstance;
 
-    private boolean initOnStartup;
+    private final boolean initOnStartup;
 
-    private Map<String, LockType> beanLevelLockType;
+    private final Map<String, LockType> beanLevelLockType;
 
-    private Map<EJBBusinessMethod, LockType> methodLockTypes;
+    private final Map<EJBBusinessMethod, LockType> methodLockTypes;
 
-    private Map<EJBBusinessMethod, AccessTimeout> methodAccessTimeouts;
+    private final Map<EJBBusinessMethod, AccessTimeoutDetails> methodAccessTimeouts;
 
     private final List<ServiceName> dependsOn;
-    private final Method timeoutMethod;
-
     /**
      * Construct a new instance.
      *
@@ -85,7 +84,6 @@ public class SingletonComponent extends SessionBeanComponent implements Lockable
         this.beanLevelLockType = singletonComponentCreateService.getBeanLockType();
         this.methodLockTypes = singletonComponentCreateService.getMethodApplicableLockTypes();
         this.methodAccessTimeouts = singletonComponentCreateService.getMethodApplicableAccessTimeouts();
-        this.timeoutMethod = singletonComponentCreateService.getTimeoutMethod();
     }
 
     @Override
@@ -107,7 +105,7 @@ public class SingletonComponent extends SessionBeanComponent implements Lockable
         }
         final Map<Method, Interceptor> timeouts;
         if (timeoutInterceptors != null) {
-            timeouts = new IdentityHashMap<Method, Interceptor>();
+            timeouts = new HashMap<Method, Interceptor>();
             for (Map.Entry<Method, InterceptorFactory> entry : timeoutInterceptors.entrySet()) {
                 timeouts.put(entry.getKey(), entry.getValue().create(interceptorContext));
             }
@@ -162,56 +160,26 @@ public class SingletonComponent extends SessionBeanComponent implements Lockable
     }
 
     @Override
-    public AccessTimeout getAccessTimeout(Method method) {
+    public AccessTimeoutDetails getAccessTimeout(Method method) {
         final EJBBusinessMethod ejbMethod = new EJBBusinessMethod(method);
-        final AccessTimeout accessTimeout = this.methodAccessTimeouts.get(ejbMethod);
+        final AccessTimeoutDetails accessTimeout = this.methodAccessTimeouts.get(ejbMethod);
         if (accessTimeout != null) {
             return accessTimeout;
         }
         // check bean level access timeout
-        final AccessTimeout beanTimeout = this.beanLevelAccessTimeout.get(method.getDeclaringClass().getName());
+        final AccessTimeoutDetails beanTimeout = this.beanLevelAccessTimeout.get(method.getDeclaringClass().getName());
         if (beanTimeout != null) {
             return beanTimeout;
         }
         //TODO: this should be configurable
-        return new AccessTimeout() {
-            @Override
-            public long value() {
-                return 5;
-            }
-
-            @Override
-            public TimeUnit unit() {
-                return TimeUnit.MINUTES;
-            }
-
-            @Override
-            public Class<? extends Annotation> annotationType() {
-                return AccessTimeout.class;
-            }
-        };
+        return new AccessTimeoutDetails(5, TimeUnit.MINUTES);
     }
 
     @Override
-    public AccessTimeout getDefaultAccessTimeout() {
+    public AccessTimeoutDetails getDefaultAccessTimeout() {
         // TODO: This has to be configurable.
         // Currently defaults to 5 minutes
-        return new AccessTimeout() {
-            @Override
-            public long value() {
-                return 5;
-            }
-
-            @Override
-            public TimeUnit unit() {
-                return TimeUnit.MINUTES;
-            }
-
-            @Override
-            public Class<? extends Annotation> annotationType() {
-                return AccessTimeout.class;
-            }
-        };
+        return new AccessTimeoutDetails(5, TimeUnit.MINUTES);
     }
 
     private synchronized void destroySingletonInstance() {
@@ -221,7 +189,8 @@ public class SingletonComponent extends SessionBeanComponent implements Lockable
         }
     }
 
-    public Method getTimeoutMethod() {
-        return timeoutMethod;
+    @Override
+    public TimedObjectInvoker getTimedObjectInvoker() {
+        return new SingletonTimedObjectInvokerImpl(this);
     }
 }

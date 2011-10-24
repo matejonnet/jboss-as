@@ -21,14 +21,19 @@
  */
 package org.jboss.as.cli.operation.impl;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import org.jboss.as.cli.CommandArgument;
 import org.jboss.as.cli.CommandContext;
+import org.jboss.as.cli.CommandFormatException;
+import org.jboss.as.cli.CommandLineCompleter;
 import org.jboss.as.cli.Util;
 import org.jboss.as.cli.operation.OperationCandidatesProvider;
 import org.jboss.as.cli.operation.OperationFormatException;
 import org.jboss.as.cli.operation.OperationRequestAddress;
+import org.jboss.as.cli.operation.ParsedCommandLine;
 import org.jboss.as.controller.client.ModelControllerClient;
 import org.jboss.dmr.ModelNode;
 
@@ -38,20 +43,11 @@ import org.jboss.dmr.ModelNode;
  */
 public class DefaultOperationCandidatesProvider implements OperationCandidatesProvider {
 
-    private final CommandContext ctx;
-
-    public DefaultOperationCandidatesProvider(CommandContext ctx) {
-        if(ctx == null) {
-            throw new IllegalArgumentException("The context can't be null!");
-        }
-        this.ctx = ctx;
-    }
-
     /* (non-Javadoc)
      * @see org.jboss.as.cli.CandidatesProvider#getNodeNames(org.jboss.as.cli.Prefix)
      */
     @Override
-    public List<String> getNodeNames(OperationRequestAddress prefix) {
+    public List<String> getNodeNames(CommandContext ctx, OperationRequestAddress prefix) {
 
         ModelControllerClient client = ctx.getModelControllerClient();
         if(client == null) {
@@ -69,8 +65,8 @@ public class DefaultOperationCandidatesProvider implements OperationCandidatesPr
         final ModelNode request;
         DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder(prefix);
         try {
-            builder.operationName("read-children-names");
-            builder.property("child-type", prefix.getNodeType(), -1);
+            builder.setOperationName("read-children-names");
+            builder.addProperty("child-type", prefix.getNodeType());
             request = builder.buildRequest();
         } catch (OperationFormatException e1) {
             throw new IllegalStateException("Failed to build operation", e1);
@@ -95,12 +91,12 @@ public class DefaultOperationCandidatesProvider implements OperationCandidatesPr
      * @see org.jboss.as.cli.CandidatesProvider#getNodeTypes(org.jboss.as.cli.Prefix)
      */
     @Override
-    public List<String> getNodeTypes(OperationRequestAddress prefix) {
+    public List<String> getNodeTypes(CommandContext ctx, OperationRequestAddress prefix) {
         return Util.getNodeTypes(ctx.getModelControllerClient(), prefix);
     }
 
     @Override
-    public List<String> getOperationNames(OperationRequestAddress prefix) {
+    public List<String> getOperationNames(CommandContext ctx, OperationRequestAddress prefix) {
 
         ModelControllerClient client = ctx.getModelControllerClient();
         if(client == null) {
@@ -114,7 +110,7 @@ public class DefaultOperationCandidatesProvider implements OperationCandidatesPr
         ModelNode request;
         DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder(prefix);
         try {
-            builder.operationName("read-operation-names");
+            builder.setOperationName("read-operation-names");
             request = builder.buildRequest();
         } catch (OperationFormatException e1) {
             throw new IllegalStateException("Failed to build operation", e1);
@@ -136,7 +132,7 @@ public class DefaultOperationCandidatesProvider implements OperationCandidatesPr
     }
 
     @Override
-    public List<String> getPropertyNames(String operationName, OperationRequestAddress address) {
+    public List<CommandArgument> getProperties(CommandContext ctx, String operationName, OperationRequestAddress address) {
 
         ModelControllerClient client = ctx.getModelControllerClient();
         if(client == null) {
@@ -150,21 +146,84 @@ public class DefaultOperationCandidatesProvider implements OperationCandidatesPr
         ModelNode request;
         DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder(address);
         try {
-            builder.operationName("read-operation-description");
-            builder.property("name", operationName, -1);
+            builder.setOperationName("read-operation-description");
+            builder.addProperty("name", operationName);
             request = builder.buildRequest();
         } catch (OperationFormatException e1) {
             throw new IllegalStateException("Failed to build operation", e1);
         }
 
-        List<String> result;
+        List<CommandArgument> result;
         try {
             ModelNode outcome = client.execute(request);
             if (!Util.isSuccess(outcome)) {
                 result = Collections.emptyList();
             } else {
                 outcome.get("request-properties");
-                result = Util.getRequestPropertyNames(outcome);
+                final List<String> names = Util.getRequestPropertyNames(outcome);
+                result = new ArrayList<CommandArgument>(names.size());
+                for(final String name : names) {
+                    result.add(new CommandArgument(){
+                        @Override
+                        public String getFullName() {
+                            return name;
+                        }
+
+                        @Override
+                        public String getShortName() {
+                            return null;
+                        }
+
+                        @Override
+                        public int getIndex() {
+                            return -1;
+                        }
+
+                        @Override
+                        public boolean isPresent(ParsedCommandLine args)
+                                throws CommandFormatException {
+                            return args.hasProperty(name);
+                        }
+
+                        @Override
+                        public boolean canAppearNext(CommandContext ctx) throws CommandFormatException {
+                            return !isPresent(ctx.getParsedCommandLine());
+                        }
+
+                        @Override
+                        public String getValue(ParsedCommandLine args) throws CommandFormatException {
+                            return args.getPropertyValue(name);
+                        }
+
+                        @Override
+                        public String getValue(ParsedCommandLine args, boolean required) throws CommandFormatException {
+                            if(!isPresent(args)) {
+                                throw new CommandFormatException("Property '" + name + "' is missing required value.");
+                            }
+                            return args.getPropertyValue(name);
+                        }
+
+                        @Override
+                        public boolean isValueComplete(ParsedCommandLine args) throws CommandFormatException {
+                            if(!isPresent(args)) {
+                                return false;
+                            }
+                            if(name.equals(args.getLastParsedPropertyName())) {
+                                return false;
+                            }
+                            return true;
+                        }
+
+                        @Override
+                        public boolean isValueRequired() {
+                            return true;
+                        }
+
+                        @Override
+                        public CommandLineCompleter getValueCompleter() {
+                            return null;
+                        }});
+                }
             }
         } catch (Exception e) {
             result = Collections.emptyList();

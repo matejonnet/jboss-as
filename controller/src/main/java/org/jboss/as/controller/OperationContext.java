@@ -254,6 +254,8 @@ public interface OperationContext {
      *
      * @param address the (possibly empty) address to read
      * @return the model data
+     *
+     * @deprecated Use {@link #readResource(PathAddress)}
      */
     @Deprecated
     ModelNode readModel(PathAddress address);
@@ -265,13 +267,15 @@ public interface OperationContext {
      *
      * @param address the (possibly empty) address to read
      * @return the model data
+     *
+     * @deprecated Use {@link #readResourceForUpdate(PathAddress)}
      */
     @Deprecated
     ModelNode readModelForUpdate(PathAddress address);
 
     /**
      * Acquire the controlling {@link ModelController}'s exclusive lock. Holding this lock prevent other operations
-     * from mutating the model, the {@link org.jboss.as.controller.registry.ManagementResourceRegistration management resource registry} or the runtime
+     * from mutating the model, the {@link ManagementResourceRegistration management resource registry} or the runtime
      * service registry until the lock is released. The lock is automatically released when the
      * {@link OperationStepHandler#execute(OperationContext, org.jboss.dmr.ModelNode) execute method} of the handler
      * that invoked this method returns.
@@ -288,11 +292,25 @@ public interface OperationContext {
      * Create a new resource, relative to the executed operation address.  Since only one operation
      * may write at a time, this operation may block until other writing operations have completed.
      *
-     * @param address the (possibly empty) address to remove
+     * @param address the (possibly empty) address where the resource should be created. Address is relative to the
+     *                address of the operation being executed
      * @return the created resource
+     * @throws IllegalStateException if a resource already exists at the given address
      * @throws UnsupportedOperationException if the calling operation is not a model operation
      */
     Resource createResource(PathAddress address) throws UnsupportedOperationException;
+
+    /**
+     * Add a new resource, relative to the executed operation address.  Since only one operation
+     * may write at a time, this operation may block until other writing operations have completed.
+     *
+     * @param address the (possibly empty) address where the resource should be added. Address is relative to the
+     *                address of the operation being executed
+     * @param toAdd the new resource
+     * @throws IllegalStateException if a resource already exists at the given address
+     * @throws UnsupportedOperationException if the calling operation is not a model operation
+     */
+    void addResource(PathAddress address, Resource toAdd);
 
     /**
      * Get the addressable resource for read only operations.
@@ -336,7 +354,7 @@ public interface OperationContext {
     boolean isModelAffected();
 
     /**
-     * Determine whether the {@link org.jboss.as.controller.registry.ManagementResourceRegistration management resource registry} has thus far been affected by this operation.
+     * Determine whether the {@link ManagementResourceRegistration management resource registry} has thus far been affected by this operation.
      *
      * @return {@code true} if the management resource registry was affected, {@code false} otherwise
      */

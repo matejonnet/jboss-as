@@ -1,7 +1,7 @@
 #!/bin/sh
 
-DIRNAME=`dirname $0`
-PROGNAME=`basename $0`
+DIRNAME=`dirname "$0"`
+PROGNAME=`basename "$0"`
 GREP="grep"
 
 # Use the maximum available, or set MAX_FD != -1 to use that
@@ -61,7 +61,7 @@ fi
 # Setup JBOSS_HOME
 if [ "x$JBOSS_HOME" = "x" ]; then
     # get the full path (without any relative bits)
-    JBOSS_HOME=`cd $DIRNAME/..; pwd`
+    JBOSS_HOME=`cd "$DIRNAME/.."; pwd`
 fi
 export JBOSS_HOME
 
@@ -107,12 +107,17 @@ else
     JVM_OPTVERSION="-server $JVM_OPTVERSION"
 fi
 
+if [ "x$MODULEPATH" = "x" ]; then
+    MODULEPATH="$JBOSS_HOME/modules"
+fi
+
 # For Cygwin, switch paths to Windows format before running java
 if $cygwin; then
     JBOSS_HOME=`cygpath --path --windows "$JBOSS_HOME"`
     JAVA_HOME=`cygpath --path --windows "$JAVA_HOME"`
     JBOSS_CLASSPATH=`cygpath --path --windows "$JBOSS_CLASSPATH"`
     JBOSS_ENDORSED_DIRS=`cygpath --path --windows "$JBOSS_ENDORSED_DIRS"`
+    MODULEPATH=`cygpath --path --windows "$MODULEPATH"`
 fi
 
 # Display our environment
@@ -136,7 +141,7 @@ while true; do
          \"-Dorg.jboss.boot.log.file=$JBOSS_HOME/standalone/log/boot.log\" \
          \"-Dlogging.configuration=file:$JBOSS_HOME/standalone/configuration/logging.properties\" \
          -jar \"$JBOSS_HOME/jboss-modules.jar\" \
-         -mp \"$JBOSS_HOME/modules\" \
+         -mp \"${MODULEPATH}\" \
          -logmodule "org.jboss.logmanager" \
          -jaxpmodule javax.xml.jaxp-provider \
          org.jboss.as.standalone \
@@ -149,7 +154,7 @@ while true; do
          \"-Dorg.jboss.boot.log.file=$JBOSS_HOME/standalone/log/boot.log\" \
          \"-Dlogging.configuration=file:$JBOSS_HOME/standalone/configuration/logging.properties\" \
          -jar \"$JBOSS_HOME/jboss-modules.jar\" \
-         -mp \"$JBOSS_HOME/modules\" \
+         -mp \"${MODULEPATH}\" \
          -logmodule "org.jboss.logmanager" \
          -jaxpmodule javax.xml.jaxp-provider \
          org.jboss.as.standalone \

@@ -22,16 +22,8 @@
 
 package org.jboss.as.controller.operations.common;
 
-import org.jboss.modules.Module;
-import org.jboss.modules.ModuleClassLoader;
-import org.jboss.modules.ModuleIdentifier;
-import org.jboss.modules.ModuleLoadException;
-import org.jboss.modules.ModuleLoader;
-
 import java.security.AccessController;
 import java.security.PrivilegedAction;
-import java.security.PrivilegedActionException;
-import java.security.PrivilegedExceptionAction;
 
 /**
  * Privileged blocks for this package
@@ -56,6 +48,66 @@ class SecurityActions {
                 return System.clearProperty(key);
             }
         });
+    }
+
+    static ClassLoader setThreadContextClassLoader(Class cl) {
+        if (System.getSecurityManager() == null) {
+            return SetThreadContextClassLoaderAction.NON_PRIVILEGED.setThreadContextClassLoader(cl);
+        } else {
+            return SetThreadContextClassLoaderAction.PRIVILEGED.setThreadContextClassLoader(cl);
+        }
+    }
+
+    static void setThreadContextClassLoader(ClassLoader cl) {
+        if (System.getSecurityManager() == null) {
+            SetThreadContextClassLoaderAction.NON_PRIVILEGED.setThreadContextClassLoader(cl);
+        } else {
+            SetThreadContextClassLoaderAction.PRIVILEGED.setThreadContextClassLoader(cl);
+        }
+    }
+
+    private interface SetThreadContextClassLoaderAction {
+
+        ClassLoader setThreadContextClassLoader(Class cl);
+
+        void setThreadContextClassLoader(ClassLoader cl);
+
+        SetThreadContextClassLoaderAction NON_PRIVILEGED = new SetThreadContextClassLoaderAction() {
+            @Override
+            public ClassLoader setThreadContextClassLoader(Class cl) {
+                ClassLoader old = Thread.currentThread().getContextClassLoader();
+                Thread.currentThread().setContextClassLoader(cl.getClassLoader());
+                return old;
+            }
+            @Override
+            public void setThreadContextClassLoader(ClassLoader cl) {
+                Thread.currentThread().setContextClassLoader(cl);
+            }
+        };
+
+        SetThreadContextClassLoaderAction PRIVILEGED = new SetThreadContextClassLoaderAction() {
+
+            @Override
+            public ClassLoader setThreadContextClassLoader(final Class cl) {
+                return AccessController.doPrivileged(new PrivilegedAction<ClassLoader>() {
+                    public ClassLoader run() {
+                        ClassLoader old = Thread.currentThread().getContextClassLoader();
+                        Thread.currentThread().setContextClassLoader(cl.getClassLoader());
+                        return old;
+                    }
+                });
+            }
+
+            @Override
+            public void setThreadContextClassLoader(final ClassLoader cl) {
+                AccessController.doPrivileged(new PrivilegedAction<Void>() {
+                    public Void run() {
+                        Thread.currentThread().setContextClassLoader(cl);
+                        return null;
+                    }
+                });
+            }
+        };
     }
 
 }

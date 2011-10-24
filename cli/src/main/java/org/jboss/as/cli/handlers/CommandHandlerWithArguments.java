@@ -21,13 +21,14 @@
  */
 package org.jboss.as.cli.handlers;
 
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.List;
 
 import org.jboss.as.cli.CommandArgument;
+import org.jboss.as.cli.CommandContext;
 import org.jboss.as.cli.CommandHandler;
-import org.jboss.as.cli.CommandLineCompleter;
+
 
 /**
  *
@@ -35,40 +36,47 @@ import org.jboss.as.cli.CommandLineCompleter;
  */
 public abstract class CommandHandlerWithArguments implements CommandHandler {
 
-    private Set<String> argumentNames = Collections.emptySet();
-    private int maxArgumentIndex = -1;
-    private SimpleArgumentTabCompleter argCompleter = new SimpleArgumentTabCompleter();
+    //private Set<String> argumentNames = Collections.emptySet();
+    //private int maxArgumentIndex = -1;
+    private List<CommandArgument> args = Collections.emptyList();
 
     public void addArgument(CommandArgument arg) {
-        if(arg.getIndex() > -1) {
+/*        if(arg.getIndex() > -1) {
             maxArgumentIndex = arg.getIndex() > maxArgumentIndex ? arg.getIndex() : maxArgumentIndex;
         }
-
+*/
         if(arg.getFullName() == null) {
             throw new IllegalArgumentException("Full name can't be null");
         }
-        if(argumentNames.isEmpty()) {
+/*        if(argumentNames.isEmpty()) {
             argumentNames = new HashSet<String>();
         }
         argumentNames.add(arg.getFullName());
         if(arg.getShortName() != null) {
             argumentNames.add(arg.getShortName());
         }
-        argCompleter.addArgument(arg);
+*/
+        if(args.isEmpty()) {
+            args = new ArrayList<CommandArgument>();
+        }
+        args.add(arg);
+        //argCompleter.addArgument(arg);
     }
 
     @Override
     public boolean hasArgument(String name) {
-        return argumentNames.contains(name);
+        //return argumentNames.contains(name);
+        throw new UnsupportedOperationException("not used yet");
     }
 
     @Override
     public boolean hasArgument(int index) {
-        return index <= maxArgumentIndex;
+        //return index <= maxArgumentIndex;
+        throw new UnsupportedOperationException("not used yet");
     }
 
     @Override
-    public CommandLineCompleter getArgumentCompleter() {
-        return argCompleter;
+    public List<CommandArgument> getArguments(CommandContext ctx) {
+        return this.args;
     }
 }

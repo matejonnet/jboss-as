@@ -39,6 +39,7 @@ import org.jboss.as.ejb3.component.pool.PoolConfigService;
 import org.jboss.as.ejb3.deployment.EjbJarDescription;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
+import org.jboss.metadata.ejb.spec.MessageDrivenBeanMetaData;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceName;
@@ -194,4 +195,13 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
         }
     }
 
+    @Override
+    public boolean isTimerServiceApplicable() {
+        return true;
+    }
+
+    @Override
+    public MessageDrivenBeanMetaData getDescriptorData() {
+        return (MessageDrivenBeanMetaData) super.getDescriptorData();
+    }
 }

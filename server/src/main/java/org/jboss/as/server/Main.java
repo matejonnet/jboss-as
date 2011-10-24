@@ -23,7 +23,6 @@
 package org.jboss.as.server;
 
 import static org.jboss.as.process.Main.getVersionString;
-import static org.jboss.as.process.Main.usage;
 
 import java.io.File;
 import java.io.IOException;
@@ -34,7 +33,6 @@ import java.util.Map;
 import java.util.Properties;
 
 import org.jboss.as.process.CommandLineConstants;
-import org.jboss.as.version.Version;
 import org.jboss.logmanager.Level;
 import org.jboss.logmanager.Logger;
 import org.jboss.logmanager.log4j.BridgeRepositorySelector;
@@ -58,6 +56,8 @@ public final class Main {
     public static void usage() {
         System.out.println("Usage: ./standalone.sh [args...]\n");
         System.out.println("where args include:");
+        System.out.println("    -b=<value>                         Set system property jboss.bind.address.public to the given value");
+        System.out.println("    -b<interface>=<value>              Set system property jboss.bind.address.<interface> to the given value");
         System.out.println("    -D<name>[=<value>]                 Set a system property");
         System.out.println("    -h                                 Display this message and exit");
         System.out.println("    --help                             Display this message and exit");
@@ -176,6 +176,30 @@ public final class Main {
                     }
                     systemProperties.setProperty(name, value);
                     SecurityActions.setSystemProperty(name, value);
+                } else if (arg.startsWith("-b")) {
+
+                    int idx = arg.indexOf('=');
+                    if (idx == arg.length() - 1) {
+                        System.err.printf("Argument expected for option %s\n", arg);
+                        usage();
+                        return null;
+                    }
+                    String value = idx > -1 ? arg.substring(idx + 1) : args[++i];
+
+                    String logicalName = null;
+                    if (idx < 0) {
+                        // -b xxx -bmanagement xxx
+                        logicalName = arg.length() == 2 ? "public" : arg.substring(2);
+                    } else if (idx == 2) {
+                        // -b=xxx
+                        logicalName = "public";
+                    } else {
+                        // -bmanagement=xxx
+                        logicalName = arg.substring(2, idx);
+                    }
+                    String propertyName = ServerEnvironment.JBOSS_BIND_ADDRESS_PREFIX + logicalName;
+                    systemProperties.setProperty(propertyName, value);
+                    SecurityActions.setSystemProperty(propertyName, value);
                 } else {
                     System.err.printf("Invalid option '%s'\n", arg);
                     usage();

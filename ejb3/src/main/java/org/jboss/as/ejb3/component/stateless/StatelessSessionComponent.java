@@ -26,11 +26,11 @@ import org.jboss.as.ee.component.BasicComponentInstance;
 import org.jboss.as.ejb3.component.pool.PoolConfig;
 import org.jboss.as.ejb3.component.pool.PooledComponent;
 import org.jboss.as.ejb3.component.session.SessionBeanComponent;
-import org.jboss.as.ejb3.component.session.SessionBeanComponentCreateService;
+import org.jboss.as.ejb3.pool.Pool;
+import org.jboss.as.ejb3.pool.StatelessObjectFactory;
+import org.jboss.as.ejb3.timerservice.PooledTimedObjectInvokerImpl;
+import org.jboss.as.ejb3.timerservice.spi.TimedObjectInvoker;
 import org.jboss.as.naming.ManagedReference;
-import org.jboss.ejb3.pool.Pool;
-import org.jboss.ejb3.pool.StatelessObjectFactory;
-import org.jboss.ejb3.pool.strictmax.StrictMaxPool;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
@@ -38,9 +38,8 @@ import org.jboss.logging.Logger;
 
 import java.lang.reflect.Method;
 import java.util.Collections;
-import java.util.IdentityHashMap;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -93,7 +92,7 @@ public class StatelessSessionComponent extends SessionBeanComponent implements P
 
         final Map<Method, Interceptor> timeouts;
         if (timeoutInterceptors != null) {
-            timeouts = new IdentityHashMap<Method, Interceptor>();
+            timeouts = new HashMap<Method, Interceptor>();
             for (Map.Entry<Method, InterceptorFactory> entry : timeoutInterceptors.entrySet()) {
                 timeouts.put(entry.getKey(), entry.getValue().create(interceptorContext));
             }
@@ -106,6 +105,11 @@ public class StatelessSessionComponent extends SessionBeanComponent implements P
     @Override
     public Pool<StatelessSessionComponentInstance> getPool() {
         return pool;
+    }
+
+    @Override
+    public TimedObjectInvoker getTimedObjectInvoker() {
+        return new PooledTimedObjectInvokerImpl(this);
     }
 
     public Method getTimeoutMethod() {

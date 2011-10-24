@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
 <!--
   ~ JBoss, Home of Professional Open Source.
   ~ Copyright 2010, Red Hat, Inc., and individual contributors
@@ -20,11 +19,7 @@
   ~ License along with this software; if not, write to the Free
   ~ Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
   ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
-  -->
-
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  --><project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
@@ -76,9 +71,9 @@
         <version.jacorb>2.3.1jboss.patch01-brew</version.jacorb>
         <version.javax.activation.activation>1.1.1</version.javax.activation.activation>
         <version.javax.enterprise.cdi-api>1.0-SP4</version.javax.enterprise.cdi-api>
-        <version.javax.faces.jsf-api.1.2>1.2_13</version.javax.faces.jsf-api.1.2>
-        <version.javax.faces.jsf-impl>2.0.4-b09-jbossorg-4</version.javax.faces.jsf-impl>
-        <version.javax.faces.jsf-impl.1.2>1.2_13</version.javax.faces.jsf-impl.1.2>
+        <version.javax.faces.jsf-api.1.2>1.2_15-jbossorg-1</version.javax.faces.jsf-api.1.2>
+        <version.javax.faces.jsf-impl>2.1.3-b02-jbossorg-2</version.javax.faces.jsf-impl>
+        <version.javax.faces.jsf-impl.1.2>1.2_15-jbossorg-1</version.javax.faces.jsf-impl.1.2>
         <version.javax.inject.javax.inject>1</version.javax.inject.javax.inject>
         <version.javax.jws.jsr181-api>1.0-MR1</version.javax.jws.jsr181-api>
         <version.javax.mail.mail>1.4.4</version.javax.mail.mail>
@@ -113,8 +108,8 @@
         <version.org.codehaus.jackson>1.6.3</version.org.codehaus.jackson>
         <version.org.codehaus.woodstox.stax2-api>3.1.1</version.org.codehaus.woodstox.stax2-api>
         <version.org.codehaus.woodstox.woodstox-core-asl>4.1.1</version.org.codehaus.woodstox.woodstox-core-asl>
-        <version.org.hibernate>4.0.0.CR1</version.org.hibernate>
-        <version.org.hibernate.commons.annotations>3.2.0.Final</version.org.hibernate.commons.annotations>
+        <version.org.hibernate>4.0.0.CR2</version.org.hibernate>
+        <version.org.hibernate.commons.annotations>4.0.0.CR2</version.org.hibernate.commons.annotations>
         <version.org.hibernate.javax.persistence.hibernate-jpa-2.0-api>1.0.1.Final</version.org.hibernate.javax.persistence.hibernate-jpa-2.0-api>
         <version.org.hibernate.validator>4.2.0.Final</version.org.hibernate.validator>
         <version.org.hornetq.hornetq-jms>2.2.7.Final</version.org.hornetq.hornetq-jms>
@@ -131,7 +126,7 @@
         <version.org.jboss.interceptor>2.0.0.Alpha3</version.org.jboss.interceptor>
         <version.org.jboss.invocation>1.1.0.Final</version.org.jboss.invocation>
         <version.org.jboss.ironjacamar>1.0.3.Final</version.org.jboss.ironjacamar>
-        <version.org.jboss.jandex>1.0.0.Final</version.org.jboss.jandex>
+        <version.org.jboss.jandex>1.0.3.Final</version.org.jboss.jandex>
         <version.org.jboss.jboss-common-core>2.2.17.GA</version.org.jboss.jboss-common-core>
         <version.org.jboss.jboss-dmr>1.0.0.Final</version.org.jboss.jboss-dmr>
         <version.org.jboss.jboss-transaction-spi>7.0.0.CR1</version.org.jboss.jboss-transaction-spi>
@@ -140,16 +135,17 @@
         <version.org.jboss.jbossts.jbossxts>4.15.3.Final</version.org.jboss.jbossts.jbossxts>
         <version.org.jboss.jboss-vfs>3.0.1.GA</version.org.jboss.jboss-vfs>
         <version.org.jboss.jsfunit.jsfunit>2.0.0.Beta1</version.org.jboss.jsfunit.jsfunit>
-        <version.org.jboss.logging.jboss-logging>3.0.0.GA</version.org.jboss.logging.jboss-logging>
+        <version.org.jboss.logging.jboss-logging>3.0.1.GA</version.org.jboss.logging.jboss-logging>
+        <version.org.jboss.logging.jboss-logging-tools>1.0.0.CR1</version.org.jboss.logging.jboss-logging-tools>
         <version.org.jboss.logmanager.jboss-logmanager>1.2.0.GA</version.org.jboss.logmanager.jboss-logmanager>
         <version.org.jboss.logmanager.jboss-logmanager-log4j>1.0.0.GA</version.org.jboss.logmanager.jboss-logmanager-log4j>
         <version.org.jboss.management.console>1.0.0.Beta16</version.org.jboss.management.console>
         <version.org.jboss.marshalling.jboss-marshalling>1.3.0.GA</version.org.jboss.marshalling.jboss-marshalling>
         <version.org.jboss.marshalling.jboss-marshalling-river>1.3.0.GA</version.org.jboss.marshalling.jboss-marshalling-river>
-        <version.org.jboss.metadata>7.0.0.Beta8</version.org.jboss.metadata>
+        <version.org.jboss.metadata>7.0.0.Beta11</version.org.jboss.metadata>
         <version.org.jboss.mod_cluster>1.1.3.Final</version.org.jboss.mod_cluster>
-        <version.org.jboss.modules.jboss-modules>1.0.1.GA</version.org.jboss.modules.jboss-modules>
-        <version.org.jboss.msc.jboss-msc>1.0.0.GA</version.org.jboss.msc.jboss-msc>
+        <version.org.jboss.modules.jboss-modules>1.0.2.GA</version.org.jboss.modules.jboss-modules>
+        <version.org.jboss.msc.jboss-msc>1.0.1.GA</version.org.jboss.msc.jboss-msc>
         <version.org.jboss.netty>3.2.3.Final</version.org.jboss.netty>
         <version.org.jboss.osgi.blueprint>1.0.2</version.org.jboss.osgi.blueprint>
         <version.org.jboss.osgi.deployment>1.0.10</version.org.jboss.osgi.deployment>
@@ -165,7 +161,7 @@
         <version.org.jboss.osgi.xerces>2.9.1.SP7</version.org.jboss.osgi.xerces>
         <version.org.jboss.remoting3.jboss-remoting>3.2.0.Beta2</version.org.jboss.remoting3.jboss-remoting>
         <version.org.jboss.resteasy.resteasy-jaxrs>2.2.1.GA</version.org.jboss.resteasy.resteasy-jaxrs>
-        <version.org.jboss.sasl>1.0.0.Beta1</version.org.jboss.sasl>
+        <version.org.jboss.sasl>1.0.0.Beta2</version.org.jboss.sasl>
         <version.org.jboss.seam.int>6.0.0.GA</version.org.jboss.seam.int>
         <version.org.jboss.security.jboss-negotiation>2.2.0.Beta3</version.org.jboss.security.jboss-negotiation>
         <version.org.jboss.shrinkwrap.shrinkwrap>1.0.0-beta-5</version.org.jboss.shrinkwrap.shrinkwrap>
@@ -174,9 +170,10 @@
         <version.org.jboss.spec.javax.ejb.jboss-ejb-api_3.1_spec>1.0.1.Final</version.org.jboss.spec.javax.ejb.jboss-ejb-api_3.1_spec>
         <version.org.jboss.spec.javax.el.jboss-el-api_2.2_spec>1.0.0.Final</version.org.jboss.spec.javax.el.jboss-el-api_2.2_spec>
         <version.org.jboss.spec.javax.enterprise.deploy.jboss-jad-api_1.2_spec>1.0.0.Final</version.org.jboss.spec.javax.enterprise.deploy.jboss-jad-api_1.2_spec>
-        <version.org.jboss.spec.javax.faces.jboss-jsf-api_2.0_spec>1.0.0.Final</version.org.jboss.spec.javax.faces.jboss-jsf-api_2.0_spec>
+        <version.org.jboss.spec.javax.faces.jboss-jsf-api_2.1_spec>2.0.0.Beta1</version.org.jboss.spec.javax.faces.jboss-jsf-api_2.1_spec>
         <version.org.jboss.spec.javax.interceptor.jboss-interceptors-api_1.1_spec>1.0.0.Final</version.org.jboss.spec.javax.interceptor.jboss-interceptors-api_1.1_spec>
         <version.org.jboss.spec.javax.jms.jboss-jms-api_1.1_spec>1.0.0.Final</version.org.jboss.spec.javax.jms.jboss-jms-api_1.1_spec>
+        <version.org.jboss.spec.javax.management.j2eeorg.jboss.spec.javax.management.j2ee>1.0.0.Final</version.org.jboss.spec.javax.management.j2eeorg.jboss.spec.javax.management.j2ee>
         <version.org.jboss.spec.javax.resource.jboss-connector-api_1.6_spec>1.0.0.Final</version.org.jboss.spec.javax.resource.jboss-connector-api_1.6_spec>
         <version.org.jboss.spec.javax.rmi.jboss-rmi-api_1.0_spec>1.0.1.Final</version.org.jboss.spec.javax.rmi.jboss-rmi-api_1.0_spec>
         <version.org.jboss.spec.javax.security.auth.message.jboss-jaspi-api_1.0_spec>1.0.0.Final</version.org.jboss.spec.javax.security.auth.message.jboss-jaspi-api_1.0_spec>
@@ -186,7 +183,7 @@
         <version.org.jboss.spec.javax.servlet.jstl.jboss-jstl-api_1.2_spec>1.0.1.Final</version.org.jboss.spec.javax.servlet.jstl.jboss-jstl-api_1.2_spec>
         <version.org.jboss.spec.javax.transaction.jboss-transaction-api_1.1_spec>1.0.0.Final</version.org.jboss.spec.javax.transaction.jboss-transaction-api_1.1_spec>
         <version.org.jboss.spec.javax.ws.rs.jboss-jaxrs-api_1.1_spec>1.0.0.Final</version.org.jboss.spec.javax.ws.rs.jboss-jaxrs-api_1.1_spec>
-        <version.org.jboss.spec.javax.xml.bind.jboss-jaxb-api_2.2_spec>1.0.2.Final</version.org.jboss.spec.javax.xml.bind.jboss-jaxb-api_2.2_spec>
+        <version.org.jboss.spec.javax.xml.bind.jboss-jaxb-api_2.2_spec>1.0.3.Final</version.org.jboss.spec.javax.xml.bind.jboss-jaxb-api_2.2_spec>
         <version.org.jboss.spec.javax.xml.registry.jboss-jaxr-api_1.0_spec>1.0.0.Final</version.org.jboss.spec.javax.xml.registry.jboss-jaxr-api_1.0_spec>
         <version.org.jboss.spec.javax.xml.rpc.jboss-jaxrpc-api_1.1_spec>1.0.0.Final</version.org.jboss.spec.javax.xml.rpc.jboss-jaxrpc-api_1.1_spec>
         <version.org.jboss.spec.javax.xml.soap.jboss-saaj-api_1.3_spec>1.0.1.Final</version.org.jboss.spec.javax.xml.soap.jboss-saaj-api_1.3_spec>
@@ -199,16 +196,16 @@
         <version.org.jboss.weld.weld>1.1.2.Final</version.org.jboss.weld.weld>
         <version.org.jboss.weld.weld-api>1.1.Final</version.org.jboss.weld.weld-api>
         <version.org.jboss.ws.api>1.0.0.Beta2</version.org.jboss.ws.api>
-        <version.org.jboss.ws.common>2.0.0.Beta5</version.org.jboss.ws.common>
+        <version.org.jboss.ws.common>2.0.0.Beta6</version.org.jboss.ws.common>
         <version.org.jboss.ws.common.tools>1.0.0.Beta1</version.org.jboss.ws.common.tools>
         <version.org.jboss.ws.jbossws-cxf>4.0.0.Beta3</version.org.jboss.ws.jbossws-cxf>
-        <version.org.jboss.ws.spi>2.0.0.Beta6</version.org.jboss.ws.spi>
+        <version.org.jboss.ws.spi>2.0.0.Beta7</version.org.jboss.ws.spi>
         <version.org.jboss.ws.jaxws-jboss-httpserver-httpspi>1.0.0.GA</version.org.jboss.ws.jaxws-jboss-httpserver-httpspi>
         <version.org.jboss.xnio.xnio-api>3.0.0.Beta3</version.org.jboss.xnio.xnio-api>
         <version.org.jboss.xnio.xnio-nio>3.0.0.Beta3</version.org.jboss.xnio.xnio-nio>
         <version.org.jgroups>2.12.1.3.Final</version.org.jgroups>
         <version.org.mockito>1.8.5</version.org.mockito>
-        <version.org.picketbox>4.0.1</version.org.picketbox>
+        <version.org.picketbox>4.0.2.final</version.org.picketbox>
         <version.org.picketbox.picketbox-commons>1.0.0.CR1</version.org.picketbox.picketbox-commons>
         <version.org.scannotation>1.0.2</version.org.scannotation>
         <version.org.slf4j.jcl-over-slf4j>1.6.1</version.org.slf4j.jcl-over-slf4j>
@@ -225,7 +222,7 @@
         <version.surefire.plugin>2.9</version.surefire.plugin>
 
         <!-- Surefire args -->
-        <surefire.jpda.args />
+        <surefire.jpda.args/>
         <surefire.system.args>-da ${surefire.jpda.args}</surefire.system.args>
     </properties>
 
@@ -256,12 +253,14 @@
         <module>jmx</module>
         <module>jpa</module>
         <module>logging</module>
-        <module>mc</module>
+        <module>mail</module>
         <module>messaging</module>
         <module>modcluster</module>
         <module>naming</module>
         <module>network</module>
         <module>osgi</module>
+        <module>pojo</module>
+        <module>platform-mbean</module>
         <module>process-controller</module>
         <module>protocol</module>
         <module>remoting</module>
@@ -278,7 +277,6 @@
         <module>xts</module>
         <module>testsuite</module>
         <module>paas-controller</module>
-        <module>process-paas-controller</module>
     </modules>
 
     <build>
@@ -433,9 +431,7 @@
                                             <exclude>org.jboss.logging:jboss-logging-spi</exclude>
                                             <exclude>org.jboss.logging:jboss-logging-log4j</exclude>
                                             <exclude>org.jboss.logging:jboss-logging-jdk</exclude>
-                                            <exclude>org.jboss.logging:jboss-logging-generator</exclude>
                                             <exclude>org.jboss.logging:jboss-logging-logmanager</exclude>
-                                            <exclude>org.jboss.logging:jboss-logging-processor</exclude>
                                             <exclude>org.jboss.slf4j:slf4j-jboss-logging</exclude>
                                             <exclude>org.jboss.spec.javax.resource:jboss-connector-api_1.5_spec</exclude>
                                             <exclude>org.opensaml:opensaml</exclude>
@@ -488,7 +484,7 @@
                                         </goals>
                                     </pluginExecutionFilter>
                                     <action>
-                                        <ignore></ignore>
+                                        <ignore/>
                                     </action>
                                 </pluginExecution>
                                 <pluginExecution>
@@ -505,7 +501,24 @@
                                         </goals>
                                     </pluginExecutionFilter>
                                     <action>
-                                        <ignore></ignore>
+                                        <ignore/>
+                                    </action>
+                                </pluginExecution>
+                                <pluginExecution>
+                                    <pluginExecutionFilter>
+                                        <groupId>
+                                            org.apache.maven.plugins
+                                        </groupId>
+                                        <artifactId>
+                                            maven-clean-plugin
+                                        </artifactId>
+                                        <versionRange>[2.4.1,)</versionRange>
+                                        <goals>
+                                            <goal>clean</goal>
+                                        </goals>
+                                    </pluginExecutionFilter>
+                                    <action>
+                                        <ignore/>
                                     </action>
                                 </pluginExecution>
                                 <pluginExecution>
@@ -524,7 +537,7 @@
                                         </goals>
                                     </pluginExecutionFilter>
                                     <action>
-                                        <ignore></ignore>
+                                        <ignore/>
                                     </action>
                                 </pluginExecution>
                             </pluginExecutions>
@@ -791,6 +804,12 @@
 
             <dependency>
                 <groupId>org.jboss.as</groupId>
+                <artifactId>jboss-as-mail</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.jboss.as</groupId>
                 <artifactId>jboss-as-messaging</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -815,6 +834,12 @@
 
             <dependency>
                 <groupId>org.jboss.as</groupId>
+                <artifactId>jboss-as-pojo</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.jboss.as</groupId>
                 <artifactId>jboss-as-osgi-configadmin</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -822,6 +847,12 @@
             <dependency>
                 <groupId>org.jboss.as</groupId>
                 <artifactId>jboss-as-osgi-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.jboss.as</groupId>
+                <artifactId>jboss-as-platform-mbean</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -1142,7 +1173,7 @@
                 <artifactId>jline</artifactId>
                 <version>${version.jline}</version>
             </dependency>
-            
+
             <dependency>
                 <groupId>joda-time</groupId>
                 <artifactId>joda-time</artifactId>
@@ -2767,7 +2798,7 @@
             </dependency>
 
             <dependency>
-               <groupId>org.hibernate</groupId>
+               <groupId>org.hibernate.common</groupId>
                <artifactId>hibernate-commons-annotations</artifactId>
                <version>${version.org.hibernate.commons.annotations}</version>
             </dependency>
@@ -2965,7 +2996,7 @@
                 <artifactId>arquillian-junit-core</artifactId>
                 <version>${version.org.jboss.arquillian.core}</version>
             </dependency>
-            
+
             <dependency>
                 <groupId>org.jboss.arquillian.testng</groupId>
                 <artifactId>arquillian-testng-core</artifactId>
@@ -2983,7 +3014,7 @@
                 </exclusion>
               </exclusions>
             </dependency>
-            
+
             <dependency>
               <groupId>org.jboss.arquillian.testng</groupId>
               <artifactId>arquillian-testng-container</artifactId>
@@ -2993,6 +3024,10 @@
                   <groupId>commons-logging</groupId>
                   <artifactId>commons-logging</artifactId>
                 </exclusion>
+                  <exclusion>
+                      <groupId>org.jboss.logging</groupId>
+                      <artifactId>jboss-logging-tools</artifactId>
+                  </exclusion>
               </exclusions>
             </dependency>
 
@@ -3068,44 +3103,6 @@
                 </exclusions>
             </dependency>
 
-            <dependency>
-                <groupId>org.jboss.ejb3</groupId>
-                <artifactId>jboss-ejb3-cache</artifactId>
-                <version>${version.org.jboss.ejb3}</version>
-                <exclusions>
-                    <exclusion>
-                        <groupId>jboss</groupId>
-                        <artifactId>jboss-serialization</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <groupId>org.jboss.aop</groupId>
-                        <artifactId>jboss-aop</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <groupId>org.jboss.logging</groupId>
-                        <artifactId>jboss-logging-log4j</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <groupId>org.jboss.logging</groupId>
-                        <artifactId>jboss-logging-spi</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <groupId>trove</groupId>
-                        <artifactId>trove</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <groupId>xml-apis</groupId>
-                        <artifactId>xml-apis</artifactId>
-                    </exclusion>
-                </exclusions>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3</groupId>
-                <artifactId>jboss-ejb3-core-pool</artifactId>
-                <version>${version.org.jboss.ejb3}</version>
-            </dependency>
-
             <!-- TODO: this is not the final API -->
             <dependency>
                 <groupId>org.jboss.ejb3</groupId>
@@ -3117,96 +3114,6 @@
                         <artifactId>jboss-ejb-api</artifactId>
                     </exclusion>
                 </exclusions>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3.concurrency</groupId>
-                <artifactId>jboss-ejb3-concurrency-impl</artifactId>
-                <version>${version.org.jboss.ejb3}</version>
-                <exclusions>
-                    <exclusion>
-                        <groupId>org.jboss.logging</groupId>
-                        <artifactId>jboss-logging-spi</artifactId>
-                    </exclusion>
-                </exclusions>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3.concurrency</groupId>
-                <artifactId>jboss-ejb3-concurrency-spi</artifactId>
-                <version>${version.org.jboss.ejb3}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3.context</groupId>
-                <artifactId>jboss-ejb3-context-base</artifactId>
-                <version>${version.org.jboss.ejb3}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3.context</groupId>
-                <artifactId>jboss-ejb3-context-spi</artifactId>
-                <version>${version.org.jboss.ejb3}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3.effigy</groupId>
-                <artifactId>jboss-ejb3-effigy-api</artifactId>
-                <version>${version.org.jboss.ejb3}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3.effigy</groupId>
-                <artifactId>jboss-ejb3-effigy-common</artifactId>
-                <version>${version.org.jboss.ejb3}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3.effigy</groupId>
-                <artifactId>jboss-ejb3-effigy-int2</artifactId>
-                <version>${version.org.jboss.ejb3}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3.timerservice</groupId>
-                <artifactId>ejb31-calendar-expr-parser</artifactId>
-                <version>${version.org.jboss.ejb3.timerservice}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3.timerservice</groupId>
-                <artifactId>jboss-ejb3-timerservice-api</artifactId>
-                <version>${version.org.jboss.ejb3.timerservice}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3.timerservice</groupId>
-                <artifactId>jboss-ejb3-timerservice-mk2</artifactId>
-                <version>${version.org.jboss.ejb3.timerservice}</version>
-                <exclusions>
-                    <exclusion>
-                        <groupId>org.jboss.kernel</groupId>
-                        <artifactId>jboss-kernel</artifactId>
-                    </exclusion>
-                </exclusions>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3.tx2</groupId>
-                <artifactId>jboss-ejb3-tx2-impl</artifactId>
-                <version>${version.org.jboss.ejb3}</version>
-                <exclusions>
-                    <exclusion>
-                        <groupId>org.jboss.logging</groupId>
-                        <artifactId>jboss-logging-spi</artifactId>
-                    </exclusion>
-                </exclusions>
-            </dependency>
-
-            <dependency>
-                <groupId>org.jboss.ejb3.tx2</groupId>
-                <artifactId>jboss-ejb3-tx2-spi</artifactId>
-                <version>${version.org.jboss.ejb3}</version>
             </dependency>
 
 			<dependency>
@@ -3574,6 +3481,10 @@
                         <artifactId>jboss-server-manager</artifactId>
                     </exclusion>
                     <exclusion>
+                        <groupId>org.jboss.logging</groupId>
+                        <artifactId>jboss-logging-tools</artifactId>
+                    </exclusion>
+                    <exclusion>
                         <groupId>org.jboss.spec.javax.transaction</groupId>
                         <artifactId>jboss-transaction-api_1.1_spec</artifactId>
                     </exclusion>
@@ -3652,6 +3563,10 @@
                     <exclusion>
                         <groupId>org.jboss.logging</groupId>
                         <artifactId>jboss-logging-spi</artifactId>
+                    </exclusion>
+                     <exclusion>
+                        <groupId>org.jboss.logging</groupId>
+                        <artifactId>jboss-logging-tools</artifactId>
                     </exclusion>
                     <exclusion>
                         <groupId>stax</groupId>
@@ -3898,6 +3813,18 @@
                 <groupId>org.jboss.logging</groupId>
                 <artifactId>jboss-logging</artifactId>
                 <version>${version.org.jboss.logging.jboss-logging}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.jboss.logging</groupId>
+                <artifactId>jboss-logging-generator</artifactId>
+                <version>${version.org.jboss.logging.jboss-logging-tools}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.jboss.logging</groupId>
+                <artifactId>jboss-logging-processor</artifactId>
+                <version>${version.org.jboss.logging.jboss-logging-tools}</version>
             </dependency>
 
             <dependency>
@@ -4435,8 +4362,8 @@
 
             <dependency>
                 <groupId>org.jboss.spec.javax.faces</groupId>
-                <artifactId>jboss-jsf-api_2.0_spec</artifactId>
-                <version>${version.org.jboss.spec.javax.faces.jboss-jsf-api_2.0_spec}</version>
+                <artifactId>jboss-jsf-api_2.1_spec</artifactId>
+                <version>${version.org.jboss.spec.javax.faces.jboss-jsf-api_2.1_spec}</version>
             </dependency>
 
             <dependency>
@@ -4455,6 +4382,12 @@
                 <groupId>org.jboss.spec.javax.jms</groupId>
                 <artifactId>jboss-jms-api_1.1_spec</artifactId>
                 <version>${version.org.jboss.spec.javax.jms.jboss-jms-api_1.1_spec}</version>
+            </dependency>
+
+            <dependency>
+              <groupId>org.jboss.spec.javax.management.j2ee</groupId>
+              <artifactId>jboss-j2eemgmt-api_1.1_spec</artifactId>
+              <version>${version.org.jboss.spec.javax.management.j2eeorg.jboss.spec.javax.management.j2ee}</version>
             </dependency>
 
             <dependency>
@@ -5215,7 +5148,7 @@
                 <artifactId>slf4j-ext</artifactId>
                 <version>${version.org.slf4j.slf4j-ext}</version>
             </dependency>
-            
+
             <dependency>
                 <groupId>org.testng</groupId>
                 <artifactId>testng</artifactId>

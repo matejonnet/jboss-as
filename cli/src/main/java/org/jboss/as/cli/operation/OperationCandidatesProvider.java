@@ -23,6 +23,9 @@ package org.jboss.as.cli.operation;
 
 import java.util.List;
 
+import org.jboss.as.cli.CommandArgument;
+import org.jboss.as.cli.CommandContext;
+
 
 /**
  * Provider of candidates for the tab completion.
@@ -31,11 +34,11 @@ import java.util.List;
  */
 public interface OperationCandidatesProvider {
 
-    List<String> getNodeNames(OperationRequestAddress prefix);
+    List<String> getNodeNames(CommandContext ctx, OperationRequestAddress prefix);
 
-    List<String> getNodeTypes(OperationRequestAddress prefix);
+    List<String> getNodeTypes(CommandContext ctx, OperationRequestAddress prefix);
 
-    List<String> getOperationNames(OperationRequestAddress prefix);
+    List<String> getOperationNames(CommandContext ctx, OperationRequestAddress prefix);
 
-    List<String> getPropertyNames(String operationName, OperationRequestAddress address);
+    List<CommandArgument> getProperties(CommandContext ctx, String operationName, OperationRequestAddress address);
 }
