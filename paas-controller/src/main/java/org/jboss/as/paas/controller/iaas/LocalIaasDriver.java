@@ -4,7 +4,7 @@
 package org.jboss.as.paas.controller.iaas;
 
 import org.apache.deltacloud.client.Instance;
-import org.jboss.as.paas.controller.extension.UnDeployHandle;
+import org.jboss.as.paas.controller.extension.UnDeployHandler;
 import org.jboss.logging.Logger;
 
 /**

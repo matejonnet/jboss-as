@@ -14,11 +14,11 @@ import org.jboss.dmr.ModelNode;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class InstanceProviderHandle implements OperationStepHandler {
+public class InstanceProviderHandler implements OperationStepHandler {
 
-	public static final InstanceProviderHandle INSTANCE = new InstanceProviderHandle(); 
+	public static final InstanceProviderHandler INSTANCE = new InstanceProviderHandler(); 
 	
-	private InstanceProviderHandle() {
+	private InstanceProviderHandler() {
 	}
 	
 	@Override

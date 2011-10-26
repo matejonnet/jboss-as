@@ -9,7 +9,6 @@ import java.util.Set;
 import org.jclouds.compute.ComputeServiceContext;
 import org.jclouds.compute.ComputeServiceContextFactory;
 import org.jclouds.compute.RunNodesException;
-import org.jclouds.compute.domain.Image;
 import org.jclouds.compute.domain.NodeMetadata;
 import org.jclouds.compute.domain.OsFamily;
 import org.jclouds.compute.domain.Template;
@@ -31,33 +30,13 @@ public class JCloudIaasDriver implements IaasDriver {
      * @param username
      * @param password
      */
-    public JCloudIaasDriver(String url, String accesskeyid, String secretkey) {
+    public JCloudIaasDriver(String provider, String url, String accesskeyid, String secretkey) {
      // get a context with eucalyptus that offers the portable ComputeService api
         Properties overrides = new Properties();
         overrides.setProperty("eucalyptus.endpoint", url);
         context = new ComputeServiceContextFactory()
                 //.createContext("eucalyptus", accesskeyid ,secretkey,ImmutableSet.<Module> of(new Log4JLoggingModule(), new JschSshClientModule()), overrides);
-                .createContext("eucalyptus", accesskeyid ,secretkey, ImmutableSet.<Module> of(), overrides);
-
-        // here's an example of the portable api
-        Set<? extends Image> images = context.getComputeService().listImages();
-
-
-
-        // specify your own keypair for use in creating nodes
-        //template.getOptions().as(EC2TemplateOptions.class).keyPair(keyPair);
-
-
-//        // when you need access to very ec2-specific features, use the provider-specific context
-//        EC2Client ec2Client = EC2Client.class.cast(context.getProviderSpecificContext().getApi());
-
-        // ex. to attach a volume to a node
-//        NodeMetadata node = Iterables.get(nodes, 0);
-//        Attachment attachment = ec2Client.getElasticBlockStoreServices().attachVolumeInRegion(null, volumeId, node.getLocation().getId(), device);
-
-        context.close();
-
-
+                .createContext(provider, accesskeyid ,secretkey, ImmutableSet.<Module> of(), overrides);
     }
 
 
@@ -103,6 +82,7 @@ public class JCloudIaasDriver implements IaasDriver {
         return true;
     }
 
+    @Override
     public void close() {
         context.close();
     }

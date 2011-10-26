@@ -9,6 +9,8 @@ import java.net.InetAddress;
 import org.jboss.as.cli.operation.OperationFormatException;
 import org.jboss.as.cli.operation.impl.DefaultOperationRequestBuilder;
 import org.jboss.as.controller.client.ModelControllerClient;
+import org.jboss.as.paas.controller.iaas.IaasController;
+import org.jboss.as.paas.controller.iaas.InstanceSlot;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -41,5 +43,27 @@ public class DomainController {
         setDc.addProperty("host", dcIP);
         setDc.addProperty("port", "9999");
         client.execute(setDc.buildRequest());
+    }
+
+    /**
+     * - creates new server instance
+     * - join it to domain controller
+     * - associate it with server group
+     * - start the server instance
+     * @return
+     *
+     */
+    public static InstanceSlot addServerInstanceToDomain(String provider) {
+        try {
+            //TODO update config instances/instance
+            String instanceId = IaasController.createNewInstance(provider);
+            String hostIp = IaasController.getInstanceIp(provider, instanceId);
+            addHostToDomain(hostIp);
+            return new InstanceSlot(hostIp, 0, instanceId);
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        return null;
     }
 }

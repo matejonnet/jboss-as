@@ -14,11 +14,11 @@ import org.jboss.dmr.ModelNode;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class ProviderDriverHandle implements OperationStepHandler {
+public class ProviderDriverHandler implements OperationStepHandler {
 
-	public static final ProviderDriverHandle INSTANCE = new ProviderDriverHandle(); 
+	public static final ProviderDriverHandler INSTANCE = new ProviderDriverHandler(); 
 	
-	private ProviderDriverHandle() {
+	private ProviderDriverHandler() {
 	}
 	
 	@Override

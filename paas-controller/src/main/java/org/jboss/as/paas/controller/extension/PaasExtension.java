@@ -6,14 +6,9 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
 
-import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
@@ -26,7 +21,6 @@ import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.SubsystemRegistration;
-import org.jboss.as.controller.client.ModelControllerClient;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.descriptions.common.CommonDescriptions;
@@ -46,7 +40,7 @@ import org.jboss.staxmapper.XMLExtendedStreamWriter;
 
 /**
  *
- * @author <a href="kabir.khan@jboss.com">Kabir Khan</a>
+ * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
 public class PaasExtension implements Extension {
 
@@ -60,10 +54,6 @@ public class PaasExtension implements Extension {
 
     /** The parser used for parsing our subsystem */
     private final SubsystemParser parser = new SubsystemParser();
-
-    //TODO make configurable
-    public static final int MAX_AS_PER_HOST = 3;
-
 
     @Override
     public void initializeParsers(ExtensionParsingContext context) {
@@ -79,14 +69,14 @@ public class PaasExtension implements Extension {
         final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME);
         final ManagementResourceRegistration registration = subsystem.registerSubsystemModel(PaasProviders.SUBSYSTEM);
         //We always need to add an 'add' operation
-        registration.registerOperationHandler(ADD, PaasAddHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        registration.registerOperationHandler(ADD, PaasAddHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
 
         //add module specific operations
-        registration.registerOperationHandler(ListApplicationsHandle.OPERATION_NAME, ListApplicationsHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
-        registration.registerOperationHandler(DeployHandle.OPERATION_NAME, DeployHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
-        registration.registerOperationHandler(UnDeployHandle.OPERATION_NAME, UnDeployHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
-        registration.registerOperationHandler(ExpandHandle.OPERATION_NAME, ExpandHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
-        registration.registerOperationHandler(ShrinkHandle.OPERATION_NAME, ShrinkHandle.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        registration.registerOperationHandler(ListApplicationsHandler.OPERATION_NAME, ListApplicationsHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        registration.registerOperationHandler(DeployHandler.OPERATION_NAME, DeployHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        registration.registerOperationHandler(UnDeployHandler.OPERATION_NAME, UnDeployHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        registration.registerOperationHandler(ExpandHandler.OPERATION_NAME, ExpandHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        registration.registerOperationHandler(ShrinkHandler.OPERATION_NAME, ShrinkHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
 
         //We always need to add a 'describe' operation
         registration.registerOperationHandler(DESCRIBE, PaasDescribeHandler.INSTANCE, PaasDescribeHandler.INSTANCE, false, OperationEntry.EntryType.PRIVATE);

@@ -4,12 +4,11 @@
 package org.jboss.as.paas.controller.iaas;
 
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.registry.Resource.ResourceEntry;
-import org.jboss.as.paas.controller.Util;
+import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 import org.jboss.logging.Logger;
 
 /**
@@ -32,7 +31,7 @@ public class VmIaasDriver implements IaasDriver {
      */
     @Override
     public IaasInstance getInstance(String instanceId) {
-        ResourceEntry instance = Util.getInstance(context, instanceId);
+        ResourceEntry instance = PaasDmrActions.getInstance(context, instanceId);
         String instanceIp = instance.getModel().get("ip").asString();
         List<String> publicAddresses = Arrays.asList(new String[]{instanceIp});
         return new IaasInstanceVmWrapper(publicAddresses, instanceId);

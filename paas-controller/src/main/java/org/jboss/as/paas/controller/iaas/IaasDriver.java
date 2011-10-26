@@ -47,9 +47,10 @@ public interface IaasDriver {
                 driver = new LocalIaasDriver();
             } else if ("vm".equals(driverName)) {
                 driver = new VmIaasDriver(iaasProvider.getContext());
-            } else if ("jcloud".equals(driverName)) {
+            } else if (driverName.startsWith("jcloud-")) {
                 //TODO validate required params
-                driver = new JCloudIaasDriver(iaasProvider.getUrl(), iaasProvider.getUsername(), iaasProvider.getPassword());
+                String provider = driverName.split("-")[1];
+                driver = new JCloudIaasDriver(provider , iaasProvider.getUrl(), iaasProvider.getUsername(), iaasProvider.getPassword());
             } else if (driverName.startsWith("delta-")) {
                 //TODO validate required params
                 try {

@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.jclouds.compute.domain.NodeMetadata;
+import org.jclouds.compute.domain.NodeState;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -36,8 +37,7 @@ public class IaasInstanceJCloudWrapper implements IaasInstance {
      */
     @Override
     public boolean isRunning() {
-        // TODO Auto-generated method stub
-        return false;
+        return instance.getState().equals(NodeState.RUNNING);
     }
 
     /* (non-Javadoc)

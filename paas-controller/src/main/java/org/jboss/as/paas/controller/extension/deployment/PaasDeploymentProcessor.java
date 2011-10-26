@@ -1,5 +1,6 @@
-package org.jboss.as.paas.controller.deployment;
+package org.jboss.as.paas.controller.extension.deployment;
 
+import org.jboss.as.paas.controller.extension.PaasAddHandler;
 import org.jboss.as.server.AbstractDeploymentChainStep;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
@@ -11,7 +12,7 @@ import org.jboss.logging.Logger;
 /**
  * An example deployment unit processor that does nothing. To add more deployment
  * processors copy this class, and add to the {@link AbstractDeploymentChainStep}
- * {@link PaasAddHandle#performBoottime(org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode, org.jboss.dmr.ModelNode, org.jboss.as.controller.ServiceVerificationHandler, java.util.List)}
+ * {@link PaasAddHandler#performBoottime(org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode, org.jboss.dmr.ModelNode, org.jboss.as.controller.ServiceVerificationHandler, java.util.List)}
  *
  * @author <a href="kabir.khan@jboss.com">Kabir Khan</a>
  */
