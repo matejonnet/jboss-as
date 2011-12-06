@@ -3,8 +3,6 @@
  */
 package org.jboss.as.paas.controller.iaas;
 
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.List;
 
@@ -44,6 +42,15 @@ public class IaasInstanceLocalWrapper implements IaasInstance {
     @Override
     public String getId() {
         return "localhost-instance";
+    }
+
+    /* (non-Javadoc)
+     * @see org.jboss.as.paas.controller.iaas.IaasInstance#getPrivateAddresses()
+     */
+    @Override
+    public List<String> getPrivateAddresses() {
+        // TODO Auto-generated method stub
+        return Arrays.asList(new String[]{"127.0.0.1"});
     }
 
 }

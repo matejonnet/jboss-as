@@ -25,9 +25,11 @@ public class PaasProcessor {
      *
      * @return
      */
-    public static InstanceSlot getFreeSlot(String group, OperationContext context, String createOnProvider) {
+    private InstanceSlot getFreeSlot(String group, OperationContext context, String createOnProvider) {
 
-        for (ResourceEntry instance : PaasDmrActions.getInstances(context)) {
+        PaasDmrActions paasDmrActions = new PaasDmrActions(context);
+
+        for (ResourceEntry instance : paasDmrActions.getInstances()) {
             boolean hasFreeSlot = true;
             String providerName = instance.getModel().get("provider").asString();
             //if defined createOnProvider, allow only defined provider
@@ -73,6 +75,36 @@ public class PaasProcessor {
             }
         }
         return null;
+    }
+
+    /**
+     * @param newInstance
+     * @param context
+     * @param provider
+     * @param appName
+     * @return
+     */
+    public InstanceSlot getSlot(boolean newInstance, String serverGroupName, OperationContext context, String provider) {
+        boolean newInstanceRequired = false;
+        if (newInstance) {
+            newInstanceRequired = true;
+        }
+
+        InstanceSlot slot = null;
+        if (!newInstanceRequired) {
+            slot = getFreeSlot(serverGroupName, context, provider);
+        }
+
+        if (slot == null) {
+            newInstanceRequired = true;
+        }
+
+        if (newInstanceRequired) {
+            DomainController dc = new DomainController();
+            slot = dc.addServerInstanceToDomain(provider);
+        }
+
+        return slot;
     }
 
 

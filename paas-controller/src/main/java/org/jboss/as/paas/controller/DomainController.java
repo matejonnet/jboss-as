@@ -22,7 +22,7 @@ public class DomainController {
      * @throws IOException
      * @throws OperationFormatException
      */
-    public static void addHostToDomain(String hostIP) throws IOException, OperationFormatException {
+    public void addHostToDomain(String hostIP) throws IOException, OperationFormatException {
         String dcIP = InetAddress.getLocalHost().getHostAddress();
 
         ModelControllerClient client = ModelControllerClient.Factory.create(hostIP, 9999);
@@ -53,7 +53,7 @@ public class DomainController {
      * @return
      *
      */
-    public static InstanceSlot addServerInstanceToDomain(String provider) {
+    public InstanceSlot addServerInstanceToDomain(String provider) {
         try {
             //TODO update config instances/instance
             String instanceId = IaasController.createNewInstance(provider);

@@ -29,6 +29,11 @@ public class IaasInstanceDeltaClWrapper implements IaasInstance {
         return instance.getPublicAddresses();
     }
 
+    @Override
+    public List<String> getPrivateAddresses() {
+        return instance.getPrivateAddresses();
+    }
+
     /* (non-Javadoc)
      * @see org.jboss.as.paas.controller.iaas.IaasInstance#isRunning()
      */

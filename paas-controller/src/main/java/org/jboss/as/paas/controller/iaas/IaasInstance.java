@@ -53,4 +53,10 @@ public interface IaasInstance {
     public String getId();
 
 
+    /**
+     * @return
+     */
+    public List<String> getPrivateAddresses();
+
+
 }

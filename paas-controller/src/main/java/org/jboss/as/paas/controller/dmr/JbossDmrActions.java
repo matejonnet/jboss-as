@@ -26,9 +26,16 @@ import org.jboss.logging.Logger;
  */
 public class JbossDmrActions extends DmrActions {
 
+    /**
+     * @param context
+     */
+    public JbossDmrActions(OperationContext context) {
+        super(context);
+    }
+
     private static final Logger log = Logger.getLogger(JbossDmrActions.class);
 
-    public static boolean isDomainController(OperationContext context) {
+    public boolean isDomainController() {
         Resource rootResource = context.getRootResource();
         // /host=172.16.254.128:read-config-as-xml
         //rootResource.navigate(PathAddress.pathAddress(PathElement.pathElement("host")));
@@ -45,7 +52,7 @@ public class JbossDmrActions extends DmrActions {
         return "local".equals(domainController);
     }
 
-    static void addHostToServerGroup(OperationContext context, InstanceSlot slot, String groupName) {
+    void addHostToServerGroup(InstanceSlot slot, String groupName) {
         //addHOST to SG
         // /host=master/server-config=server-one:add(socket-binding-group=standard-sockets, socket-binding-port-offset=<portOffset>)
         ModelNode opAddHostToSg = new ModelNode();
@@ -57,10 +64,10 @@ public class JbossDmrActions extends DmrActions {
         opAddHostToSg.get("socket-binding-group").set("standard-sockets");
         opAddHostToSg.get("socket-binding-port-offset").set(slot.getPortOffset());
 
-        addStepToContext(context, opAddHostToSg);
+        addStepToContext(opAddHostToSg);
     }
 
-    static void removeHostFromServerGroup(ModelNode steps, String groupName, InstanceSlot slot) {
+    void removeHostFromServerGroup(ModelNode steps, String groupName, InstanceSlot slot) {
         //rmeoveHOST from SG
         // /host=master/server-config=server-one:remove()
         ModelNode opRemoveHostFromSg = new ModelNode();
@@ -79,7 +86,7 @@ public class JbossDmrActions extends DmrActions {
      * @param f
      * @param appName
      */
-    public static void deployToServerGroup(OperationContext context, final File f, String appName, String serverGroup) {
+    public void deployToServerGroup(final File f, String appName, String serverGroup) {
         //Deployment process extracted from org.jboss.as.cli.handlers.DeployHandler.doHandle(CommandContext)
 
         final ModelNode request;
@@ -143,7 +150,7 @@ public class JbossDmrActions extends DmrActions {
         opDeploy.get(OP_ADDR).add(DEPLOYMENT, appName);
         steps.add(opDeploy);
 
-        addStepToContext(context, request);
+        addStepToContext(request);
         //TODO verify result
     }
 
@@ -154,7 +161,7 @@ public class JbossDmrActions extends DmrActions {
      * @param appName
      * @param serverGroup
      */
-    public static void undeployFromServerGroup(OperationContext context, String appName, String serverGroup) {
+    public void undeployFromServerGroup(String appName, String serverGroup) {
         final ModelNode request;
 
         //prepare composite operation
@@ -183,7 +190,7 @@ public class JbossDmrActions extends DmrActions {
         opRemoveDeployment.get(OP_ADDR).add(DEPLOYMENT, appName);
         steps.add(opRemoveDeployment);
 
-        addStepToContext(context, request);
+        addStepToContext(request);
 
         //TODO verify result
     }
@@ -192,12 +199,12 @@ public class JbossDmrActions extends DmrActions {
      * @param context
      * @param appName
      */
-    public static void removeServerGroup(OperationContext context, String serverGroupName) {
+    public void removeServerGroup(String serverGroupName) {
         ModelNode request = new ModelNode();
         request.get(OP).set("remove");
         request.get(OP_ADDR).add("server-group", serverGroupName);
 
-        addStepToContext(context, request);
+        addStepToContext(request);
     }
 
 

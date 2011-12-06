@@ -29,7 +29,10 @@ public class UnDeployHandler extends BaseHandler implements OperationStepHandler
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-        if (!JbossDmrActions.isDomainController(context)) {
+        JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
+        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
+
+        if (!jbossDmrActions.isDomainController()) {
             context.completeStep();
             return;
         }
@@ -42,16 +45,16 @@ public class UnDeployHandler extends BaseHandler implements OperationStepHandler
 
         String serverGroupName = getServerGroupName(appName);
 
-        JbossDmrActions.undeployFromServerGroup(context, appName, serverGroupName);
+        jbossDmrActions.undeployFromServerGroup(appName, serverGroupName);
 
         try {
-            CompositeDmrActions.removeHostsFromServerGroup(context, serverGroupName, true);
+            compositeDmrActions.removeHostsFromServerGroup(serverGroupName, true);
         } catch (Exception e) {
             //TODO throw new OperationFailedException(e);
             e.printStackTrace();
         }
 
-        JbossDmrActions.removeServerGroup(context, serverGroupName);
+        jbossDmrActions.removeServerGroup(serverGroupName);
 
         context.completeStep();
     }

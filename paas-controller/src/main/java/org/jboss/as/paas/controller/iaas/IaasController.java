@@ -7,6 +7,7 @@ import java.net.MalformedURLException;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.alterjoc.jbossconfigurator.client.RemoteConfigurator;
 import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.paas.controller.domain.IaasProvider;
@@ -49,7 +50,18 @@ public class IaasController {
                 e.printStackTrace();
             }
         }
+
+        configureInstance(instance.getPrivateAddresses().get(0));
+
         return instance.getId();
+    }
+
+    /**
+     * @param remoteIp
+     *
+     */
+    private static void configureInstance(String remoteIp) {
+        new RemoteConfigurator().reconfigureRemote(remoteIp);
     }
 
     /**

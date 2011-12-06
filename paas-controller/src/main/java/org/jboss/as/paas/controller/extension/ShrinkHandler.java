@@ -28,7 +28,10 @@ public class ShrinkHandler extends BaseHandler implements OperationStepHandler {
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-        if (!JbossDmrActions.isDomainController(context)) {
+        JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
+        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
+
+        if (!jbossDmrActions.isDomainController()) {
             context.completeStep();
             return;
         }
@@ -40,7 +43,7 @@ public class ShrinkHandler extends BaseHandler implements OperationStepHandler {
 //        }
 
         try {
-            CompositeDmrActions.removeHostsFromServerGroup(context, getServerGroupName(appName), false);
+            compositeDmrActions.removeHostsFromServerGroup(getServerGroupName(appName), false);
         } catch (Exception e) {
             //TODO throw new OperationFailedException(e);
             e.printStackTrace();

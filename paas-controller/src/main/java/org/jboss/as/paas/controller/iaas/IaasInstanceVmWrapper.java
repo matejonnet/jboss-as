@@ -47,4 +47,13 @@ public class IaasInstanceVmWrapper implements IaasInstance {
         return instanceId;
     }
 
+    /* (non-Javadoc)
+     * @see org.jboss.as.paas.controller.iaas.IaasInstance#getPrivateAddresses()
+     */
+    @Override
+    public List<String> getPrivateAddresses() {
+        //TODO warning
+        return publicAddresses;
+    }
+
 }

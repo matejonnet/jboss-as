@@ -8,9 +8,11 @@ import java.io.File;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
+import org.jboss.as.paas.controller.PaasProcessor;
 import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
 import org.jboss.as.paas.controller.dmr.JbossDmrActions;
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
+import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 
@@ -35,9 +37,14 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
 
+        PaasDmrActions paasDmrActions = new PaasDmrActions(context);
+        JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
+        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
+        PaasProcessor paasProcessor = new PaasProcessor();
+
         System.out.println(">>>>>>>>> DeployHandle.execute ");
         //TODO create interceptor annotation
-        if (!JbossDmrActions.isDomainController(context)) {
+        if (!jbossDmrActions.isDomainController()) {
             context.completeStep();
             return;
         }
@@ -76,11 +83,13 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
         String appName = f.getName();
         String serverGroupName = getServerGroupName(appName);
 
-        PaasDmrActions.createServerGroup(context, serverGroupName);
 
-        CompositeDmrActions.addHostToServerGroup(newInstance, provider, context, serverGroupName);
+        paasDmrActions.createServerGroup(serverGroupName);
 
-        JbossDmrActions.deployToServerGroup(context, f, appName, serverGroupName);
+        InstanceSlot slot = paasProcessor.getSlot(newInstance, getServerGroupName(appName), context, provider);
+        compositeDmrActions.addHostToServerGroup(slot, getServerGroupName(appName));
+
+        jbossDmrActions.deployToServerGroup(f, appName, serverGroupName);
 
         context.completeStep();
     }

@@ -26,9 +26,16 @@ import org.jboss.logging.Logger;
  */
 public class PaasDmrActions extends DmrActions {
 
+    /**
+     * @param context
+     */
+    public PaasDmrActions(OperationContext context) {
+        super(context);
+    }
+
     private static final Logger log = Logger.getLogger(DmrActions.class);
 
-    public static Set<ResourceEntry> getInstances(OperationContext context) {
+    public Set<ResourceEntry> getInstances() {
         Resource rootResource = context.getRootResource();
 
         PathAddress instancesAddr = PathAddress.pathAddress(
@@ -39,8 +46,8 @@ public class PaasDmrActions extends DmrActions {
         return instancesResource.getChildren("instance");
     }
 
-    public static ResourceEntry getInstance(OperationContext context, String instanceId) {
-        Set<ResourceEntry> instances = getInstances(context);
+    public ResourceEntry getInstance(String instanceId) {
+        Set<ResourceEntry> instances = getInstances();
         for (ResourceEntry instance : instances) {
             if (instance.getName().equals(instanceId)) {
                 return instance;
@@ -53,7 +60,7 @@ public class PaasDmrActions extends DmrActions {
      * @param context
      * @return
      */
-    public static Set<ResourceEntry> getIaasProviders(OperationContext context) {
+    public Set<ResourceEntry> getIaasProviders() {
         Resource rootResource = context.getRootResource();
 
         PathAddress instancesAddr = PathAddress.pathAddress(
@@ -64,8 +71,8 @@ public class PaasDmrActions extends DmrActions {
         return instancesResource.getChildren("provider");
     }
 
-    private static ResourceEntry getIaasProvider(OperationContext context, String providerName) {
-        Set<ResourceEntry> providers = getIaasProviders(context);
+    private ResourceEntry getIaasProvider(String providerName) {
+        Set<ResourceEntry> providers = getIaasProviders();
         for (ResourceEntry provider : providers) {
             if (provider.getName().equals(providerName)) {
                 return provider;
@@ -74,7 +81,7 @@ public class PaasDmrActions extends DmrActions {
         return null;
     }
 
-    public static void addHostToServerGroup(OperationContext context, InstanceSlot slot, String groupName) {
+    public void addHostToServerGroup(InstanceSlot slot, String groupName) {
         ModelNode opAddSgToInstance = new ModelNode();
         opAddSgToInstance.get(OP).set("add");
         opAddSgToInstance.get(OP_ADDR).add("profile", "paas-controller");
@@ -82,10 +89,10 @@ public class PaasDmrActions extends DmrActions {
         opAddSgToInstance.get(OP_ADDR).add("instance", slot.getInstanceId());
         opAddSgToInstance.get(OP_ADDR).add("server-group", groupName);
         opAddSgToInstance.get("position").set(slot.getSlotPosition());
-        addStepToContext(context, opAddSgToInstance);
+        addStepToContext(opAddSgToInstance);
     }
 
-    public static void removeHostFromServerGroup(ModelNode steps, String groupName, InstanceSlot slot) {
+    public void removeHostFromServerGroup(ModelNode steps, String groupName, InstanceSlot slot) {
         ModelNode opRemoveSgFromInstance = new ModelNode();
         opRemoveSgFromInstance.get(OP).set("remove");
         opRemoveSgFromInstance.get(OP_ADDR).add("profile", "paas-controller");
@@ -100,7 +107,7 @@ public class PaasDmrActions extends DmrActions {
      * @param instance
      * @return
      */
-    public static Set<ResourceEntry> getServerGroups(OperationContext context, ResourceEntry instance) {
+    public Set<ResourceEntry> getServerGroups(ResourceEntry instance) {
         return instance.getChildren("server-group");
     }
 
@@ -110,7 +117,7 @@ public class PaasDmrActions extends DmrActions {
      * @param context
      * @param serverGroupName
      */
-    public static void createServerGroup(OperationContext context, String serverGroupName) {
+    public void createServerGroup(String serverGroupName) {
 
         DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
         builder.setOperationName("add");
@@ -120,14 +127,14 @@ public class PaasDmrActions extends DmrActions {
 
         try {
             ModelNode request = builder.buildRequest();
-            addStepToContext(context, request);
+            addStepToContext(request);
         } catch (OperationFormatException e) {
             // TODO Auto-generated catch block
             log.error("Cannot build request to create server group.", e);
         }
     }
 
-    public static void listApplications(OperationContext context, ModelNode operation) {
+    public void listApplications(ModelNode operation) {
         //        final ModelNode request = new ModelNode();
         //        request.get(OP_ADDR).setEmptyList();
         //        request.get(ClientConstants.OP).add("read-children-names");
@@ -152,7 +159,7 @@ public class PaasDmrActions extends DmrActions {
 
             if (operation.get("exe-model").isDefined()) {
                 System.out.println(">>>>>>>>> added step OperationContext.Stage.MODEL");
-                addStepToContext(context, request);
+                addStepToContext(request);
             }
 
             if (operation.get("exe-domain").isDefined()) {

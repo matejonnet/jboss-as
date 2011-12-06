@@ -6,8 +6,10 @@ package org.jboss.as.paas.controller.extension;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
+import org.jboss.as.paas.controller.PaasProcessor;
 import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
 import org.jboss.as.paas.controller.dmr.JbossDmrActions;
+import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 
@@ -30,7 +32,10 @@ public class ExpandHandler extends BaseHandler implements OperationStepHandler {
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-        if (!JbossDmrActions.isDomainController(context)) {
+        JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
+        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
+
+        if (!jbossDmrActions.isDomainController()) {
             context.completeStep();
             return;
         }
@@ -43,9 +48,10 @@ public class ExpandHandler extends BaseHandler implements OperationStepHandler {
 //            throw new OperationFormatException("Required argument name are missing.");
 //        }
 
-        CompositeDmrActions.addHostToServerGroup(newInstance, provider, context, getServerGroupName(appName));
+        PaasProcessor paasProcessor = new PaasProcessor();
 
-
+        InstanceSlot slot = paasProcessor.getSlot(newInstance, getServerGroupName(appName), context, provider);
+        compositeDmrActions.addHostToServerGroup(slot, getServerGroupName(appName));
 
         context.completeStep();
     }

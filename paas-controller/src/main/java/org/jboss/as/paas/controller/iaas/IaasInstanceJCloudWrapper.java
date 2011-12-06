@@ -32,6 +32,12 @@ public class IaasInstanceJCloudWrapper implements IaasInstance {
         return Arrays.asList(addresses);
     }
 
+    @Override
+    public List<String> getPrivateAddresses() {
+        String[] addresses = (String[]) instance.getPrivateAddresses().toArray();
+        return Arrays.asList(addresses);
+    }
+
     /* (non-Javadoc)
      * @see org.jboss.as.paas.controller.iaas.IaasInstance#isRunning()
      */

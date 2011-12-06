@@ -36,15 +36,17 @@ public class ListApplicationsHandler implements OperationStepHandler {
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
         System.out.println(">>>>>>>>> ListApplicationsHandle.execute.");
+        JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
+        PaasDmrActions paasDmrActions = new PaasDmrActions(context);
 
-        if (!JbossDmrActions.isDomainController(context)) {
+        if (!jbossDmrActions.isDomainController()) {
             context.completeStep();
             return;
         }
 
         System.out.println(">>>>>>>>> ListApplicationsHandle.execute: continue");
 
-        PaasDmrActions.listApplications(context, operation);
+        paasDmrActions.listApplications(operation);
 
         context.completeStep();
     }

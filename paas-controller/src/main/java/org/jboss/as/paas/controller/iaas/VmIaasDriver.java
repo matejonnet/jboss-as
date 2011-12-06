@@ -31,7 +31,9 @@ public class VmIaasDriver implements IaasDriver {
      */
     @Override
     public IaasInstance getInstance(String instanceId) {
-        ResourceEntry instance = PaasDmrActions.getInstance(context, instanceId);
+        PaasDmrActions paasDmrActions = new PaasDmrActions(context);
+
+        ResourceEntry instance = paasDmrActions.getInstance(instanceId);
         String instanceIp = instance.getModel().get("ip").asString();
         List<String> publicAddresses = Arrays.asList(new String[]{instanceIp});
         return new IaasInstanceVmWrapper(publicAddresses, instanceId);

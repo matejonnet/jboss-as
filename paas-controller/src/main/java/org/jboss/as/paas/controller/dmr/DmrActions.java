@@ -15,15 +15,22 @@ import org.jboss.logging.Logger;
  */
 abstract class DmrActions {
 
+    protected OperationContext context;
+
+    public DmrActions(OperationContext context) {
+        super();
+        this.context = context;
+    }
+
     private static final Logger log = Logger.getLogger(DmrActions.class);
 
-    protected static void executeStep(OperationContext context, ModelNode operation) {
+    protected void executeStep(OperationContext context, ModelNode operation) {
         String opName = operation.get(ModelDescriptionConstants.OP).asString();
         OperationStepHandler opStep = context.getResourceRegistration().getOperationHandler(PathAddress.EMPTY_ADDRESS, opName);
         try {
-            if (log.isDebugEnabled()) log.debug("Executing oreration:" + operation);
+            if (log.isTraceEnabled()) log.trace("Executing oreration:" + operation);
             opStep.execute(context, operation);
-            if (log.isDebugEnabled()) log.debug("Oreration executed.");
+            if (log.isTraceEnabled()) log.trace("Operation executed.");
         //} catch (OperationFailedException e) {
         } catch (Throwable e) {
             // TODO Auto-generated catch block
@@ -36,7 +43,7 @@ abstract class DmrActions {
      * @param context
      * @param request
      */
-    protected static void addStepToContext(OperationContext context, ModelNode request) {
+    protected void addStepToContext(ModelNode request) {
         context.addStep(request, new OperationStepHandler() {
             @Override
             public void execute(OperationContext context, ModelNode operation) {
