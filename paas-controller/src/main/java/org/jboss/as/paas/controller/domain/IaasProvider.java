@@ -13,6 +13,7 @@ import org.jboss.as.paas.controller.iaas.IaasInstance;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
+//TODO extract abstract and remove OperationContext from non VM provider. create different implementations
 public class IaasProvider {
 
     private String name;

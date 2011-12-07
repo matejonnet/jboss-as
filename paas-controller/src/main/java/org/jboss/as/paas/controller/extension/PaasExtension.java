@@ -73,7 +73,7 @@ public class PaasExtension implements Extension {
 
         //add module specific operations
         registration.registerOperationHandler(ListApplicationsHandler.OPERATION_NAME, ListApplicationsHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
-        registration.registerOperationHandler(DeployHandler.OPERATION_NAME, DeployHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        registration.registerOperationHandler(DeployHandler.OPERATION_NAME, DeployHandler.INSTANCE, DeployHandler.DESC, false);
         registration.registerOperationHandler(UnDeployHandler.OPERATION_NAME, UnDeployHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
         registration.registerOperationHandler(ExpandHandler.OPERATION_NAME, ExpandHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
         registration.registerOperationHandler(ShrinkHandler.OPERATION_NAME, ShrinkHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);

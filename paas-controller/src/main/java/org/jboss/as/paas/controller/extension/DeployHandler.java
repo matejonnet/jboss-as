@@ -3,17 +3,25 @@
  */
 package org.jboss.as.paas.controller.extension;
 
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ATTRIBUTES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIPTION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUIRED;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
+
 import java.io.File;
+import java.util.Locale;
 
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
+import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.paas.controller.PaasProcessor;
 import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
 import org.jboss.as.paas.controller.dmr.JbossDmrActions;
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
+import org.jboss.dmr.ModelType;
 import org.jboss.logging.Logger;
 
 /**
@@ -94,8 +102,31 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
         context.completeStep();
     }
 
+    /**
+     * DescriptionProvider.
+     */
+    public static DescriptionProvider DESC = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(Locale locale) {
 
+            final ModelNode node = new ModelNode();
+            node.get(DESCRIPTION).set("Deploy application.");
 
+            node.get(ATTRIBUTES, ATTRIBUTE_PATH, DESCRIPTION).set("Path to file.");
+            node.get(ATTRIBUTES, ATTRIBUTE_PATH, TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, ATTRIBUTE_PATH, REQUIRED).set(true);
+
+            node.get(ATTRIBUTES, ATTRIBUTE_PROVIDER, DESCRIPTION).set("Provider name.");
+            node.get(ATTRIBUTES, ATTRIBUTE_PROVIDER, TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, ATTRIBUTE_PROVIDER, REQUIRED).set(true);
+
+            node.get(ATTRIBUTES, ATTRIBUTE_NEW_INSTANCE, DESCRIPTION).set("Force new instance creation. Default: false");
+            node.get(ATTRIBUTES, ATTRIBUTE_NEW_INSTANCE, TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, ATTRIBUTE_NEW_INSTANCE, REQUIRED).set(false);
+
+            return node;
+        }
+     };
 
 
 
