@@ -27,19 +27,17 @@ import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.dmr.ModelNode;
 
 /**
- * {@link org.jboss.as.controller.descriptions.DescriptionProvider} implementations for sub-models that occur
- * across different types of models.
+ * {@link org.jboss.as.controller.descriptions.DescriptionProvider} implementations for sub-models that occur across different
+ * types of models.
  *
  * @author Brian Stansberry
  *
  */
 public final class CommonProviders {
 
-
-
     // Prevent instantiation
-    private CommonProviders() {}
-
+    private CommonProviders() {
+    }
 
     public static final DescriptionProvider EXTENSION_PROVIDER = new DescriptionProvider() {
         @Override
@@ -49,8 +47,7 @@ public final class CommonProviders {
     };
 
     /**
-     * Provider for a sub-model that names a "path" but doesn't require
-     * the actual path to be specified.
+     * Provider for a sub-model that names a "path" but doesn't require the actual path to be specified.
      */
     public static final DescriptionProvider NAMED_PATH_PROVIDER = new DescriptionProvider() {
         @Override
@@ -69,7 +66,6 @@ public final class CommonProviders {
         }
     };
 
-
     /**
      * Provider for a sub-model that defines a management security-realm configuration.
      */
@@ -79,7 +75,6 @@ public final class CommonProviders {
             return ManagementDescription.getManagementSecurityRealmDescription(locale);
         }
     };
-
 
     /**
      * Provider for a sub-model that defines a management authentication/authorization connection factory configuration.
@@ -91,38 +86,15 @@ public final class CommonProviders {
         }
     };
 
-
     /**
      * Provider for a sub-model that defines the management configuration.
      */
-    public static final DescriptionProvider NATIVE_MANAGEMENT_PROVIDER = new DescriptionProvider() {
+    public static final DescriptionProvider NATIVE_REMOTING_MANAGEMENT_PROVIDER = new DescriptionProvider() {
         @Override
         public ModelNode getModelDescription(final Locale locale) {
-            return ManagementDescription.getNativeManagementDescription(locale);
+            return ManagementDescription.getNativeRemotingManagementDescription(locale);
         }
     };
-
-    /**
-     * Provider for a sub-model that names an interface and specifies the criteria.
-     */
-    public static final DescriptionProvider HTTP_MANAGEMENT_PROVIDER = new DescriptionProvider() {
-        @Override
-        public ModelNode getModelDescription(final Locale locale) {
-            return ManagementDescription.getHttpManagementDescription(locale);
-        }
-    };
-
-
-    /**
-     * Provider for a sub-model that names a management interface and specifies the criteria.
-     */
-    public static final DescriptionProvider MANAGEMENT_INTERFACE_PROVIDER = new DescriptionProvider() {
-        @Override
-        public ModelNode getModelDescription(final Locale locale) {
-            return ManagementInterfaceDescription.getManagementInterfaceDescription(locale);
-        }
-    };
-
 
     /**
      * Provider for a sub-model that names a "path" and specifies the actual path.
@@ -135,8 +107,7 @@ public final class CommonProviders {
     };
 
     /**
-     * Provider for a sub-model that names an interface but doesn't require
-     * the address selection criteria.
+     * Provider for a sub-model that names an interface but doesn't require the address selection criteria.
      */
     public static final DescriptionProvider NAMED_INTERFACE_PROVIDER = new DescriptionProvider() {
         @Override
@@ -152,16 +123,6 @@ public final class CommonProviders {
         @Override
         public ModelNode getModelDescription(final Locale locale) {
             return InterfaceDescription.getSpecifiedInterfaceDescription(locale);
-        }
-    };
-
-    /**
-     * Provider for a sub-model that names a socket and specifies its configuration.
-     */
-    public static final DescriptionProvider SOCKET_BINDING_PROVIDER = new DescriptionProvider() {
-        @Override
-        public ModelNode getModelDescription(final Locale locale) {
-            return SocketBindingGroupDescription.getSocketBindingDescription(locale);
         }
     };
 
@@ -249,7 +210,7 @@ public final class CommonProviders {
     public static final DescriptionProvider VALIDATE_ADDRESS_PROVIDER = new DescriptionProvider() {
         @Override
         public ModelNode getModelDescription(Locale locale) {
-            return new ModelNode();
+            return CommonDescriptions.getValidateAddressOperation(locale);
         }
     };
 
@@ -260,6 +221,15 @@ public final class CommonProviders {
         @Override
         public ModelNode getModelDescription(final Locale locale) {
             return CommonDescriptions.getServiceContainerDescription(locale);
+        }
+    };
+    /**
+     * Provider for a resource that defines the core security vault.
+     */
+    public static final DescriptionProvider VAULT_PROVIDER = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(Locale locale) {
+            return VaultDescriptions.getVaultDescription(locale);
         }
     };
 }

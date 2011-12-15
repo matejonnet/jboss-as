@@ -21,93 +21,151 @@
  */
 package org.jboss.as.osgi.parser;
 
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ATTRIBUTES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CHILDREN;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIPTION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HEAD_COMMENT_ALLOWED;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAMESPACE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TAIL_COMMENT_ALLOWED;
+import static org.jboss.as.osgi.parser.SubsystemState.DEFAULT_ACTIVATION;
+
 import java.util.Locale;
 import java.util.ResourceBundle;
 
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
+import org.jboss.as.controller.registry.AttributeAccess;
+import org.jboss.as.controller.registry.AttributeAccess.AccessType;
+import org.jboss.as.controller.registry.AttributeAccess.Flag;
 import org.jboss.dmr.ModelNode;
+import org.jboss.dmr.ModelType;
 
 /**
  * @author <a href="mailto:darran.lofthouse@jboss.com">Darran Lofthouse</a>
  * @author David Bosschaert
+ * @author Thomas.Diesler@jboss.com
  */
 class OSGiSubsystemProviders {
     static final String RESOURCE_NAME = OSGiSubsystemProviders.class.getPackage().getName() + ".LocalDescriptions";
 
     static final DescriptionProvider SUBSYSTEM = new DescriptionProvider() {
         public ModelNode getModelDescription(final Locale locale) {
-            return getRootResource(locale);
+
+            ModelNode subsystem = new ModelNode();
+            ResourceBundle resbundle = getResourceBundle(locale);
+            subsystem.get(DESCRIPTION).set(resbundle.getString("subsystem"));
+            subsystem.get(HEAD_COMMENT_ALLOWED).set(true);
+            subsystem.get(TAIL_COMMENT_ALLOWED).set(true);
+            subsystem.get(NAMESPACE).set(Namespace.CURRENT.getUriString());
+
+            subsystem.get(ATTRIBUTES, ModelConstants.ACTIVATION, ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("subsystem.activation"));
+            subsystem.get(ATTRIBUTES, ModelConstants.ACTIVATION, ModelDescriptionConstants.TYPE).set(ModelType.STRING);
+            subsystem.get(ATTRIBUTES, ModelConstants.ACTIVATION, ModelDescriptionConstants.DEFAULT).set(DEFAULT_ACTIVATION.toString());
+            subsystem.get(ATTRIBUTES, ModelConstants.ACTIVATION, ModelDescriptionConstants.ACCESS_TYPE).set(AccessType.READ_WRITE.toString());
+            subsystem.get(ATTRIBUTES, ModelConstants.ACTIVATION, ModelDescriptionConstants.RESTART_REQUIRED).set(Flag.RESTART_JVM.toString());
+
+            subsystem.get(ATTRIBUTES, ModelConstants.STARTLEVEL, ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("subsystem.startlevel"));
+            subsystem.get(ATTRIBUTES, ModelConstants.STARTLEVEL, ModelDescriptionConstants.TYPE).set(ModelType.INT);
+            subsystem.get(ATTRIBUTES, ModelConstants.STARTLEVEL, ModelDescriptionConstants.ACCESS_TYPE).set(AccessType.READ_WRITE.toString());
+            subsystem.get(ATTRIBUTES, ModelConstants.STARTLEVEL, ModelDescriptionConstants.RESTART_REQUIRED).set(Flag.RESTART_NONE.toString());
+            subsystem.get(ATTRIBUTES, ModelConstants.STARTLEVEL, ModelDescriptionConstants.STORAGE).set(Flag.STORAGE_RUNTIME.toString());
+
+            subsystem.get(CHILDREN, ModelConstants.CONFIGURATION, ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("configuration"));
+            subsystem.get(CHILDREN, ModelConstants.PROPERTY, ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("framework.property"));
+            subsystem.get(CHILDREN, ModelConstants.CAPABILITY, ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("capability"));
+            subsystem.get(CHILDREN, ModelConstants.BUNDLE, ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("bundle"));
+
+            return subsystem;
         }
     };
 
-    static final DescriptionProvider OSGI_CONFIGURATION_RESOURCE = new DescriptionProvider() {
+    static final DescriptionProvider CONFIGURATION_DESCRIPTION = new DescriptionProvider() {
         public ModelNode getModelDescription(Locale locale) {
-            return getCasConfiguration(locale);
+            final ModelNode node = new ModelNode();
+            ResourceBundle resbundle = getResourceBundle(locale);
+            node.get(DESCRIPTION).set(resbundle.getString("configuration"));
+            node.get(ATTRIBUTES, ModelConstants.ENTRIES, ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("configuration.entries"));
+            node.get(ATTRIBUTES, ModelConstants.ENTRIES, ModelDescriptionConstants.REQUIRED).set(true);
+            node.get(ATTRIBUTES, ModelConstants.ENTRIES, ModelDescriptionConstants.TYPE).set(ModelType.LIST);
+            node.get(ATTRIBUTES, ModelConstants.ENTRIES, ModelDescriptionConstants.VALUE_TYPE).set(ModelType.PROPERTY);
+            node.get(ATTRIBUTES, ModelConstants.ENTRIES, ModelDescriptionConstants.ACCESS_TYPE).set(AccessType.READ_WRITE.toString());
+            node.get(ATTRIBUTES, ModelConstants.ENTRIES, ModelDescriptionConstants.RESTART_REQUIRED).set(Flag.RESTART_NONE.toString());
+            return node;
         }
     };
 
-
-    static final DescriptionProvider OSGI_PROPERTY_RESOURCE = new DescriptionProvider() {
+    static final DescriptionProvider PROPERTY_DESCRIPTION = new DescriptionProvider() {
         public ModelNode getModelDescription(Locale locale) {
-            return getProperty(locale);
+            final ModelNode node = new ModelNode();
+            ResourceBundle resbundle = getResourceBundle(locale);
+            node.get(DESCRIPTION).set(resbundle.getString("framework.property"));
+            node.get(ATTRIBUTES, ModelConstants.VALUE, ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("framework.property.value"));
+            node.get(ATTRIBUTES, ModelConstants.VALUE, ModelDescriptionConstants.TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, ModelConstants.VALUE, ModelDescriptionConstants.REQUIRED).set(true);
+            node.get(ATTRIBUTES, ModelConstants.VALUE, ModelDescriptionConstants.ACCESS_TYPE).set(AccessType.READ_WRITE.toString());
+            node.get(ATTRIBUTES, ModelConstants.VALUE, ModelDescriptionConstants.RESTART_REQUIRED).set("all-services");
+            return node;
         }
     };
 
 
-    static final DescriptionProvider OSGI_MODULE_RESOURCE = new DescriptionProvider() {
+    static final DescriptionProvider CAPABILITY_DESCRIPTION = new DescriptionProvider() {
         public ModelNode getModelDescription(Locale locale) {
-            return getModule(locale);
+            final ModelNode node = new ModelNode();
+            ResourceBundle resbundle = getResourceBundle(locale);
+            node.get(DESCRIPTION).set(resbundle.getString("capability"));
+            node.get(ATTRIBUTES, ModelConstants.STARTLEVEL, ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("capability.startlevel"));
+            node.get(ATTRIBUTES, ModelConstants.STARTLEVEL, ModelDescriptionConstants.TYPE).set(ModelType.INT);
+            node.get(ATTRIBUTES, ModelConstants.STARTLEVEL, ModelDescriptionConstants.REQUIRED).set(false);
+            node.get(ATTRIBUTES, ModelConstants.STARTLEVEL, ModelDescriptionConstants.ACCESS_TYPE).set(AccessType.READ_WRITE.toString());
+            node.get(ATTRIBUTES, ModelConstants.STARTLEVEL, ModelDescriptionConstants.RESTART_REQUIRED).set("all-services");
+            return node;
         }
     };
 
-    static ModelNode getRootResource(Locale locale) {
-        ResourceBundle bundle = OSGiSubsystemProviders.getResourceBundle(locale);
+    static final DescriptionProvider BUNDLE_DESCRIPTION = new DescriptionProvider() {
+        public ModelNode getModelDescription(Locale locale) {
+            final ModelNode node = new ModelNode();
+            ResourceBundle resbundle = getResourceBundle(locale);
+            node.get(DESCRIPTION).set(resbundle.getString("bundle"));
 
-        ModelNode node = new ModelNode();
-        node.get(ModelDescriptionConstants.DESCRIPTION).set(bundle.getString("osgi"));
-        OSGiSubsystemAdd.addModelProperties(bundle, node, ModelDescriptionConstants.ATTRIBUTES);
+            String storageRuntime = AttributeAccess.Storage.RUNTIME.toString();
 
-        node.get(ModelDescriptionConstants.CHILDREN, CommonAttributes.CONFIGURATION).set(getCasConfiguration(locale));
-        node.get(ModelDescriptionConstants.CHILDREN, CommonAttributes.PROPERTY).set(getProperty(locale));
-        node.get(ModelDescriptionConstants.CHILDREN, CommonAttributes.MODULE).set(getModule(locale));
-        return node;
-    }
+            ModelNode idNode = new ModelNode();
+            idNode.get(ModelDescriptionConstants.TYPE).set(ModelType.LONG);
+            idNode.get(ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("bundle.id"));
+            idNode.get(ModelDescriptionConstants.ACCESS_TYPE).set(ModelDescriptionConstants.READ_ONLY);
+            idNode.get(ModelDescriptionConstants.STORAGE).set(storageRuntime);
 
-    private static ModelNode getCasConfiguration(Locale locale) {
-        ResourceBundle bundle = OSGiSubsystemProviders.getResourceBundle(locale);
+            ModelNode startLevelNode = new ModelNode();
+            startLevelNode.get(ModelDescriptionConstants.TYPE).set(ModelType.INT);
+            startLevelNode.get(ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("bundle.startlevel"));
+            startLevelNode.get(ModelDescriptionConstants.ACCESS_TYPE).set(ModelDescriptionConstants.READ_ONLY);
+            startLevelNode.get(ModelDescriptionConstants.REQUIRED).set(false);
+            startLevelNode.get(ModelDescriptionConstants.STORAGE).set(storageRuntime);
 
-        final ModelNode node = new ModelNode();
-        node.get(ModelDescriptionConstants.DESCRIPTION).set(bundle.getString("config"));
-        OSGiCasConfigAdd.addModelProperties(bundle, node, ModelDescriptionConstants.ATTRIBUTES);
+            ModelNode symbolicNameNode = new ModelNode();
+            symbolicNameNode.get(ModelDescriptionConstants.TYPE).set(ModelType.STRING);
+            symbolicNameNode.get(ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("bundle.symbolic-name"));
+            symbolicNameNode.get(ModelDescriptionConstants.ACCESS_TYPE).set(ModelDescriptionConstants.READ_ONLY);
+            symbolicNameNode.get(ModelDescriptionConstants.STORAGE).set(storageRuntime);
 
-        return node;
-    }
+            ModelNode versionNode = new ModelNode();
+            versionNode.get(ModelDescriptionConstants.TYPE).set(ModelType.STRING);
+            versionNode.get(ModelDescriptionConstants.DESCRIPTION).set(resbundle.getString("bundle.version"));
+            versionNode.get(ModelDescriptionConstants.ACCESS_TYPE).set(ModelDescriptionConstants.READ_ONLY);
+            versionNode.get(ModelDescriptionConstants.STORAGE).set(storageRuntime);
 
-    private static ModelNode getProperty(Locale locale) {
-        ResourceBundle bundle = OSGiSubsystemProviders.getResourceBundle(locale);
+            node.get(ModelDescriptionConstants.ATTRIBUTES).get(ModelConstants.ID).set(idNode);
+            node.get(ModelDescriptionConstants.ATTRIBUTES).get(ModelConstants.STARTLEVEL).set(startLevelNode);
+            node.get(ModelDescriptionConstants.ATTRIBUTES).get(ModelConstants.SYMBOLIC_NAME).set(symbolicNameNode);
+            node.get(ModelDescriptionConstants.ATTRIBUTES).get(ModelConstants.VERSION).set(versionNode);
 
-        final ModelNode node = new ModelNode();
-        node.get(ModelDescriptionConstants.DESCRIPTION).set(bundle.getString("property"));
-        OSGiPropertyAdd.addModelProperties(bundle, node, ModelDescriptionConstants.ATTRIBUTES);
-
-        return node;
-    }
-
-    private static ModelNode getModule(Locale locale) {
-        ResourceBundle bundle = OSGiSubsystemProviders.getResourceBundle(locale);
-
-        final ModelNode node = new ModelNode();
-        node.get(ModelDescriptionConstants.DESCRIPTION).set(bundle.getString("module"));
-        OSGiModuleAdd.addModelProperties(bundle, node, ModelDescriptionConstants.ATTRIBUTES);
-
-        return node;
-    }
+            return node;
+        }
+    };
 
     static ResourceBundle getResourceBundle(Locale locale) {
-        if (locale == null) {
-            locale = Locale.getDefault();
-        }
-        return ResourceBundle.getBundle(RESOURCE_NAME, locale);
+        return ResourceBundle.getBundle(RESOURCE_NAME, locale != null ? locale : Locale.getDefault());
     }
 }

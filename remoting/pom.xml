@@ -29,14 +29,51 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-parent</artifactId>
-        <version>7.1.0.Alpha1-SNAPSHOT</version>
+        <version>7.1.0.Beta1</version>
     </parent>
 
     <groupId>org.jboss.as</groupId>
     <artifactId>jboss-as-remoting</artifactId>
-    <version>7.1.0.Alpha1-SNAPSHOT</version>
+    <version>7.1.0.Beta1</version>
 
     <name>JBoss Application Server: Remoting Subsystem</name>
+
+    <properties>
+        <test.level>INFO</test.level>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemProperties>
+                        <property>
+                            <name>java.util.logging.manager</name>
+                            <value>org.jboss.logmanager.LogManager</value>
+                        </property>
+                        <property>
+                            <name>jboss.remoting.leakdebugging</name>
+                            <value>false</value>
+                        </property>
+                        <property>
+                            <name>test.level</name>
+                            <value>${test.level}</value>
+                        </property>
+                    </systemProperties>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <compilerArgument>
+                        -AgeneratedTranslationFilesPath=${project.build.directory}/generated-translation-files
+                    </compilerArgument>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
     <dependencies>
         <dependency>
@@ -46,6 +83,22 @@
         <dependency>
             <groupId>org.jboss.as</groupId>
             <artifactId>jboss-as-network</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.as</groupId>
+            <artifactId>jboss-as-threads</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging-processor</artifactId>
+            <!-- This is a compile-time dependency of this project, but is not needed at compile or runtime by other
+                  projects that depend on this project.-->
+            <scope>provided</scope>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.jboss.marshalling</groupId>
@@ -67,9 +120,13 @@
             <groupId>org.jboss.xnio</groupId>
             <artifactId>xnio-api</artifactId>
         </dependency>
+
+        <!-- Test deps -->
+
         <dependency>
-            <groupId>org.jboss.as</groupId>
-            <artifactId>jboss-as-threads</artifactId>
+            <groupId>org.jboss.logmanager</groupId>
+            <artifactId>jboss-logmanager</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>

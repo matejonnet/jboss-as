@@ -23,20 +23,18 @@
 package org.jboss.as.remoting;
 
 import static org.jboss.as.remoting.CommonAttributes.CONNECTOR;
-import static org.jboss.as.remoting.CommonAttributes.THREAD_POOL;
 
 import java.util.List;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
 import org.jboss.as.controller.AbstractAddStepHandler;
 import org.jboss.as.controller.OperationContext;
-import org.jboss.as.controller.OperationStepHandler;
+import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.ServiceVerificationHandler;
 import org.jboss.dmr.ModelNode;
-import org.jboss.msc.inject.Injector;
+import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceController;
 import org.xnio.OptionMap;
+import org.xnio.Options;
 
 /**
  * Add operation handler for the remoting subsystem.
@@ -46,26 +44,51 @@ import org.xnio.OptionMap;
  */
 class RemotingSubsystemAdd extends AbstractAddStepHandler {
 
-    static final OperationStepHandler INSTANCE = new RemotingSubsystemAdd();
+    static final RemotingSubsystemAdd INSTANCE = new RemotingSubsystemAdd();
 
-    protected void populateModel(ModelNode operation, ModelNode model) {
-        // initialize the connectors
-        model.get(CONNECTOR);
+    private RemotingSubsystemAdd() {
     }
 
-    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) {
-        // create endpoint
-        final EndpointService endpointService = new EndpointService();
-        // todo configure option map
-        endpointService.setOptionMap(OptionMap.EMPTY);
-        final Injector<Executor> executorInjector = endpointService.getExecutorInjector();
-        //TODO inject this from somewhere?
-        executorInjector.inject(Executors.newCachedThreadPool());
+    protected void populateModel(ModelNode operation, ModelNode model) throws OperationFailedException {
+        // initialize the connectors
+        model.get(CONNECTOR);
+        RemotingSubsystemRootResource.WORKER_READ_THREADS.validateAndSet(operation, model);
+        RemotingSubsystemRootResource.WORKER_TASK_CORE_THREADS.validateAndSet(operation, model);
+        RemotingSubsystemRootResource.WORKER_TASK_KEEPALIVE.validateAndSet(operation, model);
+        RemotingSubsystemRootResource.WORKER_TASK_LIMIT.validateAndSet(operation, model);
+        RemotingSubsystemRootResource.WORKER_TASK_MAX_THREADS.validateAndSet(operation, model);
+        RemotingSubsystemRootResource.WORKER_WRITE_THREADS.validateAndSet(operation, model);
+    }
 
-        newControllers.add(context
-                .getServiceTarget()
-                .addService(RemotingServices.ENDPOINT, endpointService)
-                .addListener(verificationHandler)
-                .install());
+    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) throws OperationFailedException {
+        launchServices(context, model, verificationHandler, newControllers);
+    }
+
+    void launchServices(OperationContext context, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) throws OperationFailedException {
+        // create endpoint
+        final EndpointService endpointService = new EndpointService(RemotingExtension.NODE_NAME, EndpointService.EndpointType.SUBSYSTEM);
+        // todo configure option map
+        final OptionMap map = OptionMap.builder()
+                .set(Options.WORKER_READ_THREADS, RemotingSubsystemRootResource.WORKER_READ_THREADS.resolveModelAttribute(context, model).asInt())
+                .set(Options.WORKER_TASK_CORE_THREADS, RemotingSubsystemRootResource.WORKER_TASK_CORE_THREADS.resolveModelAttribute(context, model).asInt())
+                .set(Options.WORKER_TASK_KEEPALIVE, RemotingSubsystemRootResource.WORKER_TASK_KEEPALIVE.resolveModelAttribute(context, model).asInt())
+                .set(Options.WORKER_TASK_LIMIT, RemotingSubsystemRootResource.WORKER_TASK_LIMIT.resolveModelAttribute(context, model).asInt())
+                .set(Options.WORKER_TASK_MAX_THREADS, RemotingSubsystemRootResource.WORKER_TASK_MAX_THREADS.resolveModelAttribute(context, model).asInt())
+                .set(Options.WORKER_WRITE_THREADS, RemotingSubsystemRootResource.WORKER_WRITE_THREADS.resolveModelAttribute(context, model).asInt())
+                .set(Options.WORKER_READ_THREADS, RemotingSubsystemRootResource.WORKER_READ_THREADS.resolveModelAttribute(context, model).asInt())
+                .getMap();
+        endpointService.setOptionMap(map);
+
+        ServiceBuilder<?> builder = context.getServiceTarget()
+                .addService(RemotingServices.SUBSYSTEM_ENDPOINT, endpointService);
+
+        if (verificationHandler != null) {
+            builder.addListener(verificationHandler);
+        }
+
+        ServiceController<?> controller = builder.install();
+        if (newControllers != null) {
+            newControllers.add(controller);
+        }
     }
 }

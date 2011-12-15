@@ -32,7 +32,6 @@ import static org.jboss.as.messaging.CommonAttributes.NONE;
 import static org.jboss.as.messaging.CommonAttributes.NO_TX;
 import static org.jboss.as.messaging.CommonAttributes.TRANSACTION;
 import static org.jboss.as.messaging.CommonAttributes.XA_TX;
-import static org.jboss.as.messaging.jms.JMSServices.CONNECTION_FACTORY_ATTRS;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,9 +43,10 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.ServiceVerificationHandler;
+import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.messaging.CommonAttributes;
 import org.jboss.as.messaging.MessagingServices;
-import org.jboss.as.txn.TxnServices;
+import org.jboss.as.txn.service.TxnServices;
 import org.jboss.dmr.ModelNode;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceController;
@@ -98,7 +98,7 @@ public class PooledConnectionFactoryAdd extends AbstractAddStepHandler {
         final String name = address.getLastElement().getValue();
 
         for(final AttributeDefinition attribute : JMSServices.POOLED_CONNECTION_FACTORY_ATTRS) {
-            attribute.validateResolvedOperation(model);
+            attribute.resolveModelAttribute(context, model);
         }
 
         // We validated that jndiName part of the model in populateModel
@@ -125,12 +125,13 @@ public class PooledConnectionFactoryAdd extends AbstractAddStepHandler {
 
         List<PooledConnectionFactoryConfigProperties> adapterParams = getAdapterParams(operation);
 
-        ServiceName hornetQResourceAdapterService = MessagingServices.POOLED_CONNECTION_FACTORY_BASE.append(name);
+        final ServiceName hqServiceName = MessagingServices.getHornetQServiceName(PathAddress.pathAddress(operation.get(ModelDescriptionConstants.OP_ADDR)));
+        ServiceName hornetQResourceAdapterService = JMSServices.getPooledConnectionFactoryBaseServiceName(hqServiceName).append(name);
         PooledConnectionFactoryService resourceAdapterService = new PooledConnectionFactoryService(name, connectors, adapterParams, jndiName, txSupport);
         ServiceBuilder serviceBuilder = serviceTarget
                 .addService(hornetQResourceAdapterService, resourceAdapterService)
                 .addDependency(TxnServices.JBOSS_TXN_TRANSACTION_MANAGER, resourceAdapterService.getTransactionManager())
-                .addDependency(MessagingServices.JBOSS_MESSAGING, HornetQServer.class, resourceAdapterService.getHornetQService())
+                .addDependency(hqServiceName, HornetQServer.class, resourceAdapterService.getHornetQService())
                 .addListener(verificationHandler);
 
         newControllers.add(serviceBuilder.setInitialMode(Mode.ACTIVE).install());

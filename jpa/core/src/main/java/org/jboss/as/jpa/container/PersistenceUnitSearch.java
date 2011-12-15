@@ -22,6 +22,12 @@
 
 package org.jboss.as.jpa.container;
 
+import static org.jboss.as.jpa.JpaLogger.ROOT_LOGGER;
+import static org.jboss.as.jpa.JpaMessages.MESSAGES;
+
+import java.util.List;
+
+import org.jboss.as.jpa.config.PersistenceUnitCount;
 import org.jboss.as.jpa.config.PersistenceUnitMetadataHolder;
 import org.jboss.as.jpa.spi.PersistenceUnitMetadata;
 import org.jboss.as.server.deployment.Attachments;
@@ -29,10 +35,7 @@ import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUtils;
 import org.jboss.as.server.deployment.SubDeploymentMarker;
 import org.jboss.as.server.deployment.module.ResourceRoot;
-import org.jboss.logging.Logger;
 import org.jboss.vfs.VirtualFile;
-
-import java.util.List;
 
 /**
  * Perform scoped search for persistence unit name
@@ -41,28 +44,37 @@ import java.util.List;
  * @author Stuart Douglas
  */
 public class PersistenceUnitSearch {
-    private static final Logger log = Logger.getLogger("org.jboss.jpa");
     // cache the trace enabled flag
-    private static final boolean traceEnabled = log.isTraceEnabled();
+    private static final boolean traceEnabled = ROOT_LOGGER.isTraceEnabled();
 
     public static PersistenceUnitMetadata resolvePersistenceUnitSupplier(DeploymentUnit deploymentUnit, String persistenceUnitName) {
         if (traceEnabled) {
-            log.tracef("pu search for name '%s' inside of %s", persistenceUnitName, deploymentUnit.getName());
+            ROOT_LOGGER.tracef("pu search for name '%s' inside of %s", persistenceUnitName, deploymentUnit.getName());
         }
-        int i = (persistenceUnitName == null ? -1 : persistenceUnitName.indexOf('#'));
-        if (i != -1) {
-            final String path = persistenceUnitName.substring(0, i);
-            final String name = persistenceUnitName.substring(i + 1);
+        int scopeSeparatorCharacter = (persistenceUnitName == null ? -1 : persistenceUnitName.indexOf('#'));
+        if (scopeSeparatorCharacter != -1) {
+            final String path = persistenceUnitName.substring(0, scopeSeparatorCharacter);
+            final String name = persistenceUnitName.substring(scopeSeparatorCharacter + 1);
             PersistenceUnitMetadata pu = getPersistenceUnit(deploymentUnit, path, name);
             if (traceEnabled) {
-                log.trace("pu search found " + pu.getScopedPersistenceUnitName());
+                ROOT_LOGGER.tracef("pu search found %s", pu.getScopedPersistenceUnitName());
             }
             return pu;
         } else {
+            if ( persistenceUnitName == null) {
+                PersistenceUnitCount counter = getTopLevel(deploymentUnit).getAttachment(PersistenceUnitCount.PERSISTENCE_UNIT_COUNT);
+
+                if (counter.get() > 1) {
+                    // AS7-2275 no unitName and there is more than one persistence unit;
+                    throw MESSAGES.noPUnitNameSpecifiedAndMultiplePersistenceUnits(counter.get(),getTopLevel(deploymentUnit));
+                }
+                ROOT_LOGGER.tracef("pu searching with empty unit name, application %s has %d persistence unit definitions",
+                    getTopLevel(deploymentUnit).getName(), counter.get());
+            }
             PersistenceUnitMetadata name = findPersistenceUnitSupplier(deploymentUnit, persistenceUnitName);
             if (traceEnabled) {
                 if (name != null) {
-                    log.trace("pu search found " + name);
+                    ROOT_LOGGER.tracef("pu search found %s", name.getScopedPersistenceUnitName());
                 }
             }
             return name;
@@ -106,11 +118,11 @@ public class PersistenceUnitSearch {
 
         for (PersistenceUnitMetadata persistenceUnit : holder.getPersistenceUnits()) {
             if (traceEnabled) {
-                log.tracef("findWithinLibraryJar check '%s' against pu '%s'", persistenceUnitName, persistenceUnit.getPersistenceUnitName());
+                ROOT_LOGGER.tracef("findWithinLibraryJar check '%s' against pu '%s'", persistenceUnitName, persistenceUnit.getPersistenceUnitName());
             }
             if (persistenceUnitName == null || persistenceUnitName.length() == 0 || persistenceUnit.getPersistenceUnitName().equals(persistenceUnitName)) {
                 if (traceEnabled) {
-                    log.tracef("findWithinLibraryJar matched '%s' against pu '%s'", persistenceUnitName, persistenceUnit.getPersistenceUnitName());
+                    ROOT_LOGGER.tracef("findWithinLibraryJar matched '%s' against pu '%s'", persistenceUnitName, persistenceUnit.getPersistenceUnitName());
                 }
                 return persistenceUnit;
             }
@@ -123,20 +135,22 @@ public class PersistenceUnitSearch {
      */
     private static PersistenceUnitMetadata findWithinDeployment(DeploymentUnit unit, String persistenceUnitName) {
 
-        final ResourceRoot deploymentRoot = unit.getAttachment(Attachments.DEPLOYMENT_ROOT);
-        PersistenceUnitMetadataHolder holder = deploymentRoot.getAttachment(PersistenceUnitMetadataHolder.PERSISTENCE_UNITS);
-        if (holder == null || holder.getPersistenceUnits() == null)
-            return null;
-
-        for (PersistenceUnitMetadata persistenceUnit : holder.getPersistenceUnits()) {
-            if (traceEnabled) {
-                log.tracef("findWithinDeployment check '%s' against pu '%s'", persistenceUnitName, persistenceUnit.getPersistenceUnitName());
+        for (ResourceRoot root : DeploymentUtils.allResourceRoots(unit)) {
+            PersistenceUnitMetadataHolder holder = root.getAttachment(PersistenceUnitMetadataHolder.PERSISTENCE_UNITS);
+            if (holder == null || holder.getPersistenceUnits() == null) {
+                continue;
             }
-            if (persistenceUnitName == null || persistenceUnitName.length() == 0 || persistenceUnit.getPersistenceUnitName().equals(persistenceUnitName)) {
+
+            for (PersistenceUnitMetadata persistenceUnit : holder.getPersistenceUnits()) {
                 if (traceEnabled) {
-                    log.tracef("findWithinDeployment matched '%s' against pu '%s'", persistenceUnitName, persistenceUnit.getPersistenceUnitName());
+                    ROOT_LOGGER.tracef("findWithinDeployment check '%s' against pu '%s'", persistenceUnitName, persistenceUnit.getPersistenceUnitName());
                 }
-                return persistenceUnit;
+                if (persistenceUnitName == null || persistenceUnitName.length() == 0 || persistenceUnit.getPersistenceUnitName().equals(persistenceUnitName)) {
+                    if (traceEnabled) {
+                        ROOT_LOGGER.tracef("findWithinDeployment matched '%s' against pu '%s'", persistenceUnitName, persistenceUnit.getPersistenceUnitName());
+                    }
+                    return persistenceUnit;
+                }
             }
         }
         return null;
@@ -164,11 +178,11 @@ public class PersistenceUnitSearch {
                 if (holder != null) {
                     for (PersistenceUnitMetadata pu : holder.getPersistenceUnits()) {
                         if (traceEnabled) {
-                            log.tracef("getPersistenceUnit check '%s' against pu '%s'", puName, pu.getPersistenceUnitName());
+                            ROOT_LOGGER.tracef("getPersistenceUnit check '%s' against pu '%s'", puName, pu.getPersistenceUnitName());
                         }
                         if (pu.getPersistenceUnitName().equals(puName)) {
                             if (traceEnabled) {
-                                log.tracef("getPersistenceUnit matched '%s' against pu '%s'", puName, pu.getPersistenceUnitName());
+                                ROOT_LOGGER.tracef("getPersistenceUnit matched '%s' against pu '%s'", puName, pu.getPersistenceUnitName());
                             }
                             return pu;
                         }
@@ -178,7 +192,7 @@ public class PersistenceUnitSearch {
         }
 
 
-        throw new IllegalArgumentException("Can't find a deployment unit named " + absolutePath + "#" + puName + " at " + current);
+        throw MESSAGES.deploymentUnitNotFound(absolutePath, puName, current);
     }
 }
 

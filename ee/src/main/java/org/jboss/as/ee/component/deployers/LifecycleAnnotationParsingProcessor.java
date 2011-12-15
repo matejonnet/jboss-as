@@ -22,10 +22,20 @@
 
 package org.jboss.as.ee.component.deployers;
 
+import static org.jboss.as.ee.EeLogger.ROOT_LOGGER;
+import static org.jboss.as.ee.EeMessages.MESSAGES;
+
+import java.util.List;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+import javax.interceptor.InvocationContext;
+
 import org.jboss.as.ee.component.Attachments;
 import org.jboss.as.ee.component.EEApplicationClasses;
 import org.jboss.as.ee.component.EEModuleClassDescription;
 import org.jboss.as.ee.component.EEModuleDescription;
+import org.jboss.as.ee.component.interceptors.InterceptorClassDescription;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
@@ -38,12 +48,6 @@ import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.DotName;
 import org.jboss.jandex.MethodInfo;
 import org.jboss.jandex.Type;
-import org.jboss.logging.Logger;
-
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
-import javax.interceptor.InvocationContext;
-import java.util.List;
 
 /**
  * Deployment processor responsible for finding @PostConstruct and @PreDestroy annotated methods.
@@ -52,7 +56,6 @@ import java.util.List;
  * @author Stuart Douglas
  */
 public class LifecycleAnnotationParsingProcessor implements DeploymentUnitProcessor {
-    private static Logger log = Logger.getLogger(LifecycleAnnotationParsingProcessor.class);
     private static final DotName POST_CONSTRUCT_ANNOTATION = DotName.createSimple(PostConstruct.class.getName());
     private static final DotName PRE_DESTROY_ANNOTATION = DotName.createSimple(PreDestroy.class.getName());
     private static DotName[] LIFE_CYCLE_ANNOTATIONS = {POST_CONSTRUCT_ANNOTATION, PRE_DESTROY_ANNOTATION};
@@ -74,20 +77,20 @@ public class LifecycleAnnotationParsingProcessor implements DeploymentUnitProces
     public void undeploy(DeploymentUnit context) {
     }
 
-    private void processLifeCycle(final EEModuleDescription eeModuleDescription, final AnnotationTarget target, final DotName annotationType, final EEApplicationClasses applicationClasses) {
+    private void processLifeCycle(final EEModuleDescription eeModuleDescription, final AnnotationTarget target, final DotName annotationType, final EEApplicationClasses applicationClasses) throws DeploymentUnitProcessingException {
         if (!(target instanceof MethodInfo)) {
-            throw new IllegalArgumentException(annotationType + " is only valid on method targets.");
+            throw MESSAGES.methodOnlyAnnotation(annotationType);
         }
         final MethodInfo methodInfo = MethodInfo.class.cast(target);
         final ClassInfo classInfo = methodInfo.declaringClass();
-        final EEModuleClassDescription classDescription = applicationClasses.getOrAddClassByName(classInfo.name().toString());
+        final EEModuleClassDescription classDescription = eeModuleDescription.addOrGetLocalClassDescription(classInfo.name().toString());
 
         final Type[] args = methodInfo.args();
         if (args.length > 1) {
-            log.warn("Invalid number of arguments for method " + methodInfo.name() + " annotated with " + annotationType + " on class " + classInfo.name());
+            ROOT_LOGGER.warn(MESSAGES.invalidNumberOfArguments(methodInfo.name(), annotationType, classInfo.name()));
             return;
         } else if (args.length == 1 && !args[0].name().toString().equals(InvocationContext.class.getName())) {
-            log.warn("Invalid signature for method " + methodInfo.name() + " annotated with " + annotationType + " on class " + classInfo.name() + ", signature must be void methodName(InvocationContext ctx)");
+            ROOT_LOGGER.warn(MESSAGES.invalidSignature(methodInfo.name(), annotationType, classInfo.name(), "void methodName(InvocationContext ctx)"));
             return;
         }
 
@@ -97,10 +100,12 @@ public class LifecycleAnnotationParsingProcessor implements DeploymentUnitProces
         } else {
             methodIdentifier = MethodIdentifier.getIdentifier(Void.TYPE, methodInfo.name(), InvocationContext.class);
         }
+        final InterceptorClassDescription.Builder builder = InterceptorClassDescription.builder(classDescription.getInterceptorClassDescription());
         if (annotationType == POST_CONSTRUCT_ANNOTATION) {
-            classDescription.setPostConstructMethod(methodIdentifier);
+            builder.setPostConstruct(methodIdentifier);
         } else {
-            classDescription.setPreDestroyMethod(methodIdentifier);
+            builder.setPreDestroy(methodIdentifier);
         }
+        classDescription.setInterceptorClassDescription(builder.build());
     }
 }

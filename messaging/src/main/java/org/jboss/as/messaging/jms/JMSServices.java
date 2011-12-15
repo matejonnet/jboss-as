@@ -44,6 +44,7 @@ import static org.jboss.as.messaging.CommonAttributes.DUPS_OK_BATCH_SIZE;
 import static org.jboss.as.messaging.CommonAttributes.FAILOVER_ON_INITIAL_CONNECTION;
 import static org.jboss.as.messaging.CommonAttributes.FAILOVER_ON_SERVER_SHUTDOWN;
 import static org.jboss.as.messaging.CommonAttributes.GROUP_ID;
+import static org.jboss.as.messaging.CommonAttributes.HA;
 import static org.jboss.as.messaging.CommonAttributes.JNDI_PARAMS;
 import static org.jboss.as.messaging.CommonAttributes.LOAD_BALANCING_CLASS_NAME;
 import static org.jboss.as.messaging.CommonAttributes.MAX_RETRY_INTERVAL;
@@ -61,6 +62,7 @@ import static org.jboss.as.messaging.CommonAttributes.TRANSACTION_BATCH_SIZE;
 import static org.jboss.as.messaging.CommonAttributes.USE_GLOBAL_POOLS;
 import static org.jboss.as.messaging.CommonAttributes.USE_JNDI;
 import static org.jboss.as.messaging.CommonAttributes.USE_LOCAL_TX;
+import static org.jboss.as.messaging.MessagingMessages.MESSAGES;
 
 import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.SimpleAttributeDefinition;
@@ -75,11 +77,32 @@ import org.jboss.msc.service.ServiceName;
  */
 public class JMSServices {
 
-    public static final ServiceName JMS = MessagingServices.JBOSS_MESSAGING.append("jms");
-    public static final ServiceName JMS_MANAGER = JMS.append("manager");
-    public static final ServiceName JMS_QUEUE_BASE = JMS.append("queue");
-    public static final ServiceName JMS_TOPIC_BASE = JMS.append("topic");
-    public static final ServiceName JMS_CF_BASE = JMS.append("connection-factory");
+    private static final String JMS = "jms";
+    private static final String JMS_MANAGER = "manager";
+    private static final String JMS_QUEUE_BASE = "queue";
+    private static final String JMS_TOPIC_BASE = "topic";
+    private static final String JMS_CF_BASE = "connection-factory";
+    public static final String JMS_POOLED_CF_BASE = "pooled-connection-factory";
+
+    public static ServiceName getJmsManagerBaseServiceName(ServiceName hornetQServiceName) {
+        return hornetQServiceName.append(JMS).append(JMS_MANAGER);
+    }
+
+    public static ServiceName getJmsQueueBaseServiceName(ServiceName hornetQServiceName) {
+        return hornetQServiceName.append(JMS).append(JMS_QUEUE_BASE);
+    }
+
+    public static ServiceName getJmsTopicBaseServiceName(ServiceName hornetqServiceName) {
+        return hornetqServiceName.append(JMS).append(JMS_TOPIC_BASE);
+    }
+
+    public static ServiceName getConnectionFactoryBaseServiceName(ServiceName hornetqServiceName) {
+        return hornetqServiceName.append(JMS).append(JMS_CF_BASE);
+    }
+
+    public static ServiceName getPooledConnectionFactoryBaseServiceName(ServiceName hornetqServiceName) {
+        return hornetqServiceName.append(JMS).append(JMS_POOLED_CF_BASE);
+    }
 
     static String AUTO_GROUP_METHOD = "autoGroup";
     static String BLOCK_ON_ACK_METHOD = "blockOnAcknowledge";
@@ -99,6 +122,7 @@ public class JMSServices {
     static String FAILOVER_ON_INITIAL_CONNECTION_METHOD = "failoverOnInitialConnection";  // TODO HornetQResourceAdapter does not have this method
     static String FAILOVER_ON_SERVER_SHUTDOWN_METHOD = "failoverOnServerShutdown";  // TODO HornetQResourceAdapter does not have this method
     static String GROUP_ID_METHOD = "groupId";
+    static String HA_METHOD = "hA";
     static String LOAD_BALANCING_POLICY_CLASS_NAME_METHOD = "loadBalancingPolicyClassName";
     static String MAX_RETRY_INTERVAL_METHOD = "maxRetryInterval";    // TODO HornetQResourceAdapter does not have this method
     static String MIN_LARGE_MESSAGE_SIZE_METHOD = "minLargeMessageSize";
@@ -142,6 +166,7 @@ public class JMSServices {
         FAILOVER_ON_INITIAL_CONNECTION,
         FAILOVER_ON_SERVER_SHUTDOWN, // TODO not used in ConnectionFactoryConfiguration
         GROUP_ID,
+        HA,
         LOAD_BALANCING_CLASS_NAME,
         MAX_RETRY_INTERVAL,
         MIN_LARGE_MESSAGE_SIZE,
@@ -213,6 +238,7 @@ public class JMSServices {
         FAILOVER_ON_INITIAL_CONNECTION,  // TODO HornetQResourceAdapter does not have this method
         FAILOVER_ON_SERVER_SHUTDOWN,   // TODO HornetQResourceAdapter does not have this method
         GROUP_ID,
+        HA,
         LOAD_BALANCING_CLASS_NAME,
         MAX_RETRY_INTERVAL,          // TODO HornetQResourceAdapter does not have this method
         MIN_LARGE_MESSAGE_SIZE,
@@ -257,6 +283,7 @@ public class JMSServices {
         // TODO HornetQResourceAdapter does not have this method
         // new PooledCFAttribute(FAILOVER_ON_SERVER_SHUTDOWN, FAILOVER_ON_SERVER_SHUTDOWN_METHOD),
         new PooledCFAttribute(GROUP_ID, GROUP_ID_METHOD),
+        new PooledCFAttribute(HA, HA_METHOD),
         new PooledCFAttribute(LOAD_BALANCING_CLASS_NAME, LOAD_BALANCING_POLICY_CLASS_NAME_METHOD),
         // TODO HornetQResourceAdapter does not have this method
         //new PooledCFAttribute(MAX_RETRY_INTERVAL, MAX_RETRY_INTERVAL_METHOD),
@@ -305,7 +332,7 @@ public class JMSServices {
                 case STRING:
                     return String.class.getName();
                 default:
-                    throw new IllegalStateException(String.format("Attribute %s has unexpected type %s", def.getName(), def.getType()));
+                    throw MESSAGES.invalidAttributeType(def.getName(), def.getType());
 
             }
         }

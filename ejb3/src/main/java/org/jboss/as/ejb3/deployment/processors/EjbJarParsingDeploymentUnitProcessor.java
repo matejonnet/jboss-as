@@ -23,33 +23,38 @@
 package org.jboss.as.ejb3.deployment.processors;
 
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLResolver;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
+
 import org.jboss.as.ee.component.EEApplicationClasses;
 import org.jboss.as.ee.component.EEModuleDescription;
 import org.jboss.as.ee.metadata.MetadataCompleteMarker;
 import org.jboss.as.ejb3.deployment.EjbDeploymentAttachmentKeys;
 import org.jboss.as.ejb3.deployment.EjbDeploymentMarker;
 import org.jboss.as.ejb3.deployment.EjbJarDescription;
+import org.jboss.as.ejb3.resourceadapterbinding.parser.EJBBoundResourceAdapterBindingMetaDataParser;
+import org.jboss.as.ejb3.security.parser.EJBBoundSecurityMetaDataParser;
+import org.jboss.as.ejb3.security.parser.SecurityRoleMetaDataParser;
 import org.jboss.as.server.deployment.Attachments;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.DeploymentUnitProcessor;
+import org.jboss.as.server.deployment.module.ResourceRoot;
 import org.jboss.logging.Logger;
 import org.jboss.metadata.ejb.parser.jboss.ejb3.JBossEjb3MetaDataParser;
 import org.jboss.metadata.ejb.parser.spec.AbstractMetaDataParser;
 import org.jboss.metadata.ejb.parser.spec.EjbJarMetaDataParser;
-import org.jboss.metadata.ejb.spec.EjbJar31MetaData;
 import org.jboss.metadata.ejb.spec.EjbJarMetaData;
 import org.jboss.metadata.parser.util.MetaDataElementParser;
 import org.jboss.vfs.VirtualFile;
-
-import javax.xml.stream.XMLInputFactory;
-import javax.xml.stream.XMLResolver;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.HashMap;
 
 /**
  * Processes a {@link DeploymentUnit} containing a ejb-jar.xml and creates {@link EjbJarMetaData}
@@ -97,10 +102,9 @@ public class EjbJarParsingDeploymentUnitProcessor implements DeploymentUnitProce
     public void deploy(DeploymentPhaseContext deploymentPhase) throws DeploymentUnitProcessingException {
 
         // get hold of the deployment unit.
-        DeploymentUnit deploymentUnit = deploymentPhase.getDeploymentUnit();
+        final DeploymentUnit deploymentUnit = deploymentPhase.getDeploymentUnit();
 
         // get the root of the deployment unit
-        VirtualFile deploymentRoot = deploymentUnit.getAttachment(Attachments.DEPLOYMENT_ROOT).getRoot();
 
         final EEModuleDescription eeModuleDescription = deploymentUnit.getAttachment(org.jboss.as.ee.component.Attachments.EE_MODULE_DESCRIPTION);
         final EEApplicationClasses applicationClassesDescription = deploymentUnit.getAttachment(org.jboss.as.ee.component.Attachments.EE_APPLICATION_CLASSES_DESCRIPTION);
@@ -115,7 +119,7 @@ public class EjbJarParsingDeploymentUnitProcessor implements DeploymentUnitProce
         } else if (jbossMetaData == null) {
             ejbJarMetaData = specMetaData;
         } else {
-            throw new UnsupportedOperationException("NYI: descriptor merging");
+            ejbJarMetaData = jbossMetaData.createMerged(specMetaData);
         }
 
         // Mark it as a EJB deployment
@@ -129,15 +133,13 @@ public class EjbJarParsingDeploymentUnitProcessor implements DeploymentUnitProce
         // attach the EjbJarMetaData to the deployment unit
         deploymentUnit.putAttachment(EjbDeploymentAttachmentKeys.EJB_JAR_METADATA, ejbJarMetaData);
 
-        if(ejbJarMetaData instanceof EjbJar31MetaData) {
-            EjbJar31MetaData ejbJar31MetaData = (EjbJar31MetaData)ejbJarMetaData;
-            if(ejbJar31MetaData.getModuleName() != null) {
-                eeModuleDescription.setModuleName(ejbJar31MetaData.getModuleName());
-            }
-            if (ejbJar31MetaData.isMetadataComplete()) {
-                MetadataCompleteMarker.setMetadataComplete(deploymentUnit, true);
-            }
-        } else if (!ejbJarMetaData.isEJB3x()) {
+        if (ejbJarMetaData.getModuleName() != null) {
+            eeModuleDescription.setModuleName(ejbJarMetaData.getModuleName());
+        }
+        if (ejbJarMetaData.isMetadataComplete()) {
+            MetadataCompleteMarker.setMetadataComplete(deploymentUnit, true);
+        }
+        if (!ejbJarMetaData.isEJB3x()) {
             //EJB spec 20.5.1, we do not process annotations for older deployments
             MetadataCompleteMarker.setMetadataComplete(deploymentUnit, true);
         }
@@ -206,10 +208,19 @@ public class EjbJarParsingDeploymentUnitProcessor implements DeploymentUnitProce
     }
 
     private static EjbJarMetaData parseEjbJarXml(final DeploymentUnit deploymentUnit) throws DeploymentUnitProcessingException {
-        final VirtualFile deploymentRoot = deploymentUnit.getAttachment(Attachments.DEPLOYMENT_ROOT).getRoot();
+        final ResourceRoot deploymentRoot = deploymentUnit.getAttachment(Attachments.DEPLOYMENT_ROOT);
+
+        final VirtualFile alternateDescriptor = deploymentRoot.getAttachment(org.jboss.as.ee.structure.Attachments.ALTERNATE_EJB_DEPLOYMENT_DESCRIPTOR);
+        //this is a bit tri
 
         // Locate the descriptor
-        final VirtualFile descriptor = getDescriptor(deploymentRoot, EJB_JAR_XML);
+        final VirtualFile descriptor;
+        if (alternateDescriptor != null) {
+            descriptor = alternateDescriptor;
+        } else {
+            descriptor = getDescriptor(deploymentRoot.getRoot(), EJB_JAR_XML);
+        }
+
         if (descriptor == null) {
             // no descriptor found, nothing to do!
             return null;
@@ -250,8 +261,12 @@ public class EjbJarParsingDeploymentUnitProcessor implements DeploymentUnitProce
         try {
             XMLStreamReader reader = getXMLStreamReader(stream, descriptor, dtdInfo);
 
-            final JBossEjb3MetaDataParser parser = new JBossEjb3MetaDataParser(new HashMap<String, AbstractMetaDataParser<?>>());
-            EjbJarMetaData ejbJarMetaData = parser.parse(reader, dtdInfo);
+            Map<String, AbstractMetaDataParser<?>> parsers = new HashMap<String, AbstractMetaDataParser<?>>();
+            parsers.put("urn:security", new EJBBoundSecurityMetaDataParser());
+            parsers.put("urn:security-role", new SecurityRoleMetaDataParser());
+            parsers.put("urn:resource-adapter-binding", new EJBBoundResourceAdapterBindingMetaDataParser());
+            final JBossEjb3MetaDataParser parser = new JBossEjb3MetaDataParser(parsers);
+            final EjbJarMetaData ejbJarMetaData = parser.parse(reader, dtdInfo);
             return ejbJarMetaData;
         } catch (XMLStreamException xmlse) {
             throw new DeploymentUnitProcessingException("Exception while parsing " + JBOSS_EJB3_XML + ": " + descriptor.getPathName(), xmlse);

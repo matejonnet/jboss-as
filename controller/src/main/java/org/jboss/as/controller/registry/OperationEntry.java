@@ -28,7 +28,7 @@ import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 
 /**
- * Information about a registered {@code NewStepHandler}.
+ * Information about a registered {@code OperationStepHandler}.
  *
  * @author Emanuel Muckenhuber
  */
@@ -41,8 +41,30 @@ public final class OperationEntry {
     public enum Flag {
         /** Operation only reads, does not modify */
         READ_ONLY,
-        /** Operation only performs a deployment upload */
-        DEPLOYMENT_UPLOAD
+        /** Operation only performs a deployment upload
+         * @deprecated use {@link #MASTER_HOST_CONTROLLER_ONLY}
+         */
+        @Deprecated
+        DEPLOYMENT_UPLOAD,
+        /** The operation modifies the configuration and can be applied to the runtime without requiring a restart */
+        RESTART_NONE,
+        /** The operation modifies the configuration but can only be applied to the runtime via a full jvm restart */
+        RESTART_JVM,
+        /** The operation modifies the configuration but can only be applied to the runtime via a restart of all services;
+         *  however it does not require a full jvm restart */
+        RESTART_ALL_SERVICES,
+        /** The operation modifies the configuration but can only be applied to the runtime via a restart of services,
+         *  associated with the affected resource, but does not require a restart of all services or a full jvm restart */
+        RESTART_RESOURCE_SERVICES,
+        /** A domain or host-level operation that should be pushed to the servers even if the default behavior
+         *  would indicate otherwise */
+        DOMAIN_PUSH_TO_SERVERS,
+        /** A host-level operation that should only be executed on the HostController and not on the servers,
+         * even if the default behavior would indicate otherwise */
+        HOST_CONTROLLER_ONLY,
+        /** A domain-level operation that should only be executed on the master HostController and not on the slaves,
+         * even if the default behavior would indicate otherwise */
+        MASTER_HOST_CONTROLLER_ONLY
     }
 
     private final OperationStepHandler operationHandler;

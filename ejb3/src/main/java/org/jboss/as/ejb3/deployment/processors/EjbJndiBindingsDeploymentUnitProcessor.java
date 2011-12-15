@@ -22,26 +22,25 @@
 
 package org.jboss.as.ejb3.deployment.processors;
 
+import java.util.Collection;
+
 import org.jboss.as.ee.component.Attachments;
 import org.jboss.as.ee.component.BindingConfiguration;
-import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ee.component.ComponentDescription;
 import org.jboss.as.ee.component.EEModuleDescription;
-import org.jboss.as.ee.component.InjectionSource;
-import org.jboss.as.ee.component.ViewBindingInjectionSource;
-import org.jboss.as.ee.component.ViewConfiguration;
-import org.jboss.as.ee.component.ViewConfigurator;
 import org.jboss.as.ee.component.ViewDescription;
+import org.jboss.as.ejb3.component.EJBComponentDescription;
 import org.jboss.as.ejb3.component.EJBViewDescription;
+import org.jboss.as.ejb3.component.MethodIntf;
+import org.jboss.as.ejb3.component.entity.EntityBeanComponentDescription;
 import org.jboss.as.ejb3.component.session.SessionBeanComponentDescription;
 import org.jboss.as.ejb3.deployment.EjbDeploymentMarker;
+import org.jboss.as.ejb3.remote.RemoteViewInjectionSource;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.DeploymentUnitProcessor;
 import org.jboss.logging.Logger;
-
-import java.util.Collection;
 
 /**
  * Sets up JNDI bindings for each of the views exposed by a {@link SessionBeanComponentDescription session bean}
@@ -56,6 +55,12 @@ public class EjbJndiBindingsDeploymentUnitProcessor implements DeploymentUnitPro
      */
     private static final Logger logger = Logger.getLogger(EjbJndiBindingsDeploymentUnitProcessor.class);
 
+    private final boolean appclient;
+
+    public EjbJndiBindingsDeploymentUnitProcessor(final boolean appclient) {
+        this.appclient = appclient;
+    }
+
     @Override
     public void deploy(DeploymentPhaseContext phaseContext) throws DeploymentUnitProcessingException {
         final DeploymentUnit deploymentUnit = phaseContext.getDeploymentUnit();
@@ -66,13 +71,17 @@ public class EjbJndiBindingsDeploymentUnitProcessor implements DeploymentUnitPro
 
         final EEModuleDescription eeModuleDescription = deploymentUnit.getAttachment(Attachments.EE_MODULE_DESCRIPTION);
         final Collection<ComponentDescription> componentDescriptions = eeModuleDescription.getComponentDescriptions();
-        if (componentDescriptions == null || componentDescriptions.isEmpty()) {
-            return;
+        if (componentDescriptions != null) {
+            for (ComponentDescription componentDescription : componentDescriptions) {
+                // process only EJB session beans
+                if (componentDescription instanceof SessionBeanComponentDescription || componentDescription instanceof EntityBeanComponentDescription) {
+                    this.setupJNDIBindings((EJBComponentDescription) componentDescription, deploymentUnit);
+                }
+            }
         }
-        for (ComponentDescription componentDescription : componentDescriptions) {
-            // process only EJB session beans
-            if (componentDescription instanceof SessionBeanComponentDescription) {
-                this.setupJNDIBindings((SessionBeanComponentDescription) componentDescription, deploymentUnit);
+        if (appclient) {
+            for (final ComponentDescription component : deploymentUnit.getAttachmentList(Attachments.ADDITIONAL_RESOLVABLE_COMPONENTS)) {
+                this.setupJNDIBindings((EJBComponentDescription) component, deploymentUnit);
             }
         }
     }
@@ -84,15 +93,17 @@ public class EjbJndiBindingsDeploymentUnitProcessor implements DeploymentUnitPro
      * @param sessionBean    The session bean
      * @param deploymentUnit The deployment unit containing the session bean
      */
-    private void setupJNDIBindings(SessionBeanComponentDescription sessionBean, DeploymentUnit deploymentUnit) throws DeploymentUnitProcessingException {
+    private void setupJNDIBindings(EJBComponentDescription sessionBean, DeploymentUnit deploymentUnit) throws DeploymentUnitProcessingException {
         final Collection<ViewDescription> views = sessionBean.getViews();
         if (views == null || views.isEmpty()) {
             logger.info("No jndi bindings will be created for EJB: " + sessionBean.getEJBName() + " since no views are exposed");
             return;
         }
 
-        // In case of EJB bindings, appname == .ear file name (if it's an .ear deployment)
-        final String applicationName = this.getEarName(deploymentUnit);
+        // In case of EJB bindings, appname == .ear file name/application-name set in the application.xml (if it's an .ear deployment)
+        // NOTE: Do NOT use the app name from the EEModuleDescription.getApplicationName() because the Java EE spec has a different and conflicting meaning for app name
+        // (where app name == module name in the absence of a .ear). Use EEModuleDescription.getEarApplicationName() instead
+        final String applicationName = sessionBean.getModuleDescription().getEarApplicationName();
         final String globalJNDIBaseName = "java:global/" + (applicationName != null ? applicationName + "/" : "") + sessionBean.getModuleName() + "/" + sessionBean.getEJBName();
         final String appJNDIBaseName = "java:app/" + sessionBean.getModuleName() + "/" + sessionBean.getEJBName();
         final String moduleJNDIBaseName = "java:module/" + sessionBean.getEJBName();
@@ -105,23 +116,26 @@ public class EjbJndiBindingsDeploymentUnitProcessor implements DeploymentUnitPro
         EJBViewDescription ejbViewDescription = null;
         for (ViewDescription viewDescription : views) {
             ejbViewDescription = (EJBViewDescription) viewDescription;
+            if (appclient && ejbViewDescription.getMethodIntf() != MethodIntf.REMOTE && ejbViewDescription.getMethodIntf() != MethodIntf.HOME) {
+                continue;
+            }
             if (!ejbViewDescription.hasJNDIBindings()) continue;
 
             final String viewClassName = ejbViewDescription.getViewClassName();
 
             // java:global bindings
             final String globalJNDIName = globalJNDIBaseName + "!" + viewClassName;
-            registerBinding(viewDescription, globalJNDIName);
+            registerBinding(sessionBean, viewDescription, globalJNDIName);
             logBinding(jndiBindingsLogMessage, globalJNDIName);
 
             // java:app bindings
             final String appJNDIName = appJNDIBaseName + "!" + viewClassName;
-            registerBinding(viewDescription, appJNDIName);
+            registerBinding(sessionBean, viewDescription, appJNDIName);
             logBinding(jndiBindingsLogMessage, appJNDIName);
 
             // java:module bindings
             final String moduleJNDIName = moduleJNDIBaseName + "!" + viewClassName;
-            registerBinding(viewDescription, moduleJNDIName);
+            registerBinding(sessionBean, viewDescription, moduleJNDIName);
             logBinding(jndiBindingsLogMessage, moduleJNDIName);
         }
 
@@ -139,15 +153,15 @@ public class EjbJndiBindingsDeploymentUnitProcessor implements DeploymentUnitPro
             if (ejbViewDescription.hasJNDIBindings()) {
 
                 // java:global binding
-                registerBinding(viewDescription, globalJNDIBaseName);
+                registerBinding(sessionBean, viewDescription, globalJNDIBaseName);
                 logBinding(jndiBindingsLogMessage, globalJNDIBaseName);
 
                 // java:app binding
-                registerBinding(viewDescription, appJNDIBaseName);
+                registerBinding(sessionBean, viewDescription, appJNDIBaseName);
                 logBinding(jndiBindingsLogMessage, appJNDIBaseName);
 
                 // java:module binding
-                registerBinding(viewDescription, moduleJNDIBaseName);
+                registerBinding(sessionBean, viewDescription, moduleJNDIBaseName);
                 logBinding(jndiBindingsLogMessage, moduleJNDIBaseName);
             }
         }
@@ -156,57 +170,19 @@ public class EjbJndiBindingsDeploymentUnitProcessor implements DeploymentUnitPro
         logger.info(jndiBindingsLogMessage);
     }
 
-    private void registerBinding(final ViewDescription viewDescription, final String jndiName) {
-        final InjectionSource moduleBindingSource = new ViewBindingInjectionSource(viewDescription.getServiceName());
-        final BindingConfiguration moduleBinding = new BindingConfiguration(jndiName, moduleBindingSource);
-        addBindingConfiguration(viewDescription, moduleBinding);
+    private void registerBinding(final EJBComponentDescription componentDescription, final ViewDescription viewDescription, final String jndiName) {
+        if (appclient) {
+            final EEModuleDescription moduleDescription = componentDescription.getModuleDescription();
+            moduleDescription.getBindingConfigurations().add(new BindingConfiguration(jndiName, new RemoteViewInjectionSource(null, moduleDescription.getApplicationName(), moduleDescription.getModuleName(), moduleDescription.getDistinctName(), componentDescription.getComponentName(), viewDescription.getViewClassName(), componentDescription.isStateful())));
+        } else {
+            viewDescription.getBindingNames().add(jndiName);
+        }
     }
 
     private void logBinding(final StringBuilder jndiBindingsLogMessage, final String jndiName) {
         jndiBindingsLogMessage.append("\t");
         jndiBindingsLogMessage.append(jndiName);
         jndiBindingsLogMessage.append("\n");
-    }
-
-    /**
-     * Returns the name (stripped off the .ear suffix) of the top level .ear deployment for the passed <code>deploymentUnit</code>.
-     * Returns null if the passed <code>deploymentUnit</code> doesn't belong to a .ear deployment.
-     *
-     * @param deploymentUnit
-     */
-    private String getEarName(DeploymentUnit deploymentUnit) {
-        DeploymentUnit parentDU = deploymentUnit.getParent();
-        if (parentDU == null) {
-            String duName = deploymentUnit.getName();
-            if (duName.endsWith(".ear")) {
-                return duName.substring(0, duName.length() - ".ear".length());
-            }
-            return null;
-        }
-        // traverse to top level DU
-        while (parentDU.getParent() != null) {
-            parentDU = parentDU.getParent();
-        }
-        String duName = parentDU.getName();
-        if (duName.endsWith(".ear")) {
-            return duName.substring(0, duName.length() - ".ear".length());
-        }
-        return null;
-    }
-
-    /**
-     * Add the passed {@link BindingConfiguration} to the {@link ViewDescription viewDescription}
-     *
-     * @param viewDescription      The view description
-     * @param bindingConfiguration The binding configuration
-     */
-    private void addBindingConfiguration(final ViewDescription viewDescription, final BindingConfiguration bindingConfiguration) {
-        viewDescription.getConfigurators().add(new ViewConfigurator() {
-            @Override
-            public void configure(DeploymentPhaseContext context, ComponentConfiguration componentConfiguration, ViewDescription description, ViewConfiguration configuration) throws DeploymentUnitProcessingException {
-                configuration.getBindingConfigurations().add(bindingConfiguration);
-            }
-        });
     }
 
     @Override

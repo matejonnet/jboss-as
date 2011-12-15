@@ -36,12 +36,15 @@ public class ModelDescriptionConstants {
     public static final String ACCESS_TYPE = "access-type";
     public static final String ADD = "add";
     public static final String ADDRESS = "address";
+    public static final String ADVANCED_FILTER = "advanced-filter";
     public static final String ALLOWED = "allowed";
+    public static final String ALLOW_RESOURCE_SERVICE_RESTART = "allow-resource-service-restart";
     public static final String ALTERNATIVES = "alternatives";
     public static final String ANY = "any";
     public static final String ANY_ADDRESS = "any-address";
     public static final String ANY_IPV4_ADDRESS = "any-ipv4-address";
     public static final String ANY_IPV6_ADDRESS = "any-ipv6-address";
+    public static final String APPCLIENT = "appclient";
     public static final String ARCHIVE = "archive";
     public static final String ATTRIBUTES = "attributes";
     public static final String AUTHENTICATION = "authentication";
@@ -52,9 +55,7 @@ public class ModelDescriptionConstants {
     public static final String CANCELLED = "cancelled";
     public static final String CHILD_TYPE = "child-type";
     public static final String CHILDREN = "children";
-    /** @deprecated operation responses will no longer include the compensating operation */
-    @Deprecated
-    public static final String COMPENSATING_OPERATION = "compensating-operation";
+    public static final String CODE = "code";
     public static final String COMPOSITE = "composite";
     public static final String CONCURRENT_GROUPS = "concurrent-groups";
     public static final String CONNECTION = "connection";
@@ -84,6 +85,7 @@ public class ModelDescriptionConstants {
     public static final String FAILURE_DESCRIPTION = "failure-description";
     public static final String FILE = "file";
     public static final String FIXED_PORT = "fixed-port";
+    public static final String FIXED_SOURCE_PORT = "fixed-source-port";
     public static final String FULL_REPLACE_DEPLOYMENT = "full-replace-deployment";
     public static final String GRACEFUL_SHUTDOWN_TIMEOUT = "graceful-shutdown-timeout";
     public static final String GROUP = "group";
@@ -109,7 +111,9 @@ public class ModelDescriptionConstants {
     public static final String KEYSTORE = "keystore";
     public static final String LDAP = "ldap";
     public static final String LOCAL = "local";
+    public static final String LOCAL_DESTINATION_OUTBOUND_SOCKET_BINDING = "local-destination-outbound-socket-binding";
     public static final String LOCALE = "locale";
+    public static final String MANAGEMENT_SUBSYSTEM_ENDPOINT = "management-subsystem-endpoint";
     public static final String MANAGEMENT = "management";
     public static final String MANAGEMENT_INTERFACE = "management-interface";
     public static final String MASK = "mask";
@@ -120,11 +124,9 @@ public class ModelDescriptionConstants {
     public static final String MAX_LENGTH = "max-length";
     public static final String MAX_OCCURS = "max-occurs";
     public static final String MAX_THREADS = "max-threads";
-    public static final String MAX_VALUE = "max-value";
     public static final String MIN = "min";
     public static final String MIN_LENGTH = "min-length";
     public static final String MIN_OCCURS = "min-occurs";
-    public static final String MIN_VALUE = "min-value";
     public static final String MODEL_DESCRIPTION = "model-description";
     public static final String MULTICAST_ADDRESS = "multicast-address";
     public static final String MULTICAST_PORT = "multicast-port";
@@ -132,7 +134,9 @@ public class ModelDescriptionConstants {
     public static final String NAMES = "names";
     public static final String NAMESPACE = "namespace";
     public static final String NAMESPACES = "namespaces";
+    public static final String NATIVE = "native";
     public static final String NATIVE_INTERFACE = "native-interface";
+    public static final String NATIVE_REMOTING_INTERFACE = "native-remoting-interface";
     public static final String NETWORK = "network";
     public static final String NILLABLE = "nillable";
     public static final String NOT = "not";
@@ -149,6 +153,7 @@ public class ModelDescriptionConstants {
     public static final String PASSWORD = "password";
     public static final String PATH = "path";
     public static final String PERSISTENT = "persistent";
+    public static final String PLAIN_TEXT = "plain-text";
     public static final String PLATFORM_MBEAN = "platform-mbean";
     public static final String PORT = "port";
     public static final String PORT_OFFSET = "port-offset";
@@ -174,12 +179,16 @@ public class ModelDescriptionConstants {
     public static final String RECURSIVE = "recursive";
     public static final String REDEPLOY = "redeploy";
     public static final String RELATIVE_TO = "relative-to";
+    public static final String RELEASE_CODENAME = "release-codename";
+    public static final String RELEASE_VERSION = "release-version";
     public static final String REMOVE = "remove";
     public static final String REMOTE = "remote";
+    public static final String REMOTE_DESTINATION_OUTBOUND_SOCKET_BINDING = "remote-destination-outbound-socket-binding";
     public static final String REPLACE_DEPLOYMENT = "replace-deployment";
     public static final String REPLY_PROPERTIES = "reply-properties";
     public static final String REQUEST_PROPERTIES = "request-properties";
     public static final String REQUIRED = "required";
+    public static final String REQUIRES = "requires";
     public static final String RESPONSE = "response";
     public static final String RESPONSE_HEADERS = "response-headers";
     public static final String RESTART_REQUIRED = "restart-required";
@@ -199,6 +208,7 @@ public class ModelDescriptionConstants {
     public static final String SEARCH_DN = "search-dn";
     public static final String SECRET = "secret";
     public static final String SECURE_PORT = "secure-port";
+    public static final String SECURE_SOCKET_BINDING = "secure-socket-binding";
     public static final String SECURITY_REALM = "security-realm";
     public static final String SECURITY_REALMS = "security-realms";
     public static final String SERVER = "server";
@@ -213,15 +223,19 @@ public class ModelDescriptionConstants {
     public static final String OPERATION_REQUIRES_RESTART = "operation-requires-restart";
     public static final String SHUTDOWN = "shutdown";
     public static final String SOCKET_BINDING = "socket-binding";
+    public static final String SOCKET_BINDING_REF = "socket-binding-ref";
     public static final String SOCKET_BINDING_GROUP = "socket-binding-group";
     public static final String SOCKET_BINDING_GROUP_NAME = "socket-binding-group-name";
     public static final String SOCKET_BINDING_PORT_OFFSET = "socket-binding-port-offset";
+    public static final String SOURCE_INTERFACE = "source-interface";
+    public static final String SOURCE_PORT = "source-port";
     public static final String SSL = "ssl";
     public static final String START = "start";
     public static final String STATUS = "status";
     public static final String STEPS = "steps";
     /** The key for {@link AttributeAccess.Storage} fields. */
     public static final String STORAGE = "storage";
+    public static final String SUBDEPLOYMENT = "subdeployment";
     public static final String SUBSYSTEM = "subsystem";
     public static final String SUCCESS = "success";
     public static final String SYSTEM_PROPERTY = "system-property";
@@ -234,6 +248,7 @@ public class ModelDescriptionConstants {
     public static final String UPLOAD_DEPLOYMENT_URL = "upload-deployment-url";
     public static final String UPLOAD_DEPLOYMENT_STREAM = "upload-deployment-stream";
     public static final String UNIT = "unit";
+    public static final String URI = "uri";
     public static final String URL = "url";
     public static final String USER = "user";
     public static final String USER_DN = "user-dn";
@@ -242,7 +257,10 @@ public class ModelDescriptionConstants {
     public static final String VALUE = "value";
     public static final String VALUE_TYPE = "value-type";
     public static final String WRITE_ATTRIBUTE_OPERATION = "write-attribute";
+    public static final String VAULT = "vault";
+    public static final String VAULT_OPTION = "vault-option";
+    public static final String VAULT_OPTIONS = "vault-options";
 
-
-    private ModelDescriptionConstants() { }
+    private ModelDescriptionConstants() {
+    }
 }

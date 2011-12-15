@@ -21,20 +21,27 @@
 */
 package org.jboss.as.remoting;
 
+import java.net.InetSocketAddress;
+
+import org.jboss.as.network.ManagedBinding;
 import org.jboss.as.network.NetworkInterfaceBinding;
+import org.jboss.as.network.SocketBindingManager;
 import org.jboss.msc.value.InjectedValue;
+import org.xnio.OptionMap;
 
 /**
+ * {@link AbstractStreamServerService} that uses an injected network interface binding service.
  *
  * @author <a href="kabir.khan@jboss.com">Kabir Khan</a>
- * @version $Revision: 1.1 $
  */
 public class InjectedNetworkBindingStreamServerService extends AbstractStreamServerService {
 
     private final InjectedValue<NetworkInterfaceBinding> interfaceBindingValue = new InjectedValue<NetworkInterfaceBinding>();
+    private final int port;
 
-    public InjectedNetworkBindingStreamServerService(int port) {
-        super(port);
+    public InjectedNetworkBindingStreamServerService(final OptionMap connectorPropertiesOptionMap, int port) {
+        super(connectorPropertiesOptionMap);
+        this.port = port;
     }
 
     public InjectedValue<NetworkInterfaceBinding> getInterfaceBindingInjector(){
@@ -42,7 +49,20 @@ public class InjectedNetworkBindingStreamServerService extends AbstractStreamSer
     }
 
     @Override
-    NetworkInterfaceBinding getNetworkInterfaceBinding() {
-        return interfaceBindingValue.getValue();
+    InetSocketAddress getSocketAddress() {
+        return new InetSocketAddress(interfaceBindingValue.getValue().getAddress(), port);
+    }
+
+    @Override
+    ManagedBinding registerSocketBinding(SocketBindingManager socketBindingManager) {
+        InetSocketAddress address = new InetSocketAddress(interfaceBindingValue.getValue().getAddress(), port);
+        ManagedBinding binding = ManagedBinding.Factory.createSimpleManagedBinding("management-native", address, null);
+        socketBindingManager.getUnnamedRegistry().registerBinding(binding);
+        return binding;
+    }
+
+    @Override
+    void unregisterSocketBinding(ManagedBinding managedBinding, SocketBindingManager socketBindingManager) {
+        socketBindingManager.getUnnamedRegistry().unregisterBinding(managedBinding);
     }
 }

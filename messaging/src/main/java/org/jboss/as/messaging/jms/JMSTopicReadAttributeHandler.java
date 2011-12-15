@@ -33,6 +33,7 @@ import static org.jboss.as.messaging.CommonAttributes.NON_DURABLE_SUBSCRIPTION_C
 import static org.jboss.as.messaging.CommonAttributes.SUBSCRIPTION_COUNT;
 import static org.jboss.as.messaging.CommonAttributes.TEMPORARY;
 import static org.jboss.as.messaging.CommonAttributes.TOPIC_ADDRESS;
+import static org.jboss.as.messaging.MessagingMessages.MESSAGES;
 
 import java.util.Arrays;
 import java.util.List;
@@ -52,6 +53,7 @@ import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.messaging.MessagingServices;
 import org.jboss.dmr.ModelNode;
 import org.jboss.msc.service.ServiceController;
+import org.jboss.msc.service.ServiceName;
 
 /**
  * Implements the {@code read-attribute} operation for runtime attributes exposed by a HornetQ
@@ -83,7 +85,9 @@ public class JMSTopicReadAttributeHandler extends AbstractRuntimeOnlyHandler {
 
         String topicName = PathAddress.pathAddress(operation.require(ModelDescriptionConstants.OP_ADDR)).getLastElement().getValue();
 
-        ServiceController<?> hqService = context.getServiceRegistry(false).getService(MessagingServices.JBOSS_MESSAGING);
+        final ServiceName hqServiceName = MessagingServices.getHornetQServiceName(PathAddress.pathAddress(operation.get(ModelDescriptionConstants.OP_ADDR)));
+
+        ServiceController<?> hqService = context.getServiceRegistry(false).getService(hqServiceName);
         HornetQServer hqServer = HornetQServer.class.cast(hqService.getValue());
         TopicControl control = TopicControl.class.cast(hqServer.getManagementService().getResource(ResourceNames.JMS_TOPIC + topicName));
 
@@ -115,7 +119,7 @@ public class JMSTopicReadAttributeHandler extends AbstractRuntimeOnlyHandler {
             context.getResult().set(control.isTemporary());
         } else if (METRICS.contains(attributeName) || READ_ATTRIBUTES.contains(attributeName)) {
             // Bug
-            throw new IllegalStateException(String.format("Read support for attribute %s was not properly implemented", attributeName));
+            throw MESSAGES.unsupportedAttribute(attributeName);
         }
         context.completeStep();
     }

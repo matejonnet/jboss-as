@@ -29,12 +29,12 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-clustering</artifactId>
-        <version>7.1.0.Alpha1-SNAPSHOT</version>
+        <version>7.1.0.Beta1</version>
     </parent>
 
     <artifactId>jboss-as-clustering-web-spi</artifactId>
     <packaging>jar</packaging>
-    
+
     <name>JBoss Application Server: Distributed Web Session SPI</name>
 
     <dependencies>
@@ -64,8 +64,30 @@
             <artifactId>jboss-logging</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging-processor</artifactId>
+            <!-- This is a compile-time dependency of this project, but is not needed at compile or runtime by other
+                  projects that depend on this project.-->
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
             <groupId>org.jboss.spec.javax.transaction</groupId>
             <artifactId>jboss-transaction-api_1.1_spec</artifactId>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <compilerArgument>
+                        -AgeneratedTranslationFilesPath=${project.basedir}/target/generated-translation-files
+                    </compilerArgument>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

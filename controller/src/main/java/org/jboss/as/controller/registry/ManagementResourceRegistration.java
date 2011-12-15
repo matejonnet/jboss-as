@@ -24,27 +24,37 @@ package org.jboss.as.controller.registry;
 
 import java.util.EnumSet;
 
-import org.jboss.as.controller.ProxyController;
+import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.ProxyController;
+import org.jboss.as.controller.ResourceDefinition;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 
+import static org.jboss.as.controller.ControllerMessages.MESSAGES;
+
 /**
- * A registration for a model resource which consists of a resource description plus registered operation handlers.
+ * A registration for a management resource which consists of a resource description plus registered operation handlers.
  *
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
 public interface ManagementResourceRegistration extends ImmutableManagementResourceRegistration {
 
-
-
+    /**
+     * Get a sub model registration.
+     * <p>This method overrides the superinterface method of the same name in order to require
+     * that the returned registration be mutable.
+     * </p>
+     *
+     * @param address the address, relative to this node
+     * @return the node registration, <code>null</code> if there is none
+     */
     @Override
     ManagementResourceRegistration getSubModel(PathAddress address);
 
     /**
-     * Register the existence of an addressable sub-node of this model node. The submodel is expected to have some
-     * representation in the persistent configuration model.
+     * Register the existence of an addressable sub-resource of this resource.
      *
      * @param address the address of the submodel (may include a wildcard)
      * @param descriptionProvider source for descriptive information describing this
@@ -55,6 +65,21 @@ public interface ManagementResourceRegistration extends ImmutableManagementResou
      * @throws IllegalStateException if {@link #isRuntimeOnly()} returns {@code true}
      */
     ManagementResourceRegistration registerSubModel(PathElement address, DescriptionProvider descriptionProvider);
+
+    /**
+     * Register the existence of an addressable sub-resource of this resource. Before this method returns the provided
+     * {@code resourceDefinition} will be given the opportunity to
+     * {@link ResourceDefinition#registerAttributes(ManagementResourceRegistration) register attributes}
+     * and {@link ResourceDefinition#registerOperations(ManagementResourceRegistration) register operations}.
+     *
+     * @param resourceDefinition source for descriptive information describing this
+     *                            portion of the model (must not be {@code null})
+     * @return a model node registration which may be used to add operations
+     *
+     * @throws IllegalArgumentException if a submodel is already registered at {@code address}
+     * @throws IllegalStateException if {@link #isRuntimeOnly()} returns {@code true}
+     */
+    ManagementResourceRegistration registerSubModel(ResourceDefinition resourceDefinition);
 
     /**
      * Register the existence of an addressable sub-node of this model node.
@@ -71,7 +96,7 @@ public interface ManagementResourceRegistration extends ImmutableManagementResou
     void registerSubModel(PathElement address, ManagementResourceRegistration subModel);
 
     /**
-     * Register an operation handler for this model node.
+     * Register an operation handler for this resource.
      *
      * @param operationName the operation name
      * @param handler the operation handler
@@ -81,7 +106,7 @@ public interface ManagementResourceRegistration extends ImmutableManagementResou
     void registerOperationHandler(String operationName, OperationStepHandler handler, DescriptionProvider descriptionProvider);
 
     /**
-     * Register an operation handler for this model node.
+     * Register an operation handler for this resource.
      *
      * @param operationName the operation name
      * @param handler the operation handler
@@ -92,7 +117,7 @@ public interface ManagementResourceRegistration extends ImmutableManagementResou
     void registerOperationHandler(String operationName, OperationStepHandler handler, DescriptionProvider descriptionProvider, EnumSet<OperationEntry.Flag> flags);
 
     /**
-     * Register an operation handler for this model node.
+     * Register an operation handler for this resource.
      *
      * @param operationName the operation name
      * @param handler the operation handler
@@ -103,7 +128,7 @@ public interface ManagementResourceRegistration extends ImmutableManagementResou
     void registerOperationHandler(String operationName, OperationStepHandler handler, DescriptionProvider descriptionProvider, boolean inherited);
 
     /**
-     * Register an operation handler for this model node.
+     * Register an operation handler for this resource.
      *
      * @param operationName the operation name
      * @param handler the operation handler
@@ -115,7 +140,7 @@ public interface ManagementResourceRegistration extends ImmutableManagementResou
     void registerOperationHandler(String operationName, OperationStepHandler handler, DescriptionProvider descriptionProvider, boolean inherited, OperationEntry.EntryType entryType);
 
     /**
-     * Register an operation handler for this model node.
+     * Register an operation handler for this resource.
      *
      * @param operationName the operation name
      * @param handler the operation handler
@@ -158,6 +183,22 @@ public interface ManagementResourceRegistration extends ImmutableManagementResou
                                     EnumSet<AttributeAccess.Flag> flags);
 
     /**
+     * Records that the given attribute can be both read from and written to, and
+     * provides operation handlers for the read and the write. The attribute is assumed to be
+     * {@link org.jboss.as.controller.registry.AttributeAccess.Storage#CONFIGURATION} unless parameter
+     * {@code flags} includes {@link org.jboss.as.controller.registry.AttributeAccess.Flag#STORAGE_RUNTIME}.
+     *
+     * @param definition the attribute definition. Cannot be {@code null}
+     * @param readHandler the handler for attribute reads. May be {@code null}
+     *                    in which case the default handling is used
+     * @param writeHandler the handler for attribute writes. Cannot be {@code null}
+     *
+     * @throws IllegalArgumentException if {@code definition} or {@code writeHandler} are {@code null}
+     */
+    void registerReadWriteAttribute(AttributeDefinition definition, OperationStepHandler readHandler, OperationStepHandler writeHandler);
+
+
+    /**
      * Records that the given attribute can be read from but not written to, and
      * optionally provides an operation handler for the read.
      *
@@ -184,6 +225,20 @@ public interface ManagementResourceRegistration extends ImmutableManagementResou
     void registerReadOnlyAttribute(String attributeName, OperationStepHandler readHandler, EnumSet<AttributeAccess.Flag> flags);
 
     /**
+     * Records that the given attribute can be read from but not written to, and
+     * optionally provides an operation handler for the read. The attribute is assumed to be
+     * {@link org.jboss.as.controller.registry.AttributeAccess.Storage#CONFIGURATION} unless parameter
+     * {@code flags} includes {@link org.jboss.as.controller.registry.AttributeAccess.Flag#STORAGE_RUNTIME}.
+     *
+     * @param definition the attribute definition. Cannot be {@code null}
+     * @param readHandler the handler for attribute reads. May be {@code null}
+     *                    in which case the default handling is used
+     *
+     * @throws IllegalArgumentException if {@code definition} is {@code null}
+     */
+    void registerReadOnlyAttribute(AttributeDefinition definition, OperationStepHandler readHandler);
+
+    /**
      * Records that the given attribute is a metric.
      *
      * @param attributeName the name of the attribute. Cannot be {@code null}
@@ -192,6 +247,16 @@ public interface ManagementResourceRegistration extends ImmutableManagementResou
      * @throws IllegalArgumentException if {@code attributeName} or {@code metricHandler} are {@code null}
      */
     void registerMetric(String attributeName, OperationStepHandler metricHandler);
+
+    /**
+     * Records that the given attribute is a metric.
+     *
+     * @param definition the attribute definition. Cannot be {@code null}
+     * @param metricHandler the handler for attribute reads. Cannot be {@code null}
+     *
+     * @throws IllegalArgumentException if {@code definition} or {@code metricHandler} are {@code null}
+     */
+    void registerMetric(AttributeDefinition definition, OperationStepHandler metricHandler);
 
     /**
      * Records that the given attribute is a metric.
@@ -237,9 +302,44 @@ public interface ManagementResourceRegistration extends ImmutableManagementResou
          */
         public static ManagementResourceRegistration create(final DescriptionProvider rootModelDescriptionProvider) {
             if (rootModelDescriptionProvider == null) {
-                throw new IllegalArgumentException("rootModelDescriptionProvider is null");
+                throw MESSAGES.nullVar("rootModelDescriptionProvider");
             }
-            return new ConcreteResourceRegistration(null, null, rootModelDescriptionProvider, false);
+            ResourceDefinition rootResourceDefinition = new ResourceDefinition() {
+
+                @Override
+                public PathElement getPathElement() {
+                    return null;
+                }
+
+                @Override
+                public DescriptionProvider getDescriptionProvider(ImmutableManagementResourceRegistration resourceRegistration) {
+                    return rootModelDescriptionProvider;
+                }
+
+                @Override
+                public void registerOperations(ManagementResourceRegistration resourceRegistration) {
+                    //  no-op
+                }
+
+                @Override
+                public void registerAttributes(ManagementResourceRegistration resourceRegistration) {
+                    //  no-op
+                }
+            };
+            return new ConcreteResourceRegistration(null, null, rootResourceDefinition, false);
+        }
+
+        /**
+         * Create a new root model node registration.
+         *
+         * @param resourceDefinition the facotry for the model description provider for the root model node
+         * @return the new root model node registration
+         */
+        public static ManagementResourceRegistration create(final ResourceDefinition resourceDefinition) {
+            if (resourceDefinition == null) {
+                throw MESSAGES.nullVar("rootModelDescriptionProviderFactory");
+            }
+            return new ConcreteResourceRegistration(null, null, resourceDefinition, false);
         }
     }
 }

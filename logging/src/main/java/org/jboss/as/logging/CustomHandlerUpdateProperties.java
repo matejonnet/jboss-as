@@ -22,33 +22,39 @@
 
 package org.jboss.as.logging;
 
+import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.dmr.ModelNode;
 
 import java.util.logging.Handler;
 
 import static org.jboss.as.logging.CommonAttributes.PROPERTIES;
-import static org.jboss.as.logging.LogHandlerPropertiesConfigurator.setProperties;
 
 /**
  * Date: 15.08.2011
  *
  * @author <a href="mailto:jperkins@redhat.com">James R. Perkins</a>
  */
-public class CustomHandlerUpdateProperties extends HandlerUpdateProperties {
+public class CustomHandlerUpdateProperties extends HandlerUpdateProperties<Handler> {
     static final CustomHandlerUpdateProperties INSTANCE = new CustomHandlerUpdateProperties();
 
-    @Override
-    protected void updateModel(final ModelNode operation, final ModelNode model) {
-        if (operation.hasDefined(PROPERTIES)) {
-            apply(operation, model, PROPERTIES);
-        }
+    private CustomHandlerUpdateProperties() {
+        super(PROPERTIES);
     }
 
     @Override
-    protected void updateRuntime(final ModelNode operation, final Handler handler) throws OperationFailedException {
-        if (operation.hasDefined(PROPERTIES)) {
-            setProperties(handler, operation.get(PROPERTIES).asPropertyList());
+    protected boolean applyUpdateToRuntime(final OperationContext context, final String handlerName, final ModelNode model,
+                                           final ModelNode originalModel, final Handler handler) throws OperationFailedException {
+        if (model.hasDefined(PROPERTIES)) {
+            LogHandlerPropertiesConfigurator.setProperties(handler, model.get(PROPERTIES).asPropertyList());
+        }
+        return false;
+    }
+
+    @Override
+    protected void revertUpdateToRuntime(final OperationContext context, final String handlerName, final ModelNode model, final ModelNode originalModel, final Handler handler) throws OperationFailedException {
+        if (originalModel.hasDefined(PROPERTIES)) {
+            LogHandlerPropertiesConfigurator.setProperties(handler, originalModel.get(PROPERTIES).asPropertyList());
         }
     }
 }

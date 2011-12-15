@@ -22,6 +22,8 @@
 
 package org.jboss.as.jpa.hibernate3;
 
+import static org.jboss.as.jpa.JpaMessages.MESSAGES;
+
 import org.jboss.vfs.VirtualFile;
 import org.jboss.vfs.VirtualFileFilter;
 
@@ -37,7 +39,7 @@ public class HibernatePatternFilter implements VirtualFileFilter {
 
     public HibernatePatternFilter(String pattern) {
         if (pattern == null)
-            throw new IllegalArgumentException("Null pattern");
+            throw MESSAGES.nullVar("pattern");
 
         exact = !pattern.contains("/"); // no path split or glob
         if (!exact && (pattern.startsWith("**/*"))) {

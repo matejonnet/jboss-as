@@ -22,6 +22,14 @@
 
 package org.jboss.as.ee.component;
 
+import static org.jboss.as.ee.EeMessages.MESSAGES;
+
+import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.jboss.as.naming.ManagedReference;
 import org.jboss.as.naming.ValueManagedReference;
@@ -32,12 +40,6 @@ import org.jboss.invocation.InterceptorFactoryContext;
 import org.jboss.invocation.SimpleInterceptorFactoryContext;
 import org.jboss.msc.service.StopContext;
 import org.jboss.msc.value.ImmediateValue;
-
-import java.lang.reflect.Method;
-import java.util.IdentityHashMap;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * A basic component implementation.
@@ -94,7 +96,7 @@ public class BasicComponent implements Component {
             // Block until successful start
             synchronized (this) {
                 if (stopping.get()) {
-                    throw new IllegalStateException("Component is stopped");
+                    throw MESSAGES.componentIsStopped();
                 }
                 while (!gate) {
                     // TODO: check for failure condition
@@ -102,7 +104,7 @@ public class BasicComponent implements Component {
                         wait();
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
-                        throw new IllegalStateException("Component not available (interrupted)");
+                        throw MESSAGES.componentNotAvailable();
                     }
                 }
             }
@@ -145,13 +147,14 @@ public class BasicComponent implements Component {
         final InterceptorContext interceptorContext = new InterceptorContext();
         interceptorContext.putPrivateData(Component.class, this);
         interceptorContext.putPrivateData(ComponentInstance.class, basicComponentInstance);
+        interceptorContext.setContextData(new HashMap<String, Object>());
 
 
 
         try {
             componentInstancePostConstructInterceptor.processInvocation(interceptorContext);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to construct component instance", e);
+            throw MESSAGES.componentConstructionFailure(e);
         }
         // return the component instance
         return basicComponentInstance;

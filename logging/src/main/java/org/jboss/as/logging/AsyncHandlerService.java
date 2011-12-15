@@ -22,22 +22,24 @@
 
 package org.jboss.as.logging;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.jboss.logmanager.handlers.AsyncHandler;
-import org.jboss.msc.service.Service;
+import org.jboss.logmanager.handlers.AsyncHandler.OverflowAction;
 import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
 import org.jboss.msc.value.InjectedValue;
 
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Filter;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 
 /**
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
-public final class AsyncHandlerService implements Service<Handler> {
+public final class AsyncHandlerService implements HandlerService {
 
     private final List<InjectedValue<Handler>> subhandlers = new ArrayList<InjectedValue<Handler>>();
 
@@ -48,34 +50,29 @@ public final class AsyncHandlerService implements Service<Handler> {
     private AsyncHandler value;
 
     private Level level;
+    private Filter filter;
+    private AbstractFormatterSpec formatterSpec;
+    private String encoding;
+    private boolean autoflush;
 
     public synchronized void start(final StartContext context) throws StartException {
         final AsyncHandler handler = new AsyncHandler(queueLength);
         value = handler;
-        final OverflowAction action = overflowAction;
-        setAction(handler, action);
+        formatterSpec.apply(handler);
+        handler.setOverflowAction(overflowAction);
+        handler.setAutoFlush(autoflush);
+        if (filter != null) handler.setFilter(filter);
+        try {
+            handler.setEncoding(encoding);
+        } catch (UnsupportedEncodingException e) {
+            throw new StartException(e);
+        }
         Handler[] handlers = new Handler[subhandlers.size()];
         for (int i = 0, subhandlersSize = subhandlers.size(); i < subhandlersSize; i++) {
             handlers[i] = subhandlers.get(i).getValue();
         }
         handler.setHandlers(handlers);
         if (level != null) handler.setLevel(level);
-    }
-
-    private static void setAction(final AsyncHandler handler, final OverflowAction action) {
-        if (handler == null) {
-            return;
-        }
-        switch (action) {
-            case BLOCK: {
-                handler.setOverflowAction(AsyncHandler.OverflowAction.BLOCK);
-                break;
-            }
-            case DISCARD: {
-                handler.setOverflowAction(AsyncHandler.OverflowAction.DISCARD);
-                break;
-            }
-        }
     }
 
     public synchronized void stop(final StopContext context) {
@@ -92,7 +89,10 @@ public final class AsyncHandlerService implements Service<Handler> {
 
     public synchronized void setOverflowAction(final OverflowAction overflowAction) {
         this.overflowAction = overflowAction;
-        setAction(value, overflowAction);
+        final AsyncHandler handler = value;
+        if (handler != null) {
+            handler.setOverflowAction(overflowAction);
+        }
     }
 
     public synchronized void setQueueLength(final int queueLength) {
@@ -107,14 +107,49 @@ public final class AsyncHandlerService implements Service<Handler> {
         }
     }
 
+    @Override
+    public synchronized void setEncoding(final String encoding) throws UnsupportedEncodingException {
+        this.encoding = encoding;
+        final AsyncHandler handler = value;
+        if (handler != null) {
+            handler.setEncoding(encoding);
+        }
+    }
+
+    @Override
+    public synchronized void setFormatterSpec(final AbstractFormatterSpec formatterSpec) {
+        this.formatterSpec = formatterSpec;
+        final AsyncHandler handler = value;
+        if (handler != null) {
+            formatterSpec.apply(handler);
+        }
+    }
+
+    @Override
+    public synchronized void setFilter(final Filter filter) {
+        this.filter = filter;
+        final AsyncHandler handler = value;
+        if (handler != null) {
+            handler.setFilter(filter);
+        }
+    }
+
     public synchronized void addHandlers(final List<InjectedValue<Handler>> list) {
         subhandlers.addAll(list);
+        final AsyncHandler handler = value;
+        if (handler != null) {
+            for (InjectedValue<Handler> injectedHandler : list) {
+                handler.addHandler(injectedHandler.getValue());
+            }
+        }
     }
 
     public synchronized void addHandler(final InjectedValue<Handler> injectedHandler) {
         subhandlers.add(injectedHandler);
         final AsyncHandler handler = value;
-        handler.addHandler(injectedHandler.getValue());
+        if (handler != null) {
+            handler.addHandler(injectedHandler.getValue());
+        }
     }
 
     public synchronized void removeHandler(final Handler subHandler) {
@@ -122,10 +157,14 @@ public final class AsyncHandlerService implements Service<Handler> {
         for (InjectedValue<Handler> injectedHandler : subhandlers) {
             if (injectedHandler.getValue().equals(subHandler)) valueToRemove = injectedHandler;
         }
+        if (valueToRemove != null) {
 
-        subhandlers.remove(valueToRemove);
+            subhandlers.remove(valueToRemove);
 
-        final AsyncHandler handler = value;
-        handler.removeHandler(valueToRemove.getValue());
+            final AsyncHandler handler = value;
+            if (handler != null) {
+                handler.removeHandler(valueToRemove.getValue());
+            }
+        }
     }
 }

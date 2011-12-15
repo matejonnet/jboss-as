@@ -67,10 +67,9 @@ public class ChannelServer implements Closeable {
         }
         configuration.validate();
 
-        final Endpoint endpoint = Remoting.createEndpoint(configuration.getEndpointName(), configuration.getExecutor(), configuration.getOptionMap());
-        final Xnio xnio = Xnio.getInstance();
+        final Endpoint endpoint = Remoting.createEndpoint(configuration.getEndpointName(), configuration.getOptionMap());
 
-        Registration registration = endpoint.addConnectionProvider(configuration.getUriScheme(), new RemoteConnectionProviderFactory(xnio), OptionMap.create(Options.SSL_ENABLED, false));
+        Registration registration = endpoint.addConnectionProvider(configuration.getUriScheme(), new RemoteConnectionProviderFactory(), OptionMap.create(Options.SSL_ENABLED, Boolean.FALSE));
 
         final NetworkServerProvider networkServerProvider = endpoint.getConnectionProviderInterface(configuration.getUriScheme(), NetworkServerProvider.class);
         SimpleServerAuthenticationProvider provider = new SimpleServerAuthenticationProvider();
@@ -78,7 +77,7 @@ public class ChannelServer implements Closeable {
         //the endpoint name.
         provider.addUser("bob", configuration.getEndpointName(), "pass".toCharArray());
         System.out.println(configuration.getBindAddress());
-        AcceptingChannel<? extends ConnectedStreamChannel> streamServer = networkServerProvider.createServer(configuration.getBindAddress(), OptionMap.create(Options.SASL_MECHANISMS, Sequence.of("CRAM-MD5")), provider);
+        AcceptingChannel<? extends ConnectedStreamChannel> streamServer = networkServerProvider.createServer(configuration.getBindAddress(), OptionMap.create(Options.SASL_MECHANISMS, Sequence.of("CRAM-MD5")), provider, null);
 
         return new ChannelServer(endpoint, registration, streamServer);
     }

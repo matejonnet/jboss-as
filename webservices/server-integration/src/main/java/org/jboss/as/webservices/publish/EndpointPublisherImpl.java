@@ -21,6 +21,8 @@
  */
 package org.jboss.as.webservices.publish;
 
+import static org.jboss.as.webservices.WSMessages.MESSAGES;
+
 import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
@@ -36,29 +38,20 @@ import org.apache.catalina.Wrapper;
 import org.apache.catalina.core.StandardContext;
 import org.apache.catalina.startup.ContextConfig;
 import org.apache.tomcat.InstanceManager;
-import org.jboss.as.controller.PathElement;
-import org.jboss.as.server.deployment.DeploymentUnit;
-import org.jboss.as.server.deployment.SimpleAttachable;
 import org.jboss.as.web.deployment.WebCtxLoader;
 import org.jboss.as.webservices.deployers.deployment.DeploymentAspectsProvider;
 import org.jboss.as.webservices.deployers.deployment.WSDeploymentBuilder;
 import org.jboss.as.webservices.service.ServerConfigService;
 import org.jboss.as.webservices.util.WSAttachmentKeys;
 import org.jboss.as.webservices.util.WSServices;
-import org.jboss.as.webservices.util.WebMetaDataHelper;
-import org.jboss.dmr.ModelNode;
 import org.jboss.metadata.javaee.spec.ParamValueMetaData;
 import org.jboss.metadata.web.jboss.JBossServletMetaData;
-import org.jboss.metadata.web.jboss.JBossServletsMetaData;
 import org.jboss.metadata.web.jboss.JBossWebMetaData;
 import org.jboss.metadata.web.spec.ServletMappingMetaData;
-import org.jboss.msc.service.ServiceName;
-import org.jboss.msc.service.ServiceRegistry;
 import org.jboss.msc.service.ServiceTarget;
 import org.jboss.ws.common.deployment.DeploymentAspectManagerImpl;
 import org.jboss.wsf.spi.classloading.ClassLoaderProvider;
 import org.jboss.wsf.spi.deployment.Deployment;
-import org.jboss.wsf.spi.deployment.Deployment.DeploymentType;
 import org.jboss.wsf.spi.deployment.DeploymentAspect;
 import org.jboss.wsf.spi.deployment.DeploymentAspectManager;
 import org.jboss.wsf.spi.deployment.Endpoint;
@@ -136,12 +129,12 @@ public final class EndpointPublisherImpl implements EndpointPublisher {
             host.addChild(context);
             context.create();
         } catch (Exception e) {
-            throw new Exception("Failed to create context", e);
+            throw MESSAGES.createContextPhaseFailed(e);
         }
         try {
             context.start();
         } catch (LifecycleException e) {
-            throw new Exception("Failed to start context", e);
+            throw MESSAGES.startContextPhaseFailed(e);
         }
         return context;
     }
@@ -178,7 +171,11 @@ public final class EndpointPublisherImpl implements EndpointPublisher {
 
     @Override
     public void destroy(Context context) throws Exception {
-        Deployment deployment = context.getEndpoints().get(0).getService().getDeployment();
+        List<Endpoint> eps = context.getEndpoints();
+        if (eps == null || eps.isEmpty()) {
+            return;
+        }
+        Deployment deployment = eps.get(0).getService().getDeployment();
         List<DeploymentAspect> aspects = DeploymentAspectsProvider.getSortedDeploymentAspects();
         try {
             stopWebApp(deployment.getAttachment(StandardContext.class));
@@ -201,12 +198,12 @@ public final class EndpointPublisherImpl implements EndpointPublisher {
             container.removeChild(context);
             context.stop();
         } catch (LifecycleException e) {
-            throw new Exception("Exception while stopping context", e);
+            throw MESSAGES.stopContextPhaseFailed(e);
         }
         try {
             context.destroy();
         } catch (Exception e) {
-            throw new Exception("Exception while destroying context", e);
+            throw MESSAGES.destroyContextPhaseFailed(e);
         }
     }
 
@@ -236,71 +233,5 @@ public final class EndpointPublisherImpl implements EndpointPublisher {
         @Override
         public void destroyInstance(Object o) throws IllegalAccessException, InvocationTargetException {
         }
-    }
-
-    public static class WSEndpointDeploymentUnit extends SimpleAttachable implements DeploymentUnit {
-
-        private String deploymentName;
-
-        public WSEndpointDeploymentUnit(ClassLoader loader, String context, Map<String,String> urlPatternToClassName) {
-            this.deploymentName = context + ".deployment";
-
-            JBossWebMetaData jbossWebMetaData = new JBossWebMetaData();
-            jbossWebMetaData.setContextRoot(context);
-            for (String urlPattern : urlPatternToClassName.keySet()) {
-                addEndpoint(jbossWebMetaData, urlPatternToClassName.get(urlPattern), urlPattern);
-            }
-            this.putAttachment(WSAttachmentKeys.JBOSSWEB_METADATA_KEY, jbossWebMetaData);
-
-            this.putAttachment(WSAttachmentKeys.DEPLOYMENT_TYPE_KEY, DeploymentType.JAXWS_JSE);
-            this.putAttachment(WSAttachmentKeys.CLASSLOADER_KEY, loader);
-        }
-
-        private void addEndpoint(JBossWebMetaData jbossWebMetaData, String className, String urlPattern) {
-            final JBossServletsMetaData servlets = WebMetaDataHelper.getServlets(jbossWebMetaData);
-            WebMetaDataHelper.newServlet(className, className, servlets);
-            final List<ServletMappingMetaData> servletMappings = WebMetaDataHelper.getServletMappings(jbossWebMetaData);
-            if (urlPattern == null) {
-                urlPattern = "/*";
-            } else {
-                urlPattern = urlPattern.trim();
-                if (!urlPattern.startsWith("/")) {
-                    urlPattern = "/" + urlPattern;
-                }
-            }
-            final List<String> urlPatterns = WebMetaDataHelper.getUrlPatterns(urlPattern);
-            WebMetaDataHelper.newServletMapping(className, urlPatterns, servletMappings);
-        }
-
-        @Override
-        public ServiceName getServiceName() {
-            return ServiceName.JBOSS.append("ws-endpoint-deployment").append(deploymentName);
-        }
-
-        @Override
-        public DeploymentUnit getParent() {
-            return null;
-        }
-
-        @Override
-        public String getName() {
-            return deploymentName;
-        }
-
-        @Override
-        public ServiceRegistry getServiceRegistry() {
-            return WSServices.getContainerRegistry();
-        }
-
-        @Override
-        public ModelNode getDeploymentSubsystemModel(String subsystemName) {
-            throw new RuntimeException("Can't get the deployment submodel from a " + WSEndpointDeploymentUnit.class + " instance");
-        }
-
-        @Override
-        public ModelNode createDeploymentSubModel(String subsystemName, PathElement address) {
-            throw new RuntimeException("Can't create a deployment submodel from a " + WSEndpointDeploymentUnit.class + " instance");
-        }
-
     }
 }

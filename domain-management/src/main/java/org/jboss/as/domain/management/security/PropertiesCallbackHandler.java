@@ -23,6 +23,9 @@
 package org.jboss.as.domain.management.security;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PLAIN_TEXT;
+import static org.jboss.as.domain.management.DomainManagementLogger.ROOT_LOGGER;
+import static org.jboss.as.domain.management.DomainManagementMessages.MESSAGES;
 
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.NameCallback;
@@ -30,13 +33,19 @@ import javax.security.auth.callback.PasswordCallback;
 import javax.security.auth.callback.UnsupportedCallbackException;
 import javax.security.sasl.AuthorizeCallback;
 import javax.security.sasl.RealmCallback;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.Closeable;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.net.MalformedURLException;
+import java.io.InputStream;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
-import org.jboss.logging.Logger;
 
 import org.jboss.dmr.ModelNode;
 import org.jboss.msc.service.Service;
@@ -44,26 +53,46 @@ import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
 import org.jboss.msc.value.InjectedValue;
+import org.jboss.sasl.callback.DigestHashCallback;
 
 /**
  * A CallbackHandler obtaining the users and their passwords from a properties file.
  *
  * @author <a href="mailto:darran.lofthouse@jboss.com">Darran Lofthouse</a>
  */
-public class PropertiesCallbackHandler implements Service<PropertiesCallbackHandler>, DomainCallbackHandler {
+public class PropertiesCallbackHandler implements Service<DomainCallbackHandler>, DomainCallbackHandler {
 
     public static final String SERVICE_SUFFIX = "properties";
-    private static final Class[] supportedCallbacks = {AuthorizeCallback.class, RealmCallback.class,
-                                                       NameCallback.class, PasswordCallback.class};
+
+    // Technically this CallbackHandler could also support the VerifyCallback callback, however at the moment
+    // this is only likely to be used with the Digest mechanism so no need to add that support.
+    private static final Class[] PLAIN_CALLBACKS = {AuthorizeCallback.class, RealmCallback.class,
+            NameCallback.class, PasswordCallback.class};
+    private static final Class[] DIGEST_CALLBACKS = {AuthorizeCallback.class, RealmCallback.class,
+            NameCallback.class, DigestHashCallback.class};
+
+    private static final String DOLLAR_LOCAL = "$local";
+
+    private final Class[] supportedCallbacks;
 
     private final String realm;
     private final String path;
+    private final boolean plainText;
     private final InjectedValue<String> relativeTo = new InjectedValue<String>();
-    private final Properties users = new Properties();
+
+    private File propertiesFile;
+    private volatile long fileUpdated = -1;
+    private volatile Properties userProperties = null;
 
     public PropertiesCallbackHandler(String realm, ModelNode properties) {
         this.realm = realm;
         path = properties.require(PATH).asString();
+        if (properties.hasDefined(PLAIN_TEXT)) {
+            plainText = properties.require(PLAIN_TEXT).asBoolean();
+        } else {
+            plainText = false;
+        }
+        supportedCallbacks = plainText ? PLAIN_CALLBACKS : DIGEST_CALLBACKS;
     }
 
     /*
@@ -74,27 +103,126 @@ public class PropertiesCallbackHandler implements Service<PropertiesCallbackHand
         String relativeTo = this.relativeTo.getOptionalValue();
         String file = relativeTo == null ? path : relativeTo + "/" + path;
 
-        File propertiesFile = new File(file);
+        propertiesFile = new File(file);
         try {
-            users.load(propertiesFile.toURI().toURL().openStream());
-
-            final String admin = "admin";
-            if (users.contains(admin) && admin.equals(users.get(admin))) {
-                Logger.getLogger("org.jboss.as.domain-management")
-                        .warn("Properties file defined with default user and password, this will be easy to guess.");
-            }
-        } catch (MalformedURLException mue) {
-            throw new StartException("Unable to load properties", mue);
+            getUsersProperties();
         } catch (IOException ioe) {
-            throw new StartException("Unable to load properties", ioe);
+            throw MESSAGES.unableToLoadProperties(ioe);
+        }
+    }
+
+    private Properties getUsersProperties() throws IOException {
+        /*
+         *  This method does attempt to minimise the effect of race conditions, however this is not overly critical
+         *  as if you have users attempting to authenticate at the exact point their details are added to the file there
+         *  is also a change of a race.
+         */
+
+        boolean loadRequired = userProperties == null || fileUpdated != propertiesFile.lastModified();
+
+        if (loadRequired) {
+            synchronized (this) {
+                // Cache the value as there is still a chance of further modification.
+                long fileLastModified = propertiesFile.lastModified();
+                boolean loadReallyRequired = userProperties == null || fileUpdated != fileLastModified;
+                if (loadReallyRequired) {
+                    ROOT_LOGGER.debugf("Reloading properties file '%s%", propertiesFile.getAbsolutePath());
+                    Properties props = new Properties();
+                    InputStream is = new FileInputStream(propertiesFile);
+                    try {
+                        props.load(is);
+                    } finally {
+                        is.close();
+                    }
+                    checkWeakPasswords(props);
+
+                    userProperties = props;
+                    // Update this last otherwise the check outside the synchronized block could return true before the file is set.
+                    fileUpdated = fileLastModified;
+                }
+            }
+        }
+
+        return userProperties;
+    }
+
+    private synchronized void persistProperties() throws IOException {
+        Properties toSave = (Properties) userProperties.clone();
+
+        File backup = new File(propertiesFile.getCanonicalPath() + ".bak");
+        if (backup.exists()) {
+            if (backup.delete() == false) {
+                throw new IllegalStateException("Unable to delete backup properties file.");
+            }
+        }
+
+        if (propertiesFile.renameTo(backup) == false) {
+            throw new IllegalStateException("Unable to backup properties file.");
+        }
+
+        FileReader fr = new FileReader(backup);
+        BufferedReader br = new BufferedReader(fr);
+
+        FileWriter fw = new FileWriter(propertiesFile);
+        BufferedWriter bw = new BufferedWriter(fw);
+
+        try {
+            String line;
+            while ((line = br.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("#")) {
+                    bw.append(line);
+                    bw.newLine();
+                } else if (trimmed.length() == 0) {
+                    bw.newLine();
+                } else {
+                    int equals = trimmed.indexOf('=');
+                    if (equals > 0) {
+                        String userName = trimmed.substring(0, equals);
+                        if (toSave.contains(userName)) {
+                            bw.append(userName + "=" + toSave.getProperty(userName));
+                            bw.newLine();
+                            toSave.remove(userName);
+                        }
+                    }
+                }
+            }
+
+            // Append any additional users to the end of the file.
+            for (Object currentKey : toSave.keySet()) {
+                bw.append(currentKey + "=" + toSave.getProperty((String) currentKey));
+                bw.newLine();
+            }
+            bw.newLine();
+        } finally {
+            safeClose(bw);
+            safeClose(fw);
+            safeClose(br);
+            safeClose(fr);
+        }
+    }
+
+    private void safeClose(final Closeable c) {
+        try {
+            c.close();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private void checkWeakPasswords(final Properties properties) {
+        final String admin = "admin";
+        if (properties.contains(admin) && admin.equals(properties.get(admin))) {
+            ROOT_LOGGER.userAndPasswordWarning();
         }
     }
 
     public void stop(StopContext context) {
-        users.clear();
+        userProperties.clear();
+        userProperties = null;
+        propertiesFile = null;
     }
 
-    public PropertiesCallbackHandler getValue() throws IllegalStateException, IllegalArgumentException {
+    public DomainCallbackHandler getValue() throws IllegalStateException, IllegalArgumentException {
         return this;
     }
 
@@ -114,11 +242,24 @@ public class PropertiesCallbackHandler implements Service<PropertiesCallbackHand
         return supportedCallbacks;
     }
 
+    @Override
+    public boolean isReady() {
+        Properties users;
+        try {
+            users = getUsersProperties();
+        } catch (IOException e) {
+            return false;
+        }
+        return (users.size() > 0);
+    }
+
     public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
         List<Callback> toRespondTo = new LinkedList<Callback>();
 
         String userName = null;
         boolean userFound = false;
+
+        Properties users = getUsersProperties();
 
         // A single pass may be sufficient but by using a two pass approach the Callbackhandler will not
         // fail if an unexpected order is encountered.
@@ -133,13 +274,14 @@ public class PropertiesCallbackHandler implements Service<PropertiesCallbackHand
                 NameCallback nameCallback = (NameCallback) current;
                 userName = nameCallback.getDefaultName();
                 userFound = users.containsKey(userName);
-            } else if (current instanceof PasswordCallback) {
+            } else if (current instanceof PasswordCallback && plainText) {
+                toRespondTo.add(current);
+            } else if (current instanceof DigestHashCallback && plainText == false) {
                 toRespondTo.add(current);
             } else if (current instanceof RealmCallback) {
                 String realm = ((RealmCallback) current).getDefaultText();
                 if (this.realm.equals(realm) == false) {
-                    // TODO - Check if this needs a real error or of just an unexpected internal error.
-                    throw new IllegalStateException("Invalid Realm '" + realm + "' expected '" + this.realm + "'");
+                    throw MESSAGES.invalidRealm(realm, this.realm);
                 }
             } else {
                 throw new UnsupportedCallbackException(current);
@@ -158,6 +300,12 @@ public class PropertiesCallbackHandler implements Service<PropertiesCallbackHand
                 }
                 String password = users.get(userName).toString();
                 ((PasswordCallback) current).setPassword(password.toCharArray());
+            } else if (current instanceof DigestHashCallback) {
+                if (userFound == false) {
+                    throw new UserNotFoundException(userName);
+                }
+                String hash = users.get(userName).toString();
+                ((DigestHashCallback) current).setHexHash(hash);
             }
         }
 

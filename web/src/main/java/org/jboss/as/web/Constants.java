@@ -30,14 +30,18 @@ interface Constants {
     String ACCESS_LOG = "access-log";
     String ALIAS = "alias";
     String CA_CERTIFICATE_FILE = "ca-certificate-file";
+    String CA_CERTIFICATE_PASSWORD = "ca-certificate-password";
     String CA_REVOCATION_URL = "ca-revocation-url";
     String CACHE_CONTAINER = "cache-container";
+    String CACHE_NAME = "cache-name";
     String CERTIFICATE_FILE = "certificate-file";
     String CERTIFICATE_KEY_FILE = "certificate-key-file";
     String CHECK_INTERVAL = "check-interval";
     String CIPHER_SUITE = "cipher-suite";
     String CONDITION = "condition";
+    String CONFIGURATION = "configuration";
     String CONNECTOR = "connector";
+    String CONTAINER = "container";
     String CONTAINER_CONFIG = "configuration";
     String DEFAULT_VIRTUAL_SERVER = "default-virtual-server";
     String DEFAULT_WEB_MODULE = "default-web-module";
@@ -56,10 +60,12 @@ interface Constants {
     String FILE_ENCONDING = "file-encoding";
     String FLAGS = "flags";
     String GENERATE_STRINGS_AS_CHAR_ARRAYS = "generate-strings-as-char-arrays";
+    String INSTANCE_ID = "instance-id";
     String JAVA_ENCODING = "java-encoding";
     String JSP_CONFIGURATION = "jsp-configuration";
     String KEEP_GENERATED = "keep-generated";
     String KEY_ALIAS = "key-alias";
+    String KEYSTORE_TYPE = "keystore-type";
     String LISTINGS = "listings";
     String MAPPED_FILE = "mapped-file";
     String MAX_CONNECTIONS = "max-connections";
@@ -104,6 +110,7 @@ interface Constants {
     String TARGET_VM = "target-vm";
     String TEST = "test";
     String TRIM_SPACES = "trim-spaces";
+    String TRUSTSTORE_TYPE = "truststore-type";
     String VALUE = "value";
     String VERIFY_CLIENT = "verify-client";
     String VERIFY_DEPTH = "verify-depth";
@@ -119,5 +126,6 @@ interface Constants {
     String ERROR_COUNT = "errorCount";
     String MAX_TIME = "maxTime";
     String REQUEST_COUNT = "requestCount";
+
 
 }

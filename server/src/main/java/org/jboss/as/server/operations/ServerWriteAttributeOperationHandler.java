@@ -22,6 +22,7 @@
 
 package org.jboss.as.server.operations;
 
+import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.PathAddress;
@@ -36,8 +37,11 @@ import org.jboss.logging.Logger;
  * server.
  *
  * @author Brian Stansberry
+ *
+ * @deprecated Use org.jboss.as.controller.AbstractWriteAttributeHandler
  */
-public abstract class ServerWriteAttributeOperationHandler extends WriteAttributeOperationHandler {
+@Deprecated
+public class ServerWriteAttributeOperationHandler extends WriteAttributeOperationHandler {
 
     private static final Logger log = Logger.getLogger("org.jboss.as.server");
 
@@ -58,6 +62,16 @@ public abstract class ServerWriteAttributeOperationHandler extends WriteAttribut
      */
     public ServerWriteAttributeOperationHandler(ParameterValidator valueValidator) {
         this(valueValidator, null);
+    }
+
+    /**
+     * Creates a handler that users the given {@code attributeDefinition}
+     * to validate values before applying them to the model.
+     *
+     * @param attributeDefinition the definition of the attribute being written
+     */
+    public ServerWriteAttributeOperationHandler(AttributeDefinition attributeDefinition) {
+        this(attributeDefinition.getValidator(), attributeDefinition.getValidator());
     }
 
     /**

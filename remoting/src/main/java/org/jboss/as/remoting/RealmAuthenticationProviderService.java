@@ -21,31 +21,41 @@
  */
 package org.jboss.as.remoting;
 
+import java.io.File;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.security.Provider;
+import java.security.Security;
+
+import javax.security.auth.callback.CallbackHandler;
+
 import org.jboss.as.domain.management.SecurityRealm;
 import org.jboss.msc.service.Service;
+import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
 import org.jboss.msc.value.InjectedValue;
 import org.jboss.sasl.JBossSaslProvider;
 
-import javax.security.auth.callback.CallbackHandler;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
-import java.security.Provider;
-import java.security.Security;
-
 /**
  * The service to make the RealmAuthenticationProvider available.
  *
  * @author <a href="mailto:darran.lofthouse@jboss.com">Darran Lofthouse</a>
  */
-class RealmAuthenticationProviderService implements Service<RealmAuthenticationProvider> {
+public class RealmAuthenticationProviderService implements Service<RealmAuthenticationProvider> {
 
     private final InjectedValue<SecurityRealm> securityRealmInjectedValue = new InjectedValue<SecurityRealm>();
     private final InjectedValue<CallbackHandler> serverCallbackValue = new InjectedValue<CallbackHandler>();
+    private final InjectedValue<String> tmpDirValue = new InjectedValue<String>();
 
     private volatile RealmAuthenticationProvider realmAuthenticationProvider = null;
+    /** The base name of the AuthenticationProvider service */
+    private static final ServiceName BASE_NAME = RemotingServices.REMOTING_BASE.append("authentication_provider");
+
+    public static ServiceName createName(String connectorName) {
+        return BASE_NAME.append(connectorName);
+    }
 
     public void start(StartContext startContext) throws StartException {
         AccessController.doPrivileged(new PrivilegedAction<Object>() {
@@ -58,7 +68,17 @@ class RealmAuthenticationProviderService implements Service<RealmAuthenticationP
             }
         });
 
-        realmAuthenticationProvider = new RealmAuthenticationProvider(securityRealmInjectedValue.getOptionalValue(), serverCallbackValue.getOptionalValue());
+        String path = tmpDirValue.getValue();
+        File authDir = new File(path, "auth");
+        if (authDir.exists()) {
+            if (authDir.isDirectory() == false) {
+                throw new StartException("Unable to create tmp dir for auth tokens as file already exists.");
+            }
+        } else if (authDir.mkdirs() == false) {
+            throw new StartException("Unable to create auth dir.");
+        }
+
+        realmAuthenticationProvider = new RealmAuthenticationProvider(securityRealmInjectedValue.getOptionalValue(), serverCallbackValue.getOptionalValue(), authDir.getAbsolutePath());
     }
 
     public void stop(StopContext stopContext) {
@@ -75,5 +95,9 @@ class RealmAuthenticationProviderService implements Service<RealmAuthenticationP
 
     public InjectedValue<CallbackHandler> getServerCallbackValue() {
         return serverCallbackValue;
+    }
+
+    public InjectedValue<String> getTmpDirValue() {
+     return tmpDirValue;
     }
 }

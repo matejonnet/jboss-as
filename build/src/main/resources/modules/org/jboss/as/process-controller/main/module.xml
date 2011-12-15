@@ -22,7 +22,7 @@
   ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
   -->
 
-<module xmlns="urn:jboss:module:1.0" name="org.jboss.as.process-controller">
+<module xmlns="urn:jboss:module:1.1" name="org.jboss.as.process-controller">
 
     <main-class name="org.jboss.as.process.Main"/>
 
@@ -32,9 +32,10 @@
 
     <dependencies>
         <module name="javax.api"/>
-        <module name="org.jboss.as.protocol"/>
         <module name="org.jboss.logging"/>
         <module name="org.jboss.logmanager"/>
+        <module name="org.jboss.marshalling"/>
+        <module name="org.jboss.marshalling.river" services="import"/>
         <module name="org.jboss.threads"/>
     </dependencies>
 </module>

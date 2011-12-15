@@ -30,6 +30,7 @@ import static org.jboss.as.web.Constants.EXECUTOR;
 import static org.jboss.as.web.Constants.MAX_CONNECTIONS;
 import static org.jboss.as.web.Constants.MAX_POST_SIZE;
 import static org.jboss.as.web.Constants.MAX_SAVE_POST_SIZE;
+import static org.jboss.as.web.Constants.PASSWORD;
 import static org.jboss.as.web.Constants.PROTOCOL;
 import static org.jboss.as.web.Constants.PROXY_NAME;
 import static org.jboss.as.web.Constants.PROXY_PORT;
@@ -47,10 +48,12 @@ import java.util.concurrent.Executor;
 import org.apache.catalina.connector.Connector;
 import org.jboss.as.controller.AbstractAddStepHandler;
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.ServiceVerificationHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.operations.common.Util;
+import org.jboss.as.controller.registry.Resource;
 import org.jboss.as.network.SocketBinding;
 import org.jboss.as.threads.ThreadsServices;
 import org.jboss.dmr.ModelNode;
@@ -96,6 +99,15 @@ class WebConnectorAdd extends AbstractAddStepHandler implements DescriptionProvi
         //
     }
 
+    @Override
+    protected void populateModel(final ModelNode operation, final Resource resource) {
+        final ModelNode model = resource.getModel();
+
+        populateModel(operation, model);
+        WebConfigurationHandlerUtils.initializeConnector(resource, operation);
+    }
+
+    @Override
     protected void populateModel(ModelNode operation, ModelNode subModel) {
         subModel.get(PROTOCOL).set(operation.get(PROTOCOL));
         subModel.get(SOCKET_BINDING).set(operation.get(SOCKET_BINDING));
@@ -114,16 +126,16 @@ class WebConnectorAdd extends AbstractAddStepHandler implements DescriptionProvi
         if (operation.hasDefined(MAX_CONNECTIONS))
             subModel.get(Constants.MAX_CONNECTIONS).set(operation.get(Constants.MAX_CONNECTIONS).asInt());
         subModel.get(Constants.VIRTUAL_SERVER).set(operation.get(Constants.VIRTUAL_SERVER));
-        subModel.get(Constants.SSL).set(operation.get(Constants.SSL));
     }
 
-    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) {
+    @Override
+    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) throws OperationFailedException {
         final PathAddress address = PathAddress.pathAddress(operation.get(OP_ADDR));
         final String name = address.getLastElement().getValue();
         final String bindingRef = operation.require(SOCKET_BINDING).asString();
 
         final boolean enabled = operation.hasDefined(ENABLED) ? operation.get(ENABLED).asBoolean() : true;
-        final WebConnectorService service = new WebConnectorService(operation.require(PROTOCOL).asString(), operation.get(SCHEME).asString());
+        final WebConnectorService service = new WebConnectorService(operation.require(PROTOCOL).asString(), operation.get(SCHEME).asString(), unmaskSslPassword(context, operation));
         if (operation.hasDefined(SECURE)) service.setSecure(operation.get(SECURE).asBoolean());
         if (operation.hasDefined(ENABLE_LOOKUPS))
             service.setEnableLookups(operation.get(ENABLE_LOOKUPS).asBoolean());
@@ -159,5 +171,15 @@ class WebConnectorAdd extends AbstractAddStepHandler implements DescriptionProvi
     @Override
     public ModelNode getModelDescription(Locale locale) {
         return WebSubsystemDescriptions.getConnectorAdd(locale);
+    }
+
+    private String unmaskSslPassword(OperationContext context, ModelNode connector) throws OperationFailedException {
+        if (!connector.hasDefined(SSL)) {
+            return null;
+        }
+        if (!connector.get(SSL).hasDefined(PASSWORD)) {
+            return null;
+        }
+        return context.resolveExpressions(connector.get(SSL, PASSWORD)).asString();
     }
 }

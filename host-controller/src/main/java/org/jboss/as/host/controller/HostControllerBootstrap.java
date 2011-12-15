@@ -90,6 +90,7 @@ public class HostControllerBootstrap {
         // Install required path services. (Only install those identified as required)
         AbsolutePathService.addService(HostControllerEnvironment.HOME_DIR, environment.getHomeDir().getAbsolutePath(), serviceTarget);
         AbsolutePathService.addService(HostControllerEnvironment.DOMAIN_CONFIG_DIR, environment.getDomainConfigurationDir().getAbsolutePath(), serviceTarget);
+        AbsolutePathService.addService(HostControllerEnvironment.DOMAIN_TEMP_DIR, environment.getDomainTempDir().getAbsolutePath(), serviceTarget);
 
         DomainModelControllerService.addService(serviceTarget, environment, new ControlledProcessState(false));
     }
@@ -105,7 +106,19 @@ public class HostControllerBootstrap {
 
         @Override
         public synchronized void stop(final StopContext context) {
-            executorService.shutdown();
+            context.asynchronous();
+            Thread executorShutdown = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        executorService.shutdown();
+                    } finally {
+                        executorService = null;
+                        context.complete();
+                    }
+                }
+            }, "HostController ExecutorService Shutdown Thread");
+            executorShutdown.start();
         }
 
         @Override

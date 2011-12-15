@@ -25,6 +25,7 @@ package org.jboss.as.connector.pool;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import static org.jboss.as.connector.ConnectorMessages.MESSAGES;
 import org.jboss.as.connector.ConnectorServices;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationStepHandler;
@@ -47,7 +48,7 @@ public abstract class PoolMetrics implements OperationStepHandler {
 
     static final String[] NO_LOCATION = new String[0];
 
-    public static final Set<String> ATTRIBUTES = (new ManagedConnectionPoolStatisticsImpl(1)).getNames();
+    public static final Set<String> ATTRIBUTES =  (new ManagedConnectionPoolStatisticsImpl(1)).getNames();
 
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
         if (context.getType() == OperationContext.Type.SERVER) {
@@ -70,14 +71,14 @@ public abstract class PoolMetrics implements OperationStepHandler {
                             }
                         } catch (Exception e) {
                             e.printStackTrace();
-                            throw new OperationFailedException(new ModelNode().set("failed to get metrics " + e.getMessage()));
+                            throw new OperationFailedException(new ModelNode().set(MESSAGES.failedToGetMetrics(e.getLocalizedMessage())));
                         }
                     }
                    context.completeStep();
                 }
             }, OperationContext.Stage.RUNTIME);
         } else {
-            context.getResult().set("no metrics available");
+            context.getResult().set(MESSAGES.noMetricsAvailable());
         }
 
         context.completeStep();

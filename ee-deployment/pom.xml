@@ -28,12 +28,12 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-parent</artifactId>
-        <version>7.1.0.Alpha1-SNAPSHOT</version>
+        <version>7.1.0.Beta1</version>
     </parent>
 
     <groupId>org.jboss.as</groupId>
     <artifactId>jboss-as-ee-deployment</artifactId>
-    <version>7.1.0.Alpha1-SNAPSHOT</version>
+    <version>7.1.0.Beta1</version>
 
     <name>JBoss Application Server: EE Deployment</name>
 
@@ -59,6 +59,14 @@
             <artifactId>jboss-logging</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging-processor</artifactId>
+            <!-- This is a compile-time dependency of this project, but is not needed at compile or runtime by other
+                  projects that depend on this project.-->
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
             <groupId>dom4j</groupId>
             <artifactId>dom4j</artifactId>
         </dependency>
@@ -66,18 +74,13 @@
 
     <build>
         <plugins>
-            <!-- 
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
                 <configuration>
-                    <includes>
-                        <include>org/jboss/deployment/spi/**</include>
-                    </includes>
                     <archive>
                         <manifestEntries>
                             <J2EE-DeploymentFactory-Implementation-Class>
-                                org.jboss.deployment.spi.factories.DeploymentFactoryImpl
+                                org.jboss.as.ee.deployment.spi.factories.DeploymentFactoryImpl
                             </J2EE-DeploymentFactory-Implementation-Class>
                         </manifestEntries>
                     </archive>
@@ -85,21 +88,13 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-assembly-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>assembly</id>
-                        <goals>
-                            <goal>single</goal>
-                        </goals>
-                        <phase>package</phase>
-                    </execution>
-                </executions>
+                <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <descriptorSourceDirectory>src/assembly</descriptorSourceDirectory>
+                    <compilerArgument>
+                        -AgeneratedTranslationFilesPath=${project.build.directory}/generated-translation-files
+                    </compilerArgument>
                 </configuration>
             </plugin>
-            -->
         </plugins>
     </build>
 

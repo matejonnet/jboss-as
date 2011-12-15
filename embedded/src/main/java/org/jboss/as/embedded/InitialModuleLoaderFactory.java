@@ -21,6 +21,8 @@
  */
 package org.jboss.as.embedded;
 
+import static org.jboss.as.embedded.EmbeddedMessages.MESSAGES;
+
 import org.jboss.modules.Module;
 import org.jboss.modules.ModuleLoader;
 
@@ -47,7 +49,7 @@ final class InitialModuleLoaderFactory {
     public static ModuleLoader getModuleLoader(File modulePath, String... systemPackages) {
 
         if (modulePath == null || modulePath.isDirectory() == false)
-            throw new IllegalArgumentException("Invalid module path: " + modulePath);
+            throw MESSAGES.invalidModulePath(modulePath);
 
         String oldClassPath = SecurityActions.getSystemProperty("java.class.path");
         try {
@@ -64,20 +66,6 @@ final class InitialModuleLoaderFactory {
             SecurityActions.setSystemProperty("jboss.modules.system.pkgs", packages.toString());
 
             ModuleLoader moduleLoader = Module.getBootModuleLoader();
-
-            // we don't want jboss-as-server to show up, but we do want jboss-as-embedded.
-            // So a sanity check that the SYSTEM module ClassLoader cannot see this class is obsolete.
-            /*
-            try {
-                ModuleClassLoader classLoader = moduleLoader.loadModule(ModuleIdentifier.SYSTEM).getClassLoader();
-                classLoader.loadClass(InitialModuleLoaderFactory.class.getName());
-                throw new IllegalStateException("Cannot initialize module system. There was probably a previous usage.");
-            } catch (ModuleLoadException e) {
-                // ignore
-            } catch (ClassNotFoundException ex) {
-                // expected
-            }
-            */
 
             return moduleLoader;
         } finally {

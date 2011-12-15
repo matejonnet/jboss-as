@@ -24,8 +24,14 @@ package org.jboss.as.ejb3.component;
 
 import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ee.component.ComponentDescription;
+import org.jboss.as.ee.component.EEModuleDescription;
+import org.jboss.as.ee.component.InjectionSource;
 import org.jboss.as.ee.component.ViewConfiguration;
+import org.jboss.as.ee.component.ViewConfigurator;
 import org.jboss.as.ee.component.ViewDescription;
+import org.jboss.as.ejb3.remote.RemoteViewInjectionSource;
+import org.jboss.as.server.deployment.DeploymentPhaseContext;
+import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.invocation.proxy.ProxyFactory;
 import org.jboss.msc.service.ServiceName;
 
@@ -34,15 +40,31 @@ import org.jboss.msc.service.ServiceName;
  *
  * @author <a href="mailto:ropalka@redhat.com">Richard Opalka</a>
  */
-public final class EJBViewDescription extends ViewDescription {
+public class EJBViewDescription extends ViewDescription {
 
     private final MethodIntf methodIntf;
     private final boolean hasJNDIBindings;
 
-    public EJBViewDescription(final ComponentDescription componentDescription, final String viewClassName, final MethodIntf methodIntf) {
-        super(componentDescription, viewClassName);
+    /**
+     * Should be set to true if this view corresponds to a EJB 2.x
+     * local or remote view
+     */
+    private final boolean ejb2xView;
+
+    public EJBViewDescription(final ComponentDescription componentDescription, final String viewClassName, final MethodIntf methodIntf, final boolean ejb2xView) {
+        //only add the default configurator if an 3jb 3.x business view
+        super(componentDescription, viewClassName, !ejb2xView && methodIntf != MethodIntf.HOME && methodIntf != MethodIntf.LOCAL_HOME );
         this.methodIntf = methodIntf;
+        this.ejb2xView = ejb2xView;
         hasJNDIBindings = initHasJNDIBindings(methodIntf);
+
+        //add a configurator to attach the MethodIntf for this view
+        getConfigurators().add(new ViewConfigurator() {
+            @Override
+            public void configure(final DeploymentPhaseContext context, final ComponentConfiguration componentConfiguration, final ViewDescription description, final ViewConfiguration configuration) throws DeploymentUnitProcessingException {
+                configuration.putPrivateData(MethodIntf.class, getMethodIntf());
+            }
+        });
     }
 
     public MethodIntf getMethodIntf() {
@@ -67,6 +89,23 @@ public final class EJBViewDescription extends ViewDescription {
         if (!getViewClassName().equals(that.getViewClassName())) return false;
 
         return true;
+    }
+
+    @Override
+    protected InjectionSource createInjectionSource(final ServiceName serviceName) {
+        if(methodIntf != MethodIntf.REMOTE && methodIntf != MethodIntf.HOME) {
+            return super.createInjectionSource(serviceName);
+        } else {
+            final EJBComponentDescription componentDescription = getComponentDescription();
+            final EEModuleDescription desc = componentDescription.getModuleDescription();
+            final String earApplicationName = desc.getEarApplicationName();
+            return new RemoteViewInjectionSource(serviceName, earApplicationName, desc.getModuleName(), desc.getDistinctName(), componentDescription.getComponentName(), getViewClassName() , componentDescription.isStateful());
+        }
+    }
+
+    @Override
+    public EJBComponentDescription getComponentDescription() {
+        return (EJBComponentDescription)super.getComponentDescription();
     }
 
     @Override // TODO: what to do in JNDI if multiple views are available for no interface view ?
@@ -98,6 +137,10 @@ public final class EJBViewDescription extends ViewDescription {
         }
 
         return true;
+    }
+
+    public boolean isEjb2xView() {
+        return ejb2xView;
     }
 
 }

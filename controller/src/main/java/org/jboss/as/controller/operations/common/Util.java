@@ -93,6 +93,10 @@ public class Util {
         return value != null && value.startsWith("${") && value.endsWith("}");
     }
 
+    /**
+     * @deprecated Horrible idea, as it promotes copying random stuff from an operation into the model.
+     */
+    @Deprecated
     public static void copyParamsToModel(final ModelNode operation, final ModelNode model) {
         Set<String> keys = new HashSet<String>(operation.keys());
         // Remove general operation params
@@ -113,5 +117,16 @@ public class Util {
             op.get(key).set(params.get(key));
         }
         return op;
+    }
+
+    public static PathAddress getParentAddressByKey(PathAddress address, String parentKey) {
+       for (int i = address.size() - 1; i >=0; i--) {
+            PathElement pe = address.getElement(i);
+            if (parentKey.equals(pe.getKey())) {
+                return address.subAddress(0, i + 1);
+            }
+        }
+
+        return null;
     }
 }

@@ -22,11 +22,12 @@
 
 package org.jboss.as.ejb3.component.messagedriven;
 
+import org.jboss.as.connector.ConnectorServices;
 import org.jboss.as.ee.component.BasicComponent;
 import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ejb3.component.EJBComponentCreateService;
 import org.jboss.as.ejb3.component.pool.PoolConfig;
-import org.jboss.as.ejb3.deployment.EjbJarConfiguration;
+import org.jboss.as.ejb3.deployment.ApplicationExceptions;
 import org.jboss.as.ejb3.inflow.EndpointDeployer;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceName;
@@ -36,8 +37,9 @@ import org.jboss.msc.value.InjectedValue;
 import javax.resource.ResourceException;
 import javax.resource.spi.ActivationSpec;
 import javax.resource.spi.ResourceAdapter;
+import java.util.Collection;
 import java.util.Properties;
-
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * @author Stuart Douglas
  */
@@ -54,7 +56,7 @@ public class MessageDrivenComponentCreateService extends EJBComponentCreateServi
      *
      * @param componentConfiguration the component configuration
      */
-    public MessageDrivenComponentCreateService(final ComponentConfiguration componentConfiguration, final EjbJarConfiguration ejbJarConfiguration) {
+    public MessageDrivenComponentCreateService(final ComponentConfiguration componentConfiguration, final ApplicationExceptions ejbJarConfiguration) {
         super(componentConfiguration, ejbJarConfiguration);
 
         final MessageDrivenComponentDescription componentDescription = (MessageDrivenComponentDescription) componentConfiguration.getComponentDescription();
@@ -124,8 +126,11 @@ public class MessageDrivenComponentCreateService extends EJBComponentCreateServi
     }
 
     ServiceName getResourceAdapterServiceName() {
-        // See ResourceAdapterDeploymentService
-        return ServiceName.of(this.resourceAdapterName);
+        final Collection<ServiceName> serviceNames = ConnectorServices.getResourceAdapterServiceNames(this.resourceAdapterName);
+        if (serviceNames == null || serviceNames.isEmpty()) {
+            throw MESSAGES.failToFindResourceAdapter(this.resourceAdapterName);
+        }
+        return serviceNames.iterator().next();
     }
 
     private String stripDotRarSuffix(final String raName) {

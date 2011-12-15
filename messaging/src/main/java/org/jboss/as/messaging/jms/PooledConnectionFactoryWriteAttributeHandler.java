@@ -27,12 +27,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.jboss.as.controller.AttributeDefinition;
-import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.ReloadRequiredWriteAttributeHandler;
 import org.jboss.as.controller.registry.AttributeAccess;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
-import org.jboss.as.messaging.CommonAttributes;
-import org.jboss.as.server.operations.ServerWriteAttributeOperationHandler;
 import org.jboss.dmr.ModelNode;
 
 /**
@@ -40,15 +38,12 @@ import org.jboss.dmr.ModelNode;
  *
  * @author Brian Stansberry (c) 2011 Red Hat Inc.
  */
-public class PooledConnectionFactoryWriteAttributeHandler extends ServerWriteAttributeOperationHandler {
+public class PooledConnectionFactoryWriteAttributeHandler extends ReloadRequiredWriteAttributeHandler {
 
     public static final PooledConnectionFactoryWriteAttributeHandler INSTANCE = new PooledConnectionFactoryWriteAttributeHandler();
 
-    private final Map<String, AttributeDefinition> attributes = new HashMap<String, AttributeDefinition>();
     private PooledConnectionFactoryWriteAttributeHandler() {
-        for (AttributeDefinition attr : JMSServices.POOLED_CONNECTION_FACTORY_ATTRS) {
-            attributes.put(attr.getName(), attr);
-        }
+        super(JMSServices.POOLED_CONNECTION_FACTORY_ATTRS);
     }
 
     public void registerAttributes(final ManagementResourceRegistration registry) {
@@ -57,24 +52,6 @@ public class PooledConnectionFactoryWriteAttributeHandler extends ServerWriteAtt
         for (AttributeDefinition attr : JMSServices.POOLED_CONNECTION_FACTORY_ATTRS) {
             registry.registerReadWriteAttribute(attr.getName(), null, this, flags);
         }
-    }
-
-    @Override
-    protected void validateValue(String name, ModelNode value) throws OperationFailedException {
-        AttributeDefinition attr = attributes.get(name);
-        attr.getValidator().validateParameter(name, value);
-    }
-
-    @Override
-    protected void validateResolvedValue(String name, ModelNode value) throws OperationFailedException {
-        // no-op, as we are not going to apply this value until the server is reloaded, so allow the
-        // any system property to be set between now and then
-    }
-
-    @Override
-    protected boolean applyUpdateToRuntime(OperationContext context, ModelNode operation, String attributeName,
-                                           ModelNode newValue, ModelNode currentValue) throws OperationFailedException {
-        return true;
     }
 
 }

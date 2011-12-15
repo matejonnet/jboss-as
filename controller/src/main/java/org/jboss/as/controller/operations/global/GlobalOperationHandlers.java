@@ -21,6 +21,7 @@
  */
 package org.jboss.as.controller.operations.global;
 
+import static org.jboss.as.controller.ControllerMessages.MESSAGES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ACCESS_TYPE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ATTRIBUTES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CHILDREN;
@@ -93,9 +94,9 @@ public class GlobalOperationHandlers {
             try {
                 context.readResource(PathAddress.EMPTY_ADDRESS);
             } catch (Exception e) {
-                context.getFailureDescription().set(new ModelNode().set("resource does not exist: " + operation.get(OP_ADDR)));
+                context.getFailureDescription().set(new ModelNode().set(MESSAGES.resourceNotFound(operation.get(OP_ADDR))));
             }
-            context.completeStep();
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
     };
 
@@ -203,7 +204,7 @@ public class GlobalOperationHandlers {
                             PathAddress relativeAddr = PathAddress.pathAddress(childPE);
                             ImmutableManagementResourceRegistration childReg = registry.getSubModel(relativeAddr);
                             if (childReg == null) {
-                                throw new OperationFailedException(new ModelNode().set(String.format("no child registry for (%s, %s)", childType, child)));
+                                throw new OperationFailedException(new ModelNode().set(MESSAGES.noChildRegistry(childType, child)));
                             }
                             // We only invoke runtime resources if they are remote proxies
                             if (childReg.isRuntimeOnly() && (!proxies || !childReg.isRemote())) {
@@ -269,7 +270,7 @@ public class GlobalOperationHandlers {
                     }
                 }
             }
-            context.completeStep();
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
     }
 
@@ -370,7 +371,7 @@ public class GlobalOperationHandlers {
                 }
             }
 
-            context.completeStep();
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
     }
 
@@ -400,7 +401,7 @@ public class GlobalOperationHandlers {
             if (attributeAccess == null) {
                 final Set<String> children = context.getResourceRegistration().getChildNames(PathAddress.EMPTY_ADDRESS);
                 if (children.contains(attributeName)) {
-                    throw new OperationFailedException(new ModelNode().set(String.format("'%s' is a registered child of resource (%s)", attributeName, operation.get(OP_ADDR)))); // TODO i18n
+                    throw new OperationFailedException(new ModelNode().set(MESSAGES.attributeRegisteredOnResource(attributeName, operation.get(OP_ADDR))));
                 } else if (subModel.hasDefined(attributeName)) {
                     final ModelNode result = subModel.get(attributeName);
                     context.getResult().set(result);
@@ -417,11 +418,11 @@ public class GlobalOperationHandlers {
                         // as proof that it's a legit attribute name
                         context.getResult(); // this initializes the "result" to ModelType.UNDEFINED
                     } else {
-                        throw new OperationFailedException(new ModelNode().set(String.format("No known attribute %s", attributeName))); // TODO i18n
+                        throw new OperationFailedException(new ModelNode().set(MESSAGES.unknownAttribute(attributeName)));
                     }
                 }
                 // Complete the step for the unregistered attribute case
-                context.completeStep();
+                context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
             } else if (attributeAccess.getReadHandler() == null) {
                 // We know the attribute name is legit as it's in the registry, so this case is simpler
                 if (subModel.hasDefined(attributeName) || !defaults) {
@@ -439,7 +440,7 @@ public class GlobalOperationHandlers {
                     }
                 }
                 // Complete the step for the "registered attribute but default read handler" case
-                context.completeStep();
+                context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
             } else {
                 OperationStepHandler handler = attributeAccess.getReadHandler();
                 ClassLoader oldTccl = SecurityActions.setThreadContextClassLoader(handler.getClass());
@@ -477,9 +478,9 @@ public class GlobalOperationHandlers {
             final String attributeName = operation.require(NAME).asString();
             final AttributeAccess attributeAccess = context.getResourceRegistration().getAttributeAccess(PathAddress.EMPTY_ADDRESS, attributeName);
             if (attributeAccess == null) {
-                throw new OperationFailedException(new ModelNode().set("No known attribute called " + attributeName)); // TODO i18n
+                throw new OperationFailedException(new ModelNode().set(MESSAGES.unknownAttribute(attributeName)));
             } else if (attributeAccess.getAccessType() != AccessType.READ_WRITE) {
-                throw new OperationFailedException(new ModelNode().set("Attribute " + attributeName + " is not writeable")); // TODO i18n
+                throw new OperationFailedException(new ModelNode().set(MESSAGES.attributeNotWritable(attributeName)));
             } else {
                 OperationStepHandler handler = attributeAccess.getWriteHandler();
                 ClassLoader oldTccl = SecurityActions.setThreadContextClassLoader(handler.getClass());
@@ -515,7 +516,7 @@ public class GlobalOperationHandlers {
             Map<String, Set<String>> childAddresses = getChildAddresses(registry, resource, childType);
             Set<String> childNames = childAddresses.get(childType);
             if (childNames == null) {
-                throw new OperationFailedException(new ModelNode().set(String.format("No known child type named %s", childType))); //TODO i18n
+                throw new OperationFailedException(new ModelNode().set(MESSAGES.unknownChildType(childType)));
             }
             // Sort the result
             childNames = new TreeSet<String>(childNames);
@@ -525,11 +526,9 @@ public class GlobalOperationHandlers {
                 result.add(childName);
             }
 
-            context.completeStep();
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
     }
-
-    ;
 
     /**
      * {@link org.jboss.as.controller.OperationStepHandler} querying the children resources of a given "child-type".
@@ -554,7 +553,7 @@ public class GlobalOperationHandlers {
 
             final Set<String> childNames = context.getResourceRegistration().getChildNames(PathAddress.EMPTY_ADDRESS);
             if (!childNames.contains(childType)) {
-                throw new OperationFailedException(new ModelNode().set(String.format("No known child type named %s", childType))); //TODO i18n
+                throw new OperationFailedException(new ModelNode().set(MESSAGES.unknownChildType(childType)));
             }
             final Map<PathElement, ModelNode> resources = new HashMap<PathElement, ModelNode>();
 
@@ -592,7 +591,7 @@ public class GlobalOperationHandlers {
                     }
                     final OperationStepHandler handler = context.getResourceRegistration().getOperationHandler(childAddress, READ_RESOURCE_OPERATION);
                     if (handler == null) {
-                        throw new OperationFailedException(new ModelNode().set("no operation handler"));
+                        throw new OperationFailedException(new ModelNode().set(MESSAGES.noOperationHandler()));
                     }
                     ModelNode rrRsp = new ModelNode();
                     resources.put(childPath, rrRsp);
@@ -600,7 +599,7 @@ public class GlobalOperationHandlers {
                 }
             }
 
-            context.completeStep();
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
     }
 
@@ -628,28 +627,35 @@ public class GlobalOperationHandlers {
         @Override
         public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
 
-            Map<String, ModelNode> sortedChildren = new TreeMap<String, ModelNode>();
-            boolean failed = false;
-            for (Map.Entry<PathElement, ModelNode> entry : resources.entrySet()) {
-                PathElement path = entry.getKey();
-                ModelNode value = entry.getValue();
-                if (!value.has(FAILURE_DESCRIPTION)) {
-                    sortedChildren.put(path.getValue(), value.get(RESULT));
-                } else if (!failed && value.hasDefined(FAILURE_DESCRIPTION)) {
-                    context.getFailureDescription().set(value.get(FAILURE_DESCRIPTION));
-                    failed = true;
-                }
-            }
-            if (!failed) {
-                final ModelNode result = context.getResult();
-                result.setEmptyObject();
+            context.addStep(new OperationStepHandler() {
+                @Override
+                public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
+                    Map<String, ModelNode> sortedChildren = new TreeMap<String, ModelNode>();
+                    boolean failed = false;
+                    for (Map.Entry<PathElement, ModelNode> entry : resources.entrySet()) {
+                        PathElement path = entry.getKey();
+                        ModelNode value = entry.getValue();
+                        if (!value.has(FAILURE_DESCRIPTION)) {
+                            sortedChildren.put(path.getValue(), value.get(RESULT));
+                        } else if (!failed && value.hasDefined(FAILURE_DESCRIPTION)) {
+                            context.getFailureDescription().set(value.get(FAILURE_DESCRIPTION));
+                            failed = true;
+                        }
+                    }
+                    if (!failed) {
+                        final ModelNode result = context.getResult();
+                        result.setEmptyObject();
 
-                for (Map.Entry<String, ModelNode> entry : sortedChildren.entrySet()) {
-                    result.get(entry.getKey()).set(entry.getValue());
-                }
-            }
+                        for (Map.Entry<String, ModelNode> entry : sortedChildren.entrySet()) {
+                            result.get(entry.getKey()).set(entry.getValue());
+                        }
+                    }
 
-            context.completeStep();
+                    context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
+                }
+            }, OperationContext.Stage.VERIFY);
+
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
     }
 
@@ -660,13 +666,13 @@ public class GlobalOperationHandlers {
         @Override
         public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
             final ImmutableManagementResourceRegistration registry = context.getResourceRegistration();
-            Set<String> childTypes = registry.getChildNames(PathAddress.EMPTY_ADDRESS);
+            Set<String> childTypes = new TreeSet<String>(registry.getChildNames(PathAddress.EMPTY_ADDRESS));
             final ModelNode result = context.getResult();
             result.setEmptyList();
             for (final String key : childTypes) {
                 result.add(key);
             }
-            context.completeStep();
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
     };
 
@@ -692,7 +698,7 @@ public class GlobalOperationHandlers {
                 result.setEmptyList();
             }
             context.getResult().set(result);
-            context.completeStep();
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
     };
 
@@ -709,16 +715,26 @@ public class GlobalOperationHandlers {
             final ImmutableManagementResourceRegistration registry = context.getResourceRegistration();
             OperationEntry operationEntry = registry.getOperationEntry(PathAddress.EMPTY_ADDRESS, operationName);
             if (operationEntry == null) {
-                throw new OperationFailedException(new ModelNode().set(String.format("There is no operation %s registered at address %s",
-                        operationName, PathAddress.pathAddress(operation.require(OP_ADDR)))));
+                throw new OperationFailedException(new ModelNode().set(MESSAGES.operationNotRegistered(operationName,
+                        PathAddress.pathAddress(operation.require(OP_ADDR)))));
             } else {
                 final ModelNode result = operationEntry.getDescriptionProvider().getModelDescription(getLocale(operation));
                 Set<OperationEntry.Flag> flags = operationEntry.getFlags();
-                result.get(READ_ONLY).set(flags.contains(OperationEntry.Flag.READ_ONLY));
+                boolean readOnly = flags.contains(OperationEntry.Flag.READ_ONLY);
+                result.get(READ_ONLY).set(readOnly);
+                if (!readOnly) {
+                    if (flags.contains(OperationEntry.Flag.RESTART_ALL_SERVICES)) {
+                        result.get(RESTART_REQUIRED).set("all-services");
+                    } else if (flags.contains(OperationEntry.Flag.RESTART_RESOURCE_SERVICES)) {
+                        result.get(RESTART_REQUIRED).set("resource-services");
+                    } else if (flags.contains(OperationEntry.Flag.RESTART_JVM)) {
+                        result.get(RESTART_REQUIRED).set("jvm");
+                    }
+                }
 
                 context.getResult().set(result);
             }
-            context.completeStep();
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
     };
 
@@ -749,14 +765,7 @@ public class GlobalOperationHandlers {
                                 doExecute(context, operation);
                             }
                         }), OperationContext.Stage.IMMEDIATE);
-                // Add a handler at the end of the chain to aggregate the result
-                context.addStep(new OperationStepHandler() {
-                    @Override
-                    public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-                        context.completeStep();
-                    }
-                }, OperationContext.Stage.VERIFY);
-                context.completeStep();
+                context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
             } else {
                 doExecute(context, operation);
             }
@@ -809,7 +818,7 @@ public class GlobalOperationHandlers {
                     final AccessType accessType = access == null ? AccessType.READ_ONLY : access.getAccessType();
                     final Storage storage = access == null ? Storage.CONFIGURATION : access.getStorageType();
                     final ModelNode attrNode = nodeDescription.get(ATTRIBUTES, attr);
-                    attrNode.get(ACCESS_TYPE).set(accessType.toString()); //TODO i18n
+                    attrNode.get(ACCESS_TYPE).set(accessType.toString());
                     attrNode.get(STORAGE).set(storage.toString());
                     if (accessType == AccessType.READ_WRITE) {
                         Set<AttributeAccess.Flag> flags = access.getFlags();
@@ -863,7 +872,7 @@ public class GlobalOperationHandlers {
                     nodeDescription.get(CHILDREN, element.getKey(), MODEL_DESCRIPTION, element.getValue());
                 }
             }
-            context.completeStep();
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
     };
 
@@ -911,7 +920,7 @@ public class GlobalOperationHandlers {
             }
 
             context.getResult().set(nodeDescription);
-            context.completeStep();
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
     }
 
@@ -942,14 +951,7 @@ public class GlobalOperationHandlers {
                         doExecute(context, operation);
                     }
                 }), OperationContext.Stage.IMMEDIATE);
-                // Add a handler at the end of the chain to aggregate the result
-                context.addStep(new OperationStepHandler() {
-                    @Override
-                    public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-                        context.completeStep();
-                    }
-                }, OperationContext.Stage.VERIFY);
-                context.completeStep();
+                context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
             } else {
                 doExecute(context, operation);
             }
@@ -984,7 +986,7 @@ public class GlobalOperationHandlers {
         public void execute(final OperationContext context, final ModelNode ignored) throws OperationFailedException {
             final PathAddress address = PathAddress.pathAddress(operation.require(OP_ADDR));
             execute(address, PathAddress.EMPTY_ADDRESS, context);
-            context.completeStep();
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
 
         void execute(final PathAddress address, final PathAddress base, final OperationContext context) {
@@ -1060,7 +1062,7 @@ public class GlobalOperationHandlers {
         public void execute(final OperationContext context, final ModelNode ignored) throws OperationFailedException {
             final PathAddress address = PathAddress.pathAddress(operation.require(OP_ADDR));
             execute(address, PathAddress.EMPTY_ADDRESS, context);
-            context.completeStep();
+            context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
 
         void execute(final PathAddress address, PathAddress base, final OperationContext context) {

@@ -22,6 +22,8 @@
 
 package org.jboss.as.jpa.interceptor;
 
+import static org.jboss.as.jpa.JpaMessages.MESSAGES;
+
 import org.jboss.as.ee.component.ComponentInstance;
 import org.jboss.as.ejb3.component.stateful.StatefulSessionComponentInstance;
 import org.jboss.as.jpa.container.SFSBCallStack;
@@ -48,7 +50,7 @@ public class SFSBInvocationInterceptor implements Interceptor {
     public Object processInvocation(InterceptorContext context) throws Exception {
         ComponentInstance componentInstance = context.getPrivateData(ComponentInstance.class);
         if (componentInstance == null) {
-            throw new IllegalStateException("componentInstance not set in InterceptorContext: " + context);
+            throw MESSAGES.notSetInInterceptorContext("componentInstance", context);
         }
         StatefulSessionComponentInstance sfsb = (StatefulSessionComponentInstance) componentInstance;
         SFSBContextHandleImpl sfsbContextHandle = new SFSBContextHandleImpl(sfsb);

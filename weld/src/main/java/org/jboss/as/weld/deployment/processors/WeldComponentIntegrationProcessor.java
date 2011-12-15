@@ -21,24 +21,31 @@
  */
 package org.jboss.as.weld.deployment.processors;
 
+import java.util.HashSet;
+import java.util.Set;
+
+import javax.enterprise.inject.spi.InterceptionType;
+
 import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ee.component.ComponentConfigurator;
 import org.jboss.as.ee.component.ComponentDescription;
 import org.jboss.as.ee.component.ComponentStartService;
 import org.jboss.as.ee.component.DependencyConfigurator;
 import org.jboss.as.ee.component.EEApplicationDescription;
-import org.jboss.as.ee.component.EEModuleClassConfiguration;
 import org.jboss.as.ee.component.EEModuleDescription;
 import org.jboss.as.ee.component.InterceptorDescription;
 import org.jboss.as.ee.component.interceptors.InterceptorOrder;
-import org.jboss.as.ejb3.component.session.SessionBeanComponentDescription;
+import org.jboss.as.ejb3.component.EJBComponentDescription;
 import org.jboss.as.server.deployment.Attachments;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.DeploymentUnitProcessor;
+import org.jboss.as.server.deployment.reflect.ClassIndex;
+import org.jboss.as.server.deployment.reflect.DeploymentClassIndex;
 import org.jboss.as.weld.WeldContainer;
 import org.jboss.as.weld.WeldDeploymentMarker;
+import org.jboss.as.weld.ejb.EjbRequestScopeActivationInterceptor;
 import org.jboss.as.weld.ejb.Jsr299BindingsInterceptor;
 import org.jboss.as.weld.injection.WeldInjectionInterceptor;
 import org.jboss.as.weld.injection.WeldManagedReferenceFactory;
@@ -47,10 +54,6 @@ import org.jboss.modules.ModuleClassLoader;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceTarget;
-
-import javax.enterprise.inject.spi.InterceptionType;
-import java.util.HashSet;
-import java.util.Set;
 
 /**
  * Deployment unit processor that add the {@link org.jboss.as.weld.injection.WeldManagedReferenceFactory} instantiator
@@ -63,6 +66,7 @@ public class WeldComponentIntegrationProcessor implements DeploymentUnitProcesso
     @Override
     public void deploy(DeploymentPhaseContext phaseContext) throws DeploymentUnitProcessingException {
         final DeploymentUnit deploymentUnit = phaseContext.getDeploymentUnit();
+        final DeploymentClassIndex classIndex = deploymentUnit.getAttachment(Attachments.CLASS_INDEX);
 
         if (!WeldDeploymentMarker.isWeldDeployment(deploymentUnit)) {
             return;
@@ -75,7 +79,7 @@ public class WeldComponentIntegrationProcessor implements DeploymentUnitProcesso
 
         for (ComponentDescription component : eeModuleDescription.getComponentDescriptions()) {
             final String beanName;
-            if (component instanceof SessionBeanComponentDescription) {
+            if (component instanceof EJBComponentDescription) {
                 beanName = component.getComponentName();
 
             } else {
@@ -84,7 +88,7 @@ public class WeldComponentIntegrationProcessor implements DeploymentUnitProcesso
             component.getConfigurators().addFirst(new ComponentConfigurator() {
                 @Override
                 public void configure(final DeploymentPhaseContext context, final ComponentDescription description, final ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
-                    final Class<?> componentClass = configuration.getModuleClassConfiguration().getModuleClass();
+                    final Class<?> componentClass = configuration.getComponentClass();
                     final DeploymentUnit deploymentUnit = context.getDeploymentUnit();
                     final ModuleClassLoader classLoader = deploymentUnit.getAttachment(Attachments.MODULE).getClassLoader();
                     final EEApplicationDescription applicationDescription = deploymentUnit.getAttachment(org.jboss.as.ee.component.Attachments.EE_APPLICATION_DESCRIPTION);
@@ -93,12 +97,13 @@ public class WeldComponentIntegrationProcessor implements DeploymentUnitProcesso
                     //get the interceptors so they can be injected as well
                     final Set<Class<?>> interceptorClasses = new HashSet<Class<?>>();
                     for (InterceptorDescription interceptorDescription : description.getAllInterceptors()) {
-                        final EEModuleClassConfiguration clazz = applicationDescription.getClassConfiguration(interceptorDescription.getInterceptorClassName());
-                        if (clazz != null) {
-                            interceptorClasses.add(clazz.getModuleClass());
+                        try {
+                            final ClassIndex index = classIndex.classIndex(interceptorDescription.getInterceptorClassName());
+                            interceptorClasses.add(index.getModuleClass());
+                        } catch (ClassNotFoundException e) {
+                            throw new RuntimeException("Could not load interceptor class", e);
                         }
                     }
-
 
                     addWeldIntegration(context.getServiceTarget(), configuration, description, componentClass, beanName, weldServiceName, interceptorClasses, classLoader, description.getBeanDeploymentArchiveId());
 
@@ -131,22 +136,37 @@ public class WeldComponentIntegrationProcessor implements DeploymentUnitProcesso
         });
 
         //if this is an ejb add the EJB interceptors
-        if (beanName != null) {
-            final Jsr299BindingsInterceptor.Factory aroundInvokeFactory = new Jsr299BindingsInterceptor.Factory(description.getBeanDeploymentArchiveId(), beanName, InterceptionType.AROUND_INVOKE);
+        if (description instanceof EJBComponentDescription) {
+
+
+            final Jsr299BindingsInterceptor.Factory aroundInvokeFactory = new Jsr299BindingsInterceptor.Factory(description.getBeanDeploymentArchiveId(), beanName, InterceptionType.AROUND_INVOKE, classLoader);
             builder.addDependency(weldServiceName, WeldContainer.class, aroundInvokeFactory.getWeldContainer());
             configuration.addComponentInterceptor(aroundInvokeFactory, InterceptorOrder.Component.CDI_INTERCEPTORS, false);
-            if(description.isTimerServiceApplicable()) {
-            final Jsr299BindingsInterceptor.Factory aroundTimeoutFactory = new Jsr299BindingsInterceptor.Factory(description.getBeanDeploymentArchiveId(), beanName, InterceptionType.AROUND_TIMEOUT);
+            if (description.isTimerServiceApplicable()) {
+                final Jsr299BindingsInterceptor.Factory aroundTimeoutFactory = new Jsr299BindingsInterceptor.Factory(description.getBeanDeploymentArchiveId(), beanName, InterceptionType.AROUND_TIMEOUT, classLoader);
                 configuration.addTimeoutInterceptor(aroundTimeoutFactory, InterceptorOrder.Component.CDI_INTERCEPTORS);
                 builder.addDependency(weldServiceName, WeldContainer.class, aroundTimeoutFactory.getWeldContainer());
+
+                //we need to activate our own request scope for timer service invocations
+                final EjbRequestScopeActivationInterceptor.Factory requestFactory = new EjbRequestScopeActivationInterceptor.Factory(classLoader);
+                configuration.addTimeoutInterceptor(requestFactory, InterceptorOrder.Component.CDI_REQUEST_SCOPE);
+                builder.addDependency(weldServiceName, WeldContainer.class, requestFactory.getWeldContainer());
             }
 
-            final Jsr299BindingsInterceptor.Factory preDestroyInterceptor = new Jsr299BindingsInterceptor.Factory(description.getBeanDeploymentArchiveId(), beanName, InterceptionType.PRE_DESTROY);
+            final Jsr299BindingsInterceptor.Factory preDestroyInterceptor = new Jsr299BindingsInterceptor.Factory(description.getBeanDeploymentArchiveId(), beanName, InterceptionType.PRE_DESTROY, classLoader);
             builder.addDependency(weldServiceName, WeldContainer.class, preDestroyInterceptor.getWeldContainer());
             configuration.addPreDestroyInterceptor(preDestroyInterceptor, InterceptorOrder.ComponentPreDestroy.CDI_INTERCEPTORS);
-            final Jsr299BindingsInterceptor.Factory postConstruct = new Jsr299BindingsInterceptor.Factory(description.getBeanDeploymentArchiveId(), beanName, InterceptionType.POST_CONSTRUCT);
+
+            final Jsr299BindingsInterceptor.Factory postConstruct = new Jsr299BindingsInterceptor.Factory(description.getBeanDeploymentArchiveId(), beanName, InterceptionType.POST_CONSTRUCT, classLoader);
             builder.addDependency(weldServiceName, WeldContainer.class, postConstruct.getWeldContainer());
             configuration.addPostConstructInterceptor(postConstruct, InterceptorOrder.ComponentPostConstruct.CDI_INTERCEPTORS);
+
+            if (((EJBComponentDescription) description).isMessageDriven()) {
+                //message driven beans also need to have the CDI request scope activated by an interceptor
+                final EjbRequestScopeActivationInterceptor.Factory requestFactory = new EjbRequestScopeActivationInterceptor.Factory(classLoader);
+                configuration.addComponentInterceptor(requestFactory, InterceptorOrder.Component.CDI_REQUEST_SCOPE, false);
+                builder.addDependency(weldServiceName, WeldContainer.class, requestFactory.getWeldContainer());
+            }
         }
 
         builder.install();

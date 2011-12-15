@@ -22,12 +22,15 @@
 
 package org.jboss.as.ee.component;
 
-import org.jboss.as.naming.ManagedReference;
-import org.jboss.invocation.Interceptor;
-import org.jboss.invocation.InterceptorFactory;
-import org.jboss.invocation.InterceptorFactoryContext;
+import static org.jboss.as.ee.EeMessages.MESSAGES;
 
 import java.util.concurrent.atomic.AtomicReference;
+
+import org.jboss.as.naming.ManagedReference;
+import org.jboss.invocation.Interceptor;
+import org.jboss.invocation.InterceptorContext;
+import org.jboss.invocation.InterceptorFactory;
+import org.jboss.invocation.InterceptorFactoryContext;
 
 /**
  * An interceptor factory which produces interceptors which release a managed reference.
@@ -45,7 +48,7 @@ class ManagedReferenceReleaseInterceptorFactory implements InterceptorFactory {
      */
     public ManagedReferenceReleaseInterceptorFactory(final Object contextKey) {
         if (contextKey == null) {
-            throw new IllegalArgumentException("contextKey is null");
+            throw MESSAGES.nullVar("contextKey");
         }
         this.contextKey = contextKey;
     }
@@ -58,4 +61,40 @@ class ManagedReferenceReleaseInterceptorFactory implements InterceptorFactory {
         final AtomicReference<ManagedReference> referenceReference = (AtomicReference<ManagedReference>) context.getContextData().get(contextKey);
         return new ManagedReferenceReleaseInterceptor(referenceReference);
     }
+
+    /**
+     * An interceptor which releases a managed reference.
+     *
+     * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
+     */
+    static final class ManagedReferenceReleaseInterceptor implements Interceptor {
+        private final AtomicReference<ManagedReference> referenceReference;
+
+        /**
+         * Construct a new instance.
+         *
+         * @param referenceReference the holder for the managed reference
+         */
+        public ManagedReferenceReleaseInterceptor(final AtomicReference<ManagedReference> referenceReference) {
+            if (referenceReference == null) {
+                throw MESSAGES.nullVar("referenceReference");
+            }
+            this.referenceReference = referenceReference;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public Object processInvocation(final InterceptorContext context) throws Exception {
+            try {
+                return context.proceed();
+            } finally {
+                final ManagedReference managedReference = referenceReference.getAndSet(null);
+                if (managedReference != null) {
+                    managedReference.release();
+                }
+            }
+        }
+    }
+
 }

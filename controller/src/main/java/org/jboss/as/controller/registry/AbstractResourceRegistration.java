@@ -34,6 +34,8 @@ import org.jboss.as.controller.ProxyController;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.ResourceDefinition;
+import org.jboss.as.controller.SimpleResourceDefinition;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.registry.OperationEntry.EntryType;
 
@@ -54,7 +56,13 @@ abstract class AbstractResourceRegistration implements ManagementResourceRegistr
 
     /** {@inheritDoc} */
     @Override
-    public abstract ManagementResourceRegistration registerSubModel(final PathElement address, final DescriptionProvider descriptionProvider);
+    public final ManagementResourceRegistration registerSubModel(final PathElement address, final DescriptionProvider descriptionProvider) {
+        return registerSubModel(new SimpleResourceDefinition(address, descriptionProvider));
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public abstract ManagementResourceRegistration registerSubModel(final ResourceDefinition resourceDefinition);
 
     /** {@inheritDoc} */
     @Override

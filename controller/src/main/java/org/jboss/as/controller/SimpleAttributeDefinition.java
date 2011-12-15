@@ -31,6 +31,7 @@ import org.jboss.as.controller.operations.validation.ModelTypeValidator;
 import org.jboss.as.controller.operations.validation.ParameterValidator;
 import org.jboss.as.controller.operations.validation.StringLengthValidator;
 import org.jboss.as.controller.parsing.ParseUtils;
+import org.jboss.as.controller.registry.AttributeAccess;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 
@@ -43,44 +44,85 @@ import org.jboss.dmr.ModelType;
 public class SimpleAttributeDefinition extends AttributeDefinition {
 
     public SimpleAttributeDefinition(final String name, final ModelType type, final boolean allowNull) {
-        this(name, name, null, type, allowNull, false, MeasurementUnit.NONE);
+        this(name, name, null, type, allowNull, false, null);
+    }
+
+    public SimpleAttributeDefinition(final String name, final ModelType type, final boolean allowNull, final AttributeAccess.Flag... flags) {
+        this(name, name, null, type, allowNull, false, null, flags);
     }
 
     public SimpleAttributeDefinition(final String name, final ModelType type, final boolean allowNull, final MeasurementUnit measurementUnit) {
         this(name, name, null, type, allowNull, false, measurementUnit);
     }
 
+    public SimpleAttributeDefinition(final String name, final ModelType type, final boolean allowNull,
+                                     final MeasurementUnit measurementUnit, final AttributeAccess.Flag... flags) {
+        this(name, name, null, type, allowNull, false, measurementUnit, flags);
+    }
+
     public SimpleAttributeDefinition(final String name, final ModelNode defaultValue, final ModelType type, final boolean allowNull) {
-        this(name, name, defaultValue, type, allowNull, false, MeasurementUnit.NONE);
+        this(name, name, defaultValue, type, allowNull, false, null);
+    }
+
+    public SimpleAttributeDefinition(final String name, final ModelNode defaultValue, final ModelType type,
+                                     final boolean allowNull, final AttributeAccess.Flag... flags) {
+        this(name, name, defaultValue, type, allowNull, false, null, flags);
     }
 
     public SimpleAttributeDefinition(final String name, final ModelNode defaultValue, final ModelType type, final boolean allowNull, final MeasurementUnit measurementUnit) {
         this(name, name, defaultValue, type, allowNull, false, measurementUnit);
     }
 
+    public SimpleAttributeDefinition(final String name, final ModelNode defaultValue, final ModelType type, final boolean allowNull,
+                                     final MeasurementUnit measurementUnit, final AttributeAccess.Flag... flags) {
+        this(name, name, defaultValue, type, allowNull, false, measurementUnit, flags);
+    }
+
     public SimpleAttributeDefinition(final String name, final String xmlName, final ModelNode defaultValue, final ModelType type,
                                      final boolean allowNull, final boolean allowExpression, final MeasurementUnit measurementUnit) {
-        this(name, xmlName, defaultValue, type, allowNull, allowExpression, measurementUnit, createParameterValidator(type, allowNull, allowExpression), null);
+        this(name, xmlName, defaultValue, type, allowNull, allowExpression, measurementUnit, (ParameterValidator) null, null, null);
+    }
+
+    public SimpleAttributeDefinition(final String name, final String xmlName, final ModelNode defaultValue, final ModelType type,
+                                     final boolean allowNull, final boolean allowExpression, final MeasurementUnit measurementUnit,
+                                     final AttributeAccess.Flag... flags) {
+        this(name, xmlName, defaultValue, type, allowNull, allowExpression, measurementUnit,
+                null, null, null, flags);
     }
 
     public SimpleAttributeDefinition(final String name, final String xmlName, final ModelNode defaultValue, final ModelType type,
                                      final boolean allowNull, final boolean allowExpression, final MeasurementUnit measurementUnit,
                                      final ParameterValidator validator) {
-        this(name, xmlName, defaultValue, type, allowNull, allowExpression, measurementUnit, validator, null);
+        this(name, xmlName, defaultValue, type, allowNull, allowExpression, measurementUnit, validator, null, null);
     }
 
     public SimpleAttributeDefinition(String name, String xmlName, final ModelNode defaultValue, final ModelType type,
                                      final boolean allowNull, final boolean allowExpression, final MeasurementUnit measurementUnit,
-                                     final ParameterValidator validator, String[] alternatives) {
-        super(name, xmlName, defaultValue, type, allowNull, allowExpression, measurementUnit, validator, alternatives);
+                                     final ParameterValidator validator, String[] alternatives, String[] requires, AttributeAccess.Flag... flags) {
+        super(name, xmlName, defaultValue, type, allowNull, allowExpression, measurementUnit,
+                createParameterValidator(validator, type, allowNull, allowExpression), alternatives, requires, flags);
+    }
+
+    public SimpleAttributeDefinition(String name, String xmlName, final ModelNode defaultValue, final ModelType type,
+            final boolean allowNull, final boolean allowExpression, final MeasurementUnit measurementUnit,
+            final ParameterCorrector corrector, final ParameterValidator validator,
+            String[] alternatives, String[] requires, AttributeAccess.Flag... flags) {
+        super(name, xmlName, defaultValue, type, allowNull, allowExpression, measurementUnit,
+                corrector, createParameterValidator(validator, type, allowNull, allowExpression), alternatives, requires, flags);
     }
 
     public SimpleAttributeDefinition(final String name, final ModelNode defaultValue, final ModelType type, final boolean allowNull, final String[] alternatives) {
-        this(name, name, defaultValue, type, allowNull, false, MeasurementUnit.NONE, createParameterValidator(type, allowNull, false), alternatives);
+        this(name, name, defaultValue, type, allowNull, false, MeasurementUnit.NONE, null, alternatives, null);
     }
 
-    private static ParameterValidator createParameterValidator(final ModelType type,final boolean allowNull, final boolean allowExpression) {
-        if (type == ModelType.STRING) {
+    public SimpleAttributeDefinition(final String name, final ModelType type, final boolean allowNull, ParameterCorrector corrector, ParameterValidator validator) {
+        this(name, name, null, type, allowNull, false, MeasurementUnit.NONE, corrector, validator, null, null);
+    }
+
+    private static ParameterValidator createParameterValidator(final ParameterValidator existing, final ModelType type,final boolean allowNull, final boolean allowExpression) {
+        if (existing != null) {
+            return existing;
+        } else if (type == ModelType.STRING) {
             return new StringLengthValidator(1, Integer.MAX_VALUE, allowNull, allowExpression);
         } else {
             return new ModelTypeValidator(type, allowNull, allowExpression);
@@ -139,7 +181,7 @@ public class SimpleAttributeDefinition extends AttributeDefinition {
                         break;
                 }
             }
-        } else if (getDefaultValue().isDefined()) {
+        } else if (getDefaultValue()!= null && getDefaultValue().isDefined()) {
             node = new ModelNode().set(getDefaultValue());
         } else {
             node = new ModelNode();
@@ -168,7 +210,7 @@ public class SimpleAttributeDefinition extends AttributeDefinition {
      *
      * @param resourceModel the model, a non-null node of {@link org.jboss.dmr.ModelType#OBJECT}.
      * @param writer stream writer to use for writing the attribute
-     * @throws javax.xml.stream.XMLStreamException
+     * @throws javax.xml.stream.XMLStreamException if {@code writer} throws an exception
      */
     public void marshallAsAttribute(final ModelNode resourceModel, final XMLStreamWriter writer) throws XMLStreamException {
         marshallAsAttribute(resourceModel, true, writer);
@@ -180,7 +222,7 @@ public class SimpleAttributeDefinition extends AttributeDefinition {
      * @param resourceModel the model, a non-null node of {@link org.jboss.dmr.ModelType#OBJECT}.
      * @param marshallDefault {@code true} if the value should be marshalled even if it matches the default value
      * @param writer stream writer to use for writing the attribute
-     * @throws javax.xml.stream.XMLStreamException
+     * @throws javax.xml.stream.XMLStreamException if {@code writer} throws an exception
      */
     public void marshallAsAttribute(final ModelNode resourceModel, final boolean marshallDefault, final XMLStreamWriter writer) throws XMLStreamException {
         if (isMarshallable(resourceModel, marshallDefault)) {
@@ -209,6 +251,4 @@ public class SimpleAttributeDefinition extends AttributeDefinition {
             writer.writeEndElement();
         }
     }
-
-
 }

@@ -22,6 +22,7 @@
 
 package org.jboss.as.messaging;
 
+import static org.jboss.as.messaging.MessagingMessages.MESSAGES;
 
 import java.util.EnumSet;
 
@@ -60,7 +61,7 @@ class AddressSettingsWriteHandler implements OperationStepHandler {
         final String attribute = operation.require(ModelDescriptionConstants.NAME).asString();
         final AttributeDefinition def = getAttributeDefinition(attribute);
         if(def == null) {
-            context.getFailureDescription().set(new ModelNode().set(String.format("no such attribute (%s) ", attribute)));
+            context.getFailureDescription().set(new ModelNode().set(MESSAGES.unknownAttribute(attribute)));
         }
         def.getValidator().validateParameter(ModelDescriptionConstants.VALUE, operation);
         resource.getModel().get(attribute).set(operation.get(ModelDescriptionConstants.VALUE));
@@ -69,14 +70,14 @@ class AddressSettingsWriteHandler implements OperationStepHandler {
             context.addStep(new OperationStepHandler() {
                 @Override
                 public void execute(final OperationContext context, final ModelNode operation) throws OperationFailedException {
-                    final HornetQServer server = AddressSettingAdd.getServer(context);
+                    final HornetQServer server = AddressSettingAdd.getServer(context, operation);
                     PathAddress address = null;
                     HierarchicalRepository<AddressSettings> repository = null;
                     AddressSettings existingSettings = null;
                     if(server != null) {
                         final ModelNode model = resource.getModel();
                         address = PathAddress.pathAddress(operation.require(ModelDescriptionConstants.OP_ADDR));
-                        final AddressSettings settings = AddressSettingAdd.createSettings(model);
+                        final AddressSettings settings = AddressSettingAdd.createSettings(context, model);
                         repository = server.getAddressSettingsRepository();
                         String match = address.getLastElement().getValue();
                         existingSettings = repository.getMatch(match);

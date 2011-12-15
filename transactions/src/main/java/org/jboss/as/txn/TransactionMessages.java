@@ -34,7 +34,7 @@ import org.jboss.msc.service.StartException;
  * @author <a href="mailto:jperkins@redhat.com">James R. Perkins</a>
  */
 @MessageBundle(projectCode = "JBAS")
-interface TransactionMessages {
+public interface TransactionMessages {
     /**
      * The messages
      */
@@ -47,7 +47,7 @@ interface TransactionMessages {
      *
      * @return a {@link org.jboss.msc.service.StartException} initialized with the cause.
      */
-    @Message(value = "Create failed")
+    @Message(id = 10100, value = "Create failed")
     StartException createFailed(@Cause Throwable cause);
 
     /**
@@ -58,7 +58,7 @@ interface TransactionMessages {
      *
      * @return a {@link org.jboss.msc.service.StartException} initialized with the cause and error message.
      */
-    @Message(value = "%s manager create failed")
+    @Message(id = 10101, value = "%s manager create failed")
     StartException managerStartFailure(@Cause Throwable cause, String managerName);
 
     /**
@@ -68,7 +68,7 @@ interface TransactionMessages {
      *
      * @return a {@link org.jboss.msc.service.StartException} initialized with the cause and error message.
      */
-    @Message(value = "Failed to configure object store browser bean")
+    @Message(id = 10102, value = "Failed to configure object store browser bean")
     StartException objectStoreStartFailure(@Cause Throwable cause);
 
 
@@ -77,7 +77,7 @@ interface TransactionMessages {
      *
      * @return a {@link IllegalStateException} initialized with the cause and error message.
      */
-    @Message(value = "Service not started")
+    @Message(id = 10103, value = "Service not started")
     IllegalStateException serviceNotStarted();
 
     /**
@@ -87,7 +87,7 @@ interface TransactionMessages {
      *
      * @return a {@link org.jboss.msc.service.StartException} initialized with the cause.
      */
-    @Message(value = "Start failed")
+    @Message(id = 10104, value = "Start failed")
     StartException startFailure(@Cause Throwable cause);
 
     /**
@@ -97,6 +97,8 @@ interface TransactionMessages {
      *
      * @return the message.
      */
-    @Message(value = "Unknown metric %s")
+    @Message(id = 10105, value = "Unknown metric %s")
     String unknownMetric(Object metric);
+
+
 }

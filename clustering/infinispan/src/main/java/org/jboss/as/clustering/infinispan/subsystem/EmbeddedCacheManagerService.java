@@ -21,6 +21,15 @@
  */
 package org.jboss.as.clustering.infinispan.subsystem;
 
+import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
+
+import javax.management.MBeanServer;
+import javax.transaction.TransactionManager;
+import javax.transaction.TransactionSynchronizationRegistry;
+import javax.transaction.xa.XAResource;
+
 import org.infinispan.config.Configuration;
 import org.infinispan.config.FluentConfiguration;
 import org.infinispan.config.FluentGlobalConfiguration;
@@ -39,7 +48,7 @@ import org.jboss.as.clustering.infinispan.DefaultEmbeddedCacheManager;
 import org.jboss.as.clustering.infinispan.ExecutorProvider;
 import org.jboss.as.clustering.infinispan.MBeanServerProvider;
 import org.jboss.as.clustering.infinispan.TransactionManagerProvider;
-import org.jboss.as.clustering.infinispan.TransactionSynchronizationRegistryProvider;import org.jboss.logging.Logger;
+import org.jboss.as.clustering.infinispan.TransactionSynchronizationRegistryProvider;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.StartContext;
@@ -48,21 +57,13 @@ import org.jboss.msc.service.StopContext;
 import org.jboss.tm.XAResourceRecovery;
 import org.jboss.tm.XAResourceRecoveryRegistry;
 
-import javax.management.MBeanServer;
-import javax.transaction.TransactionManager;
-import javax.transaction.TransactionSynchronizationRegistry;
-import javax.transaction.xa.XAResource;
-
-import java.util.Map;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ScheduledExecutorService;
+import static org.jboss.as.clustering.infinispan.InfinispanLogger.ROOT_LOGGER;
 
 /**
  * @author Paul Ferraro
  */
 @Listener
 public class EmbeddedCacheManagerService implements Service<CacheContainer> {
-    private static final Logger log = Logger.getLogger(EmbeddedCacheManagerService.class.getPackage().getName());
     private static final ServiceName SERVICE_NAME = ServiceName.JBOSS.append(InfinispanExtension.SUBSYSTEM_NAME);
 
     public static ServiceName getServiceName(String name) {
@@ -114,10 +115,9 @@ public class EmbeddedCacheManagerService implements Service<CacheContainer> {
             if (machine != null) {
                 fluentTransport.machineId(machine);
             }
-            fluentTransport.nodeName(transport.getEnvironment().getNodeName());
             fluentTransport.clusterName(this.configuration.getName());
 
-            ChannelProvider.init(global, transport.getChannelFactory());
+            ChannelProvider.init(global, transport.getChannel());
 
             Executor executor = transport.getExecutor();
             if (executor != null) {
@@ -193,7 +193,7 @@ public class EmbeddedCacheManagerService implements Service<CacheContainer> {
         String cacheName = event.getCacheName();
         EmbeddedCacheManager container = event.getCacheManager();
 
-        log.infof("Started %s cache from %s container", cacheName, container.getGlobalConfiguration().getCacheManagerName());
+        ROOT_LOGGER.cacheStarted(event.getCacheName(), event.getCacheManager().getGlobalConfiguration().getCacheManagerName());
 
         XAResourceRecoveryRegistry recoveryRegistry = this.configuration.getXAResourceRecoveryRegistry();
         if ((recoveryRegistry != null) && container.defineConfiguration(cacheName, new Configuration()).isTransactionRecoveryEnabled()) {
@@ -206,7 +206,7 @@ public class EmbeddedCacheManagerService implements Service<CacheContainer> {
        String cacheName = event.getCacheName();
        EmbeddedCacheManager container = event.getCacheManager();
 
-       log.infof("Stopped %s cache from %s container", cacheName, container.getGlobalConfiguration().getCacheManagerName());
+       ROOT_LOGGER.cacheStopped(cacheName, container.getGlobalConfiguration().getCacheManagerName());
 
        XAResourceRecoveryRegistry recoveryRegistry = this.configuration.getXAResourceRecoveryRegistry();
        if (recoveryRegistry != null) {
@@ -225,10 +225,10 @@ public class EmbeddedCacheManagerService implements Service<CacheContainer> {
                   ObjectName name = ObjectName.getInstance(String.format("%s:%s,%s=%s,manager=%s,%s=%s", domain, CacheJmxRegistration.CACHE_JMX_GROUP, ComponentsJmxRegistration.NAME_KEY, ObjectName.quote(jmxCacheName), ObjectName.quote(containerName), ComponentsJmxRegistration.COMPONENT_KEY, "Cache"));
                   if (server.isRegistered(name)) {
                      server.unregisterMBean(name);
-                     log.tracef("Unregistered cache mbean: %s", name);
+                     ROOT_LOGGER.tracef("Unregistered cache mbean: %s", name);
                   }
                } catch (JMException e) {
-                   log.debugf(e, "Failed to unregister mbean for %s cache", cacheName);
+                   ROOT_LOGGER.debugf(e, "Failed to unregister mbean for %s cache", cacheName);
                }
            }
        }

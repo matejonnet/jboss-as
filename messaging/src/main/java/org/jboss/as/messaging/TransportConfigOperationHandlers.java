@@ -22,6 +22,25 @@
 
 package org.jboss.as.messaging;
 
+import static org.jboss.as.messaging.CommonAttributes.ACCEPTOR;
+import static org.jboss.as.messaging.CommonAttributes.CONNECTOR;
+import static org.jboss.as.messaging.CommonAttributes.FACTORY_CLASS;
+import static org.jboss.as.messaging.CommonAttributes.IN_VM_ACCEPTOR;
+import static org.jboss.as.messaging.CommonAttributes.IN_VM_CONNECTOR;
+import static org.jboss.as.messaging.CommonAttributes.PARAM;
+import static org.jboss.as.messaging.CommonAttributes.REMOTE_ACCEPTOR;
+import static org.jboss.as.messaging.CommonAttributes.REMOTE_CONNECTOR;
+import static org.jboss.as.messaging.CommonAttributes.SERVER_ID;
+import static org.jboss.as.messaging.CommonAttributes.SOCKET_BINDING;
+import static org.jboss.as.messaging.CommonAttributes.VALUE;
+import static org.jboss.as.messaging.MessagingMessages.MESSAGES;
+
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
 import org.hornetq.api.core.TransportConfiguration;
 import org.hornetq.core.config.Configuration;
 import org.hornetq.core.remoting.impl.invm.InVMAcceptorFactory;
@@ -34,31 +53,15 @@ import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.ReloadRequiredWriteAttributeHandler;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.registry.AttributeAccess;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.Resource;
-import static org.jboss.as.messaging.CommonAttributes.ACCEPTOR;
-import static org.jboss.as.messaging.CommonAttributes.CONNECTOR;
-import static org.jboss.as.messaging.CommonAttributes.FACTORY_CLASS;
-import static org.jboss.as.messaging.CommonAttributes.IN_VM_ACCEPTOR;
-import static org.jboss.as.messaging.CommonAttributes.IN_VM_CONNECTOR;
-import static org.jboss.as.messaging.CommonAttributes.PARAM;
-import static org.jboss.as.messaging.CommonAttributes.REMOTE_ACCEPTOR;
-import static org.jboss.as.messaging.CommonAttributes.REMOTE_CONNECTOR;
-import static org.jboss.as.messaging.CommonAttributes.SERVER_ID;
-import static org.jboss.as.messaging.CommonAttributes.SOCKET_BINDING;
-import static org.jboss.as.messaging.CommonAttributes.VALUE;
-import org.jboss.as.server.operations.ServerWriteAttributeOperationHandler;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
 import org.jboss.msc.service.ServiceController;
-
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import org.jboss.msc.service.ServiceName;
 
 /**
  * Basic {@link TransportConfiguration} (Acceptor/Connector) related operations.
@@ -154,7 +157,8 @@ class TransportConfigOperationHandlers {
             context.addStep(new OperationStepHandler() {
                 @Override
                 public void execute(final OperationContext context, final ModelNode operation) throws OperationFailedException {
-                    final ServiceController<?> controller = context.getServiceRegistry(false).getService(MessagingServices.JBOSS_MESSAGING);
+                    final ServiceName hqServiceName = MessagingServices.getHornetQServiceName(PathAddress.pathAddress(operation.get(ModelDescriptionConstants.OP_ADDR)));
+                    final ServiceController<?> controller = context.getServiceRegistry(false).getService(hqServiceName);
                     if(controller != null) {
                         context.reloadRequired();
                     }
@@ -286,7 +290,7 @@ class TransportConfigOperationHandlers {
                     final Resource param = context.createResource(PathAddress.pathAddress(PathElement.pathElement(CommonAttributes.PARAM, property.getName())));
                     final ModelNode value = property.getValue();
                     if(! value.isDefined()) {
-                        throw new OperationFailedException(new ModelNode().set("parameter not defined " + property.getName()));
+                        throw new OperationFailedException(new ModelNode().set(MESSAGES.parameterNotDefined(property.getName())));
                     }
                     param.getModel().get(ModelDescriptionConstants.VALUE).set(value);
                 }
@@ -305,10 +309,11 @@ class TransportConfigOperationHandlers {
         void registerAttributes(final ManagementResourceRegistration registry);
     }
 
-    static class AttributeWriteHandler extends ServerWriteAttributeOperationHandler implements SelfRegisteringAttributeHandler {
+    static class AttributeWriteHandler extends ReloadRequiredWriteAttributeHandler implements SelfRegisteringAttributeHandler {
         final AttributeDefinition[] attributes;
 
         private AttributeWriteHandler(AttributeDefinition[] attributes) {
+            super(attributes);
             this.attributes = attributes;
         }
 
@@ -317,27 +322,6 @@ class TransportConfigOperationHandlers {
             for (AttributeDefinition attr : attributes) {
                 registry.registerReadWriteAttribute(attr.getName(), null, this, flags);
             }
-        }
-
-        @Override
-        protected void validateValue(String name, ModelNode value) throws OperationFailedException {
-            final AttributeDefinition def = getAttributeDefinition(name);
-            def.getValidator().validateParameter(name, value);
-        }
-
-        @Override
-        protected boolean applyUpdateToRuntime(OperationContext context, ModelNode operation, String attributeName,
-                                               ModelNode newValue, ModelNode currentValue) throws OperationFailedException {
-            return true;
-        }
-
-        static final AttributeDefinition getAttributeDefinition(final String attributeName) {
-            for(final AttributeDefinition def : AddressSettingAdd.ATTRIBUTES) {
-                if(def.getName().equals(attributeName)) {
-                    return def;
-                }
-            }
-            return null;
         }
     }
 

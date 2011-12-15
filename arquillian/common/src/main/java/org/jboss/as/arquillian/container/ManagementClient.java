@@ -16,21 +16,37 @@
  */
 package org.jboss.as.arquillian.container;
 
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEPLOYMENT;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.FAILURE_DESCRIPTION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESULT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OUTCOME;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_ATTRIBUTE_OPERATION;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_RESOURCE_OPERATION;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RECURSIVE;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESULT;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUCCESS;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INTERFACE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_ATTRIBUTE_OPERATION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEPLOYMENT;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RECURSIVE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_RESOURCE_OPERATION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.FAILURE_DESCRIPTION;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FilterInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
 import java.net.URI;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import javax.management.MBeanServerConnection;
+import javax.management.Notification;
+import javax.management.NotificationListener;
+import javax.management.remote.JMXConnector;
+import javax.management.remote.JMXServiceURL;
 
 import org.jboss.arquillian.container.spi.client.protocol.metadata.HTTPContext;
 import org.jboss.arquillian.container.spi.client.protocol.metadata.JMXContext;
@@ -60,17 +76,22 @@ public class ManagementClient {
     private static final String POSTFIX_WEB = ".war";
     private static final String POSTFIX_EAR = ".ear";
 
-    private ModelControllerClient client;
-    private Map<String, URI> subsystemURICache;
+    private final String mgmtAddress;
+    private final ModelControllerClient client;
+    private final Map<String, URI> subsystemURICache;
 
     // cache static RootNode
     private ModelNode rootNode = null;
 
-    public ManagementClient(ModelControllerClient client) {
+    private MBeanServerConnection connection;
+    private JMXConnector connector;
+
+    public ManagementClient(ModelControllerClient client, final String mgmtAddress) {
         if (client == null) {
             throw new IllegalArgumentException("Client must be specified");
         }
         this.client = client;
+        this.mgmtAddress = mgmtAddress;
         this.subsystemURICache = new HashMap<String, URI>();
     }
 
@@ -84,7 +105,7 @@ public class ManagementClient {
 
     public URI getSubSystemURI(String subsystem) {
         URI subsystemURI = subsystemURICache.get(subsystem);
-        if(subsystemURI != null) {
+        if (subsystemURI != null) {
             return subsystemURI;
         }
         subsystemURI = extractSubSystemURI(subsystem);
@@ -94,10 +115,9 @@ public class ManagementClient {
 
     public ProtocolMetaData getDeploymentMetaData(String deploymentName) {
         URI webURI = getSubSystemURI(WEB);
-        URI jmxURI = getSubSystemURI(JMX);
 
         ProtocolMetaData metaData = new ProtocolMetaData();
-        metaData.addContext(new JMXContext(jmxURI.getHost(), jmxURI.getPort()));
+        metaData.addContext(new JMXContext(getConnection()));
         HTTPContext context = new HTTPContext(webURI.getHost(), webURI.getPort());
         metaData.addContext(context);
         try {
@@ -124,9 +144,24 @@ public class ManagementClient {
             return SUCCESS.equals(rsp.get(OUTCOME).asString())
                     && !ControlledProcessState.State.STARTING.toString().equals(rsp.get(RESULT).asString())
                     && !ControlledProcessState.State.STOPPING.toString().equals(rsp.get(RESULT).asString());
-        }
-        catch (Exception ignored) {
+        } catch (Exception ignored) {
             return false;
+        }
+    }
+
+    public void close() {
+        try {
+            getControllerClient().close();
+        } catch (IOException e) {
+            throw new RuntimeException("Could not close connection", e);
+        } finally {
+            if (connector != null) {
+                try {
+                    connector.close();
+                } catch (IOException e) {
+                    throw new RuntimeException("Could not close JMX connection", e);
+                }
+            }
         }
     }
 
@@ -136,18 +171,17 @@ public class ManagementClient {
 
     private URI extractSubSystemURI(String subsystem) {
         try {
-            if(rootNode == null) {
+            if (rootNode == null) {
                 readRootNode();
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
 
-        if("web".equals(subsystem)) {
+        if ("web".equals(subsystem)) {
             String socketBinding = rootNode.get("subsystem").get("web").get("connector").get("http").get("socket-binding").asString();
             return getBinding(socketBinding);
-        }
-        else if("jmx".equals(subsystem)) {
+        } else if ("jmx".equals(subsystem)) {
             String socketBinding = rootNode.get("subsystem").get("jmx").get("registry-binding").asString();
             return getBinding(socketBinding);
         }
@@ -158,32 +192,50 @@ public class ManagementClient {
         rootNode = readResource(new ModelNode());
     }
 
-    private URI getBinding(String socketBinding) {
-        String socketBindingGroupName = rootNode.get("socket-binding-group").keys().iterator().next();
-        ModelNode socketGroup = rootNode.get("socket-binding-group").get(socketBindingGroupName);
+    private URI getBinding(final String socketBinding) {
+        try {
+            //TODO: resolve socket binding group correctly
+            final String socketBindingGroupName = rootNode.get("socket-binding-group").keys().iterator().next();
 
-        String defaultInterface = socketGroup.get("default-interface").asString();
-        Integer portOffset = socketGroup.get("port-offset").asInt();
+            final ModelNode operation = new ModelNode();
+            operation.get(OP_ADDR).get("socket-binding-group").set(socketBindingGroupName);
+            operation.get(OP_ADDR).get("socket-binding").set(socketBinding);
+            operation.get(OP).set(READ_ATTRIBUTE_OPERATION);
+            operation.get(NAME).set("bound-address");
+            final String ip = executeForResult(operation).asString();
 
-        ModelNode socket = socketGroup.get("socket-binding").get(socketBinding);
+            final ModelNode portOp = new ModelNode();
+            portOp.get(OP_ADDR).get("socket-binding-group").set(socketBindingGroupName);
+            portOp.get(OP_ADDR).get("socket-binding").set(socketBinding);
+            portOp.get(OP).set(READ_ATTRIBUTE_OPERATION);
+            portOp.get(NAME).set("bound-port");
+            final int port = executeForResult(portOp).asInt();
 
-        String ip = null;
-        Integer port = null;
-
-        if(socket.hasDefined("interface")) {
-            ip = getInterface(socket.get("interface").asString());
+            return URI.create(socketBinding + "://" + ip + ":" + port);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
-        else {
-            ip = getInterface(defaultInterface);
-        }
-
-        port = socket.get("port").asInt() + portOffset;
-        return URI.create(socketBinding + "://" + ip + ":" + port);
     }
 
-    private String getInterface(String name) {
-        ModelNode node = rootNode.get("interface").get(name).get("criteria").asList().get(0).get("inet-address");
-        return node.resolve().asString();
+    private String getInterface(final String name) {
+        final ModelNode address = new ModelNode();
+        address.add(INTERFACE, name);
+
+        final ModelNode operation = new ModelNode();
+        operation.get(OP).set(READ_ATTRIBUTE_OPERATION);
+        operation.get(OP_ADDR).set(address);
+        operation.get(NAME).set("resolved-address");
+
+        try {
+            // Poke the runtime handler to give us the resolved address
+            final String ip = executeForResult(operation).asString();
+            if ("0.0.0.0".equals(ip) || "0:0:0:0:0:0:0:0".equals(ip)) {
+                return mgmtAddress;
+            }
+            return ip;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
 
@@ -228,8 +280,8 @@ public class ManagementClient {
                 if (webSubSystem.isDefined() && webSubSystem.hasDefined("context-root")) {
                     final String contextName = webSubSystem.get("context-root").asString();
                     if (webSubSystem.hasDefined(SERVLET)) {
-                        for (ModelNode servletNode : webSubSystem.get(SERVLET).asList()) {
-                            for (String servletName : servletNode.keys()) {
+                        for (final ModelNode servletNode : webSubSystem.get(SERVLET).asList()) {
+                            for (final String servletName : servletNode.keys()) {
                                 context.add(new Servlet(servletName, toContextName(contextName)));
                             }
                         }
@@ -276,7 +328,7 @@ public class ManagementClient {
     }
 
     private void checkSuccessful(final ModelNode result,
-            final ModelNode operation) throws UnSuccessfulOperationException {
+                                 final ModelNode operation) throws UnSuccessfulOperationException {
         if (!SUCCESS.equals(result.get(OUTCOME).asString())) {
             throw new UnSuccessfulOperationException(result.get(
                     FAILURE_DESCRIPTION).toString());
@@ -290,4 +342,21 @@ public class ManagementClient {
             super(message);
         }
     }
+
+    private MBeanServerConnection getConnection() {
+        if (connection == null) {
+            connection = new TunneledMBeanServerConnection(client);
+        }
+        return connection;
+    }
+
+    private JMXServiceURL getRemoteJMXURL() {
+        URI jmxURI = getSubSystemURI(JMX);
+        try {
+            return new JMXServiceURL("service:jmx:rmi:///jndi/rmi://" + jmxURI.getHost() + ":" + jmxURI.getPort() + "/jmxrmi");
+        } catch (Exception e) {
+            throw new RuntimeException("Could not create JMXServiceURL:" + this, e);
+        }
+    }
+
 }

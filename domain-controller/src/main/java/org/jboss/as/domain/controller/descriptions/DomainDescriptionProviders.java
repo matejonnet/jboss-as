@@ -68,20 +68,6 @@ public final class DomainDescriptionProviders {
         }
     };
 
-    public static final DescriptionProvider SOCKET_BINDING_GROUP = new DescriptionProvider() {
-        @Override
-        public ModelNode getModelDescription(Locale locale) {
-            return SocketBindingGroupDescription.getDomainSocketBindingGroupDescription(locale);
-        }
-    };
-
-    public static final DescriptionProvider SOCKET_BINDING = new DescriptionProvider() {
-        @Override
-        public ModelNode getModelDescription(Locale locale) {
-            return SocketBindingGroupDescription.getSocketBindingDescription(locale);
-        }
-    };
-
     public static final DescriptionProvider PATH_DESCRIPTION = new DescriptionProvider() {
         @Override
         public ModelNode getModelDescription(Locale locale) {
@@ -93,7 +79,7 @@ public final class DomainDescriptionProviders {
 
         @Override
         public ModelNode getModelDescription(Locale locale) {
-            return DeploymentDescription.getDeploymentDescription(locale, false, true);
+            return DeploymentDescription.getDeploymentDescription(locale, false, true, false);
         }
     };
 
@@ -107,7 +93,7 @@ public final class DomainDescriptionProviders {
     public static final DescriptionProvider SERVER_GROUP_DEPLOYMENT = new DescriptionProvider() {
         @Override
         public ModelNode getModelDescription(Locale locale) {
-            return DeploymentDescription.getDeploymentDescription(locale, true, false);
+            return DeploymentDescription.getDeploymentDescription(locale, true, false, false);
         }
     };
 

@@ -1,5 +1,14 @@
 package org.jboss.as.jaxrs.deployment;
 
+import static org.jboss.as.jaxrs.JaxrsLogger.JAXRS_LOGGER;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+import javax.ws.rs.ApplicationPath;
+
 import org.jboss.as.ee.structure.DeploymentType;
 import org.jboss.as.ee.structure.DeploymentTypeMarker;
 import org.jboss.as.server.deployment.Attachments;
@@ -10,7 +19,6 @@ import org.jboss.as.server.deployment.DeploymentUnitProcessor;
 import org.jboss.as.server.deployment.module.ModuleDependency;
 import org.jboss.as.server.deployment.module.ModuleSpecification;
 import org.jboss.as.web.deployment.WarMetaData;
-import org.jboss.logging.Logger;
 import org.jboss.metadata.javaee.spec.ParamValueMetaData;
 import org.jboss.metadata.web.jboss.JBossServletMetaData;
 import org.jboss.metadata.web.jboss.JBossServletsMetaData;
@@ -22,17 +30,11 @@ import org.jboss.modules.ModuleIdentifier;
 import org.jboss.resteasy.plugins.server.servlet.HttpServlet30Dispatcher;
 import org.jboss.resteasy.plugins.server.servlet.ResteasyContextParameters;
 
-import javax.ws.rs.ApplicationPath;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @author Stuart Douglas
  */
 public class JaxrsIntegrationProcessor implements DeploymentUnitProcessor {
-    private static final Logger log = Logger.getLogger("org.jboss.jaxrs");
     private static final String JAX_RS_SERVLET_NAME = "javax.ws.rs.core.Application";
     private static final String SERVLET_INIT_PARAM = "javax.ws.rs.Application";
 
@@ -59,6 +61,21 @@ public class JaxrsIntegrationProcessor implements DeploymentUnitProcessor {
         if (resteasy == null)
             return;
 
+        //remove the resteasy.scan parameter
+        //because it is not needed
+        final List<ParamValueMetaData> params = webdata.getContextParams();
+        if(params != null) {
+            Iterator<ParamValueMetaData> it = params.iterator();
+            while(it.hasNext()) {
+                final ParamValueMetaData param = it.next();
+                if(param.getParamName().equals("resteasy.scan")) {
+                    it.remove();
+                    JAXRS_LOGGER.resteasyScanWarning();
+                }
+            }
+        }
+
+
         final Map<ModuleIdentifier, ResteasyDeploymentData> attachmentMap = parent.getAttachment(JaxrsAttachments.ADDITIONAL_RESTEASY_DEPLOYMENT_DATA);
         final List<ResteasyDeploymentData> additionalData = new ArrayList<ResteasyDeploymentData>();
         final ModuleSpecification moduleSpec = deploymentUnit.getAttachment(Attachments.MODULE_SPECIFICATION);
@@ -81,7 +98,7 @@ public class JaxrsIntegrationProcessor implements DeploymentUnitProcessor {
                 }
             }
             String resources = buf.toString();
-            log.debug("Adding JAX-RS resource classes: " + resources);
+            JAXRS_LOGGER.debugf("Adding JAX-RS resource classes: %s", resources);
             setContextParameter(webdata, ResteasyContextParameters.RESTEASY_SCANNED_RESOURCES, resources);
         }
         if (!resteasy.getScannedProviderClasses().isEmpty()) {
@@ -95,7 +112,7 @@ public class JaxrsIntegrationProcessor implements DeploymentUnitProcessor {
                 }
             }
             String providers = buf.toString();
-            log.debug("Adding JAX-RS provider classes: " + providers);
+            JAXRS_LOGGER.debugf("Adding JAX-RS provider classes: %s", providers);
             setContextParameter(webdata, ResteasyContextParameters.RESTEASY_SCANNED_PROVIDERS, providers);
         }
 
@@ -110,7 +127,7 @@ public class JaxrsIntegrationProcessor implements DeploymentUnitProcessor {
                 }
             }
             String providers = buf.toString();
-            log.debug("Adding JAX-RS jndi component resource classes: " + providers);
+            JAXRS_LOGGER.debugf("Adding JAX-RS jndi component resource classes: %s", providers);
             setContextParameter(webdata, ResteasyContextParameters.RESTEASY_SCANNED_JNDI_RESOURCES, providers);
         }
 
@@ -135,6 +152,7 @@ public class JaxrsIntegrationProcessor implements DeploymentUnitProcessor {
             JBossServletMetaData servlet = new JBossServletMetaData();
             servlet.setName(JAX_RS_SERVLET_NAME);
             servlet.setServletClass(HttpServlet30Dispatcher.class.getName());
+            servlet.setAsyncSupported(true);
             addServlet(webdata, servlet);
             servletName = JAX_RS_SERVLET_NAME;
 
@@ -186,7 +204,7 @@ public class JaxrsIntegrationProcessor implements DeploymentUnitProcessor {
                     setContextParameter(webdata, "resteasy.servlet.mapping.prefix", prefix);
                     mappingSet = true;
                 } else {
-                    log.warn("No Servlet mappings found for JAX-RS application: " + servletName + " either annotate it with @ApplicationPath or add a servlet-mapping in web.xml");
+                    JAXRS_LOGGER.noServletMappingFound(servletName);
                     return;
                 }
                 ServletMappingMetaData mapping = new ServletMappingMetaData();
@@ -202,6 +220,7 @@ public class JaxrsIntegrationProcessor implements DeploymentUnitProcessor {
             JBossServletMetaData servlet = new JBossServletMetaData();
             servlet.setName(servletName);
             servlet.setServletClass(HttpServlet30Dispatcher.class.getName());
+            servlet.setAsyncSupported(true);
             addServlet(webdata, servlet);
 
         }
@@ -215,7 +234,7 @@ public class JaxrsIntegrationProcessor implements DeploymentUnitProcessor {
                         if (mapping.getUrlPatterns() != null) {
                             for (String pattern : mapping.getUrlPatterns()) {
                                 if (mappingSet) {
-                                    log.errorf("More than one mapping found for JAX-RS servlet: %s the second mapping %s will not work", servletName, pattern);
+                                    JAXRS_LOGGER.moreThanOneServletMapping(servletName, pattern);
                                 } else {
                                     mappingSet = true;
                                     String realPattern = pattern;

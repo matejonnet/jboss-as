@@ -32,6 +32,7 @@ import java.net.SocketException;
 
 import org.jboss.msc.service.ServiceName;
 
+import static org.jboss.as.network.NetworkMessages.MESSAGES;
 
 /**
  * An encapsulation of socket binding related information.
@@ -80,6 +81,15 @@ public final class SocketBinding {
     }
 
     /**
+     * Return the {@link NetworkInterfaceBinding} for the default interface.
+     *
+     * @return the network interface binding
+     */
+    public NetworkInterfaceBinding getNetworkInterfaceBinding() {
+        return networkInterface != null ? networkInterface : socketBindings.getDefaultInterfaceBinding();
+    }
+
+    /**
      * Get the socket binding manager.
      *
      * @return the socket binding manger
@@ -108,21 +118,9 @@ public final class SocketBinding {
      */
     public InetSocketAddress getMulticastSocketAddress() {
         if (multicastAddress == null) {
-            throw new IllegalStateException("no multicast binding: " + name);
+            throw MESSAGES.noMulticastBinding(name);
         }
         return new InetSocketAddress(multicastAddress, multicastPort);
-    }
-
-    /**
-     * Create and bind a socket.
-     *
-     * @return the socket
-     * @throws IOException
-     */
-    public Socket createSocket() throws IOException {
-        final Socket socket = getSocketFactory().createSocket(name);
-        socket.bind(getSocketAddress());
-        return socket;
     }
 
     /**
@@ -235,7 +233,7 @@ public final class SocketBinding {
 
     void checkNotBound() {
         if(isBound()) {
-            throw new IllegalStateException("cannot change value while the socket is bound.");
+            throw MESSAGES.cannotChangeWhileBound();
         }
     }
 

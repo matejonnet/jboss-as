@@ -22,26 +22,35 @@
 
 package org.jboss.as.osgi.service;
 
-import java.util.Dictionary;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.concurrent.atomic.AtomicLong;
-
+import org.jboss.as.controller.ModelController;
+import org.jboss.as.controller.client.ModelControllerClient;
+import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
+import org.jboss.as.controller.operations.common.Util;
+import org.jboss.as.osgi.parser.ModelConstants;
+import org.jboss.as.osgi.parser.OSGiExtension;
 import org.jboss.as.osgi.parser.SubsystemState;
-import org.jboss.logging.Logger;
-import org.jboss.msc.service.Service;
+import org.jboss.as.server.Services;
+import org.jboss.dmr.ModelNode;
 import org.jboss.msc.service.ServiceBuilder;
-import org.jboss.msc.service.ServiceContainer;
 import org.jboss.msc.service.ServiceController;
-import org.jboss.msc.service.ServiceController.Mode;
 import org.jboss.msc.service.ServiceListener;
-import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceTarget;
 import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
 import org.jboss.msc.value.InjectedValue;
+
+import java.io.IOException;
+import java.util.Dictionary;
+import java.util.Enumeration;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import static org.jboss.as.osgi.OSGiLogger.ROOT_LOGGER;
 
 /**
  * Maintains a set of {@link Dictionary}s in the domain model keyd be persistent ID (PID).
@@ -51,12 +60,11 @@ import org.jboss.msc.value.InjectedValue;
  */
 public class ConfigAdminServiceImpl implements ConfigAdminService {
 
-    private static final Logger log = Logger.getLogger("org.jboss.as.osgi");
-
     private final InjectedValue<SubsystemState> injectedSubsystemState = new InjectedValue<SubsystemState>();
+    private final InjectedValue<ModelController> injectedModelController = new InjectedValue<ModelController>();
     private final Set<ConfigAdminListener> listeners = new CopyOnWriteArraySet<ConfigAdminListener>();
-    private final AtomicLong updateCount = new AtomicLong();
-    private ServiceContainer serviceContainer;
+    private final Executor executor = Executors.newSingleThreadExecutor();
+    private ModelControllerClient controllerClient;
 
     private ConfigAdminServiceImpl() {
     }
@@ -65,54 +73,95 @@ public class ConfigAdminServiceImpl implements ConfigAdminService {
         ConfigAdminServiceImpl service = new ConfigAdminServiceImpl();
         ServiceBuilder<?> builder = target.addService(ConfigAdminService.SERVICE_NAME, service);
         builder.addDependency(SubsystemState.SERVICE_NAME, SubsystemState.class, service.injectedSubsystemState);
+        builder.addDependency(Services.JBOSS_SERVER_CONTROLLER, ModelController.class, service.injectedModelController);
         builder.addListener(listeners);
         return builder.install();
     }
 
-    private SubsystemState getSubsystemState() {
-        return injectedSubsystemState.getValue();
-    }
-
     @Override
     public Set<String> getConfigurations() {
-        return getSubsystemState().getConfigurations();
+        return injectedSubsystemState.getValue().getConfigurations();
     }
 
     @Override
     public boolean hasConfiguration(String pid) {
-        return getSubsystemState().hasConfiguration(pid);
+        return injectedSubsystemState.getValue().hasConfiguration(pid);
     }
 
     @Override
     public Dictionary<String, String> getConfiguration(String pid) {
-        return getSubsystemState().getConfiguration(pid);
+        return injectedSubsystemState.getValue().getConfiguration(pid);
     }
 
     @Override
     public Dictionary<String, String> putConfiguration(String pid, Dictionary<String, String> newconfig) {
-        Dictionary<String, String> oldconfig = getSubsystemState().putConfiguration(pid, newconfig);
-        new ConfigurationModifiedService(pid, newconfig).configurationModified();
+        ModelNode address = getSubsystemAddress();
+        address.add(new ModelNode().set(ModelConstants.CONFIGURATION, pid));
+        Dictionary<String, String> oldconfig = getConfiguration(pid);
+        if (oldconfig != null) {
+            ModelNode op = Util.getEmptyOperation(ModelDescriptionConstants.REMOVE, address);
+            try {
+                controllerClient.execute(op);
+            } catch (IOException ex) {
+                ROOT_LOGGER.errorf(ex, "Cannot remove configuration for pid: %s", pid);
+            }
+        }
+        ModelNode entries = new ModelNode();
+        Enumeration<String> keys = newconfig.keys();
+        while (keys.hasMoreElements()) {
+            String key = keys.nextElement();
+            entries.get(key).set(newconfig.get(key));
+        }
+        ModelNode op = Util.getEmptyOperation(ModelDescriptionConstants.ADD, address);
+        op.get(ModelConstants.ENTRIES).set(entries);
+        try {
+            ModelNode node = controllerClient.execute(op);
+            ModelNode outcome = node.get(ModelDescriptionConstants.OUTCOME);
+            if (ModelDescriptionConstants.SUCCESS.equals(outcome.asString())) {
+                executor.execute(new ConfigurationModifiedService(pid, newconfig));
+            } else {
+                ROOT_LOGGER.errorf("Cannot add configuration for pid: %s -> %s", pid, node);
+            }
+        } catch (IOException ex) {
+            ROOT_LOGGER.errorf(ex, "Cannot add configuration for pid: %s", pid);
+        }
         return oldconfig;
     }
 
     @Override
     public Dictionary<String, String> removeConfiguration(String pid) {
-        Dictionary<String, String> oldconfig = getSubsystemState().removeConfiguration(pid);
-        new ConfigurationModifiedService(pid, oldconfig).configurationModified();
+        Dictionary<String, String> oldconfig = getConfiguration(pid);
+        if (oldconfig != null) {
+            ModelNode address = getSubsystemAddress();
+            address.add(new ModelNode().set(ModelConstants.CONFIGURATION, pid));
+            ModelNode op = Util.getEmptyOperation(ModelDescriptionConstants.REMOVE, address);
+            try {
+                ModelNode node = controllerClient.execute(op);
+                ModelNode outcome = node.get(ModelDescriptionConstants.OUTCOME);
+                if (ModelDescriptionConstants.SUCCESS.equals(outcome.asString())) {
+                    executor.execute(new ConfigurationModifiedService(pid, oldconfig));
+                } else {
+                    ROOT_LOGGER.errorf("Cannot remove configuration for pid: %s -> %s", pid, node);
+                }
+            } catch (IOException ex) {
+                ROOT_LOGGER.errorf(ex, "Cannot remove configuration for pid: %s", pid);
+            }
+        }
         return oldconfig;
     }
 
     @Override
     public void start(StartContext context) throws StartException {
         ServiceController<?> controller = context.getController();
-        log.debugf("Starting: %s in mode %s", controller.getName(), controller.getMode());
-        serviceContainer = context.getController().getServiceContainer();
+        ROOT_LOGGER.debugf("Starting: %s in mode %s", controller.getName(), controller.getMode());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        controllerClient = injectedModelController.getValue().createClient(executor);
     }
 
     @Override
     public void stop(StopContext context) {
         ServiceController<?> controller = context.getController();
-        log.debugf("Stopping: %s in mode %s", controller.getName(), controller.getMode());
+        ROOT_LOGGER.debugf("Stopping: %s in mode %s", controller.getName(), controller.getMode());
     }
 
     @Override
@@ -122,14 +171,14 @@ public class ConfigAdminServiceImpl implements ConfigAdminService {
 
     @Override
     public void addListener(ConfigAdminListener listener) {
-        log.debugf("Add listener: %s", listener);
+        ROOT_LOGGER.debugf("Add listener: %s", listener);
         listeners.add(listener);
 
         // Call the newly registered listener with a potentially null dictionaly for every registered pid
         Set<String> pids = listener.getPIDs();
         if (pids != null) {
             for (String pid : pids) {
-                Dictionary<String, String> props = getSubsystemState().getConfiguration(pid);
+                Dictionary<String, String> props = getConfiguration(pid);
                 listener.configurationModified(pid, props);
             }
         }
@@ -137,14 +186,20 @@ public class ConfigAdminServiceImpl implements ConfigAdminService {
 
     @Override
     public void removeListener(ConfigAdminListener listener) {
-        log.debugf("Remove listener: %s", listener);
+        ROOT_LOGGER.debugf("Remove listener: %s", listener);
         listeners.remove(listener);
     }
 
+    private ModelNode getSubsystemAddress() {
+        ModelNode address = new ModelNode();
+        address.add(new ModelNode().set(ModelDescriptionConstants.SUBSYSTEM, OSGiExtension.SUBSYSTEM_NAME));
+        return address;
+    }
+
     /**
-     * A service that asynchronously updates the persistet configuration and calls the set of registered listeners
+     * Asynchronously update the persistet configuration and call the set of registered listeners
      */
-    class ConfigurationModifiedService implements Service<Void> {
+    class ConfigurationModifiedService implements Runnable {
 
         private final String pid;
         private final Dictionary<String, String> props;
@@ -154,17 +209,9 @@ public class ConfigAdminServiceImpl implements ConfigAdminService {
             this.props = props;
         }
 
-        public void configurationModified() {
-            String updatePart = new Long(updateCount.incrementAndGet()).toString();
-            ServiceName serviceName = ServiceName.of(ConfigurationModifiedService.class.getName(), updatePart);
-            ServiceBuilder<?> builder = serviceContainer.addService(serviceName, this);
-            builder.install();
-        }
-
         @Override
-        public void start(StartContext context) throws StartException {
-            ServiceController<?> controller = context.getController();
-            log.debugf("Starting: %s in mode %s", controller.getName(), controller.getMode());
+        public void run() {
+            ROOT_LOGGER.debugf("Updating configuration: %s", pid);
             Set<ConfigAdminListener> snapshot = new HashSet<ConfigAdminListener>(listeners);
             for (ConfigAdminListener aux : snapshot) {
                 Set<String> pids = aux.getPIDs();
@@ -172,23 +219,10 @@ public class ConfigAdminServiceImpl implements ConfigAdminService {
                     try {
                         aux.configurationModified(pid, props);
                     } catch (Exception ex) {
-                        log.errorf(ex, "Error in configuration listener: %s", aux);
+                        ROOT_LOGGER.configurationListenerError(ex, aux);
                     }
                 }
             }
-            // Remove this service again after it has called the listeners
-            context.getController().setMode(Mode.REMOVE);
-        }
-
-        @Override
-        public void stop(StopContext context) {
-            ServiceController<?> controller = context.getController();
-            log.debugf("Stopping: %s in mode %s", controller.getName(), controller.getMode());
-        }
-
-        @Override
-        public Void getValue() throws IllegalStateException, IllegalArgumentException {
-            return null;
         }
     }
 }

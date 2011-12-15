@@ -22,19 +22,23 @@
 
 package org.jboss.as.modcluster;
 
+import static org.jboss.as.modcluster.ModClusterLogger.ROOT_LOGGER;
+
 import java.util.List;
 import java.util.Locale;
+
 import org.jboss.as.controller.AbstractAddStepHandler;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.ServiceVerificationHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
+import org.jboss.as.controller.registry.Resource;
 import org.jboss.as.network.SocketBinding;
 import org.jboss.as.network.SocketBindingManager;
 import org.jboss.as.web.WebServer;
 import org.jboss.as.web.WebSubsystemServices;
 import org.jboss.dmr.ModelNode;
-import org.jboss.logging.Logger;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceController.Mode;
@@ -47,24 +51,59 @@ import org.jboss.msc.service.ServiceController.Mode;
 class ModClusterSubsystemAdd extends AbstractAddStepHandler implements DescriptionProvider {
 
     static final ModClusterSubsystemAdd INSTANCE = new ModClusterSubsystemAdd();
-    private static final Logger log = Logger.getLogger("org.jboss.as.modcluster");
-
-
-    protected void populateModel(ModelNode operation, ModelNode model) {
-        model.set(operation.get(CommonAttributes.MOD_CLUSTER_CONFIG));
+    static final PathElement SSLPath = PathElement.pathElement(CommonAttributes.SSL, CommonAttributes.CONFIGURATION);
+    static final PathElement confPath = PathElement.pathElement(CommonAttributes.MOD_CLUSTER_CONFIG, CommonAttributes.CONFIGURATION);
+    @Override
+    protected void populateModel(final ModelNode operation, final Resource resource) {
+         if (operation.hasDefined(CommonAttributes.MOD_CLUSTER_CONFIG)) {
+            ModelNode configuration;
+            if (operation.get(CommonAttributes.MOD_CLUSTER_CONFIG).hasDefined(CommonAttributes.CONFIGURATION))
+                configuration = operation.get(CommonAttributes.MOD_CLUSTER_CONFIG).get(CommonAttributes.CONFIGURATION);
+            else
+                configuration = operation.get(CommonAttributes.MOD_CLUSTER_CONFIG);
+            resource.registerChild(confPath, Resource.Factory.create());
+            final Resource conf = resource.getChild(confPath);
+            for(final String attribute : configuration.keys()) {
+                if (attribute.equals(CommonAttributes.SSL)) {
+                    conf.registerChild(SSLPath, Resource.Factory.create());
+                    final Resource ssl = conf.getChild(SSLPath);
+                    ModelNode sslnode;
+                    if (configuration.get(attribute).hasDefined(CommonAttributes.CONFIGURATION))
+                        sslnode = configuration.get(attribute).get(CommonAttributes.CONFIGURATION);
+                    else
+                        sslnode = configuration.get(attribute);
+                    populateConf(ssl.getModel(), sslnode);
+                }
+                else
+                    conf.getModel().get(attribute).set(configuration.get(attribute));
+            }
+        }
     }
 
+    static void populateConf(final ModelNode subModel, final ModelNode operation) {
+        for(final String attribute : operation.keys()) {
+            if(operation.hasDefined(attribute)) {
+                subModel.get(attribute).set(operation.get(attribute));
+            }
+        }
+    }
+
+    @Override
     protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) throws OperationFailedException {
         String bindingRef = null;
+        ModelNode node = operation.get(CommonAttributes.MOD_CLUSTER_CONFIG);
         if (operation.hasDefined(CommonAttributes.MOD_CLUSTER_CONFIG)) {
-            final ModelNode node = operation.get(CommonAttributes.MOD_CLUSTER_CONFIG);
+            if (operation.get(CommonAttributes.MOD_CLUSTER_CONFIG).hasDefined(CommonAttributes.CONFIGURATION))
+                node = operation.get(CommonAttributes.MOD_CLUSTER_CONFIG).get(CommonAttributes.CONFIGURATION);
             if (node.hasDefined(CommonAttributes.ADVERTISE_SOCKET)) {
                 bindingRef = node.get(CommonAttributes.ADVERTISE_SOCKET).asString();
             }
         }
         try {
+
+            //Get the unmasked password
             // Add mod_cluster service
-            final ModClusterService service = new ModClusterService(operation.get(CommonAttributes.MOD_CLUSTER_CONFIG).clone());
+            final ModClusterService service = new ModClusterService(unmaskPassword(context, model), node.clone());
             final ServiceBuilder<ModCluster> serviceBuilder = context.getServiceTarget().addService(ModClusterService.NAME, service)
                     // .addListener(new ResultHandler.ServiceStartListener(resultHandler))
                     .addDependency(WebSubsystemServices.JBOSS_WEB, WebServer.class, service.getWebServer())
@@ -76,7 +115,7 @@ class ModClusterSubsystemAdd extends AbstractAddStepHandler implements Descripti
 
             newControllers.add(serviceBuilder.install());
         } catch (Throwable t) {
-            log.error("Error: " + t);
+            ROOT_LOGGER.debugf("Error: %s", t);
             throw new OperationFailedException(new ModelNode().set(t.getLocalizedMessage()));
         }
     }
@@ -84,6 +123,22 @@ class ModClusterSubsystemAdd extends AbstractAddStepHandler implements Descripti
     @Override
     public ModelNode getModelDescription(Locale locale) {
         return ModClusterSubsystemDescriptions.getSubsystemAddDescription(locale);
+    }
+
+    @Override
+    protected void populateModel(ModelNode operation, ModelNode model) {
+        // TODO Auto-generated method stub
+
+    }
+
+    private String unmaskPassword(OperationContext context, ModelNode model) throws OperationFailedException {
+        if (!model.hasDefined(CommonAttributes.SSL)) {
+            return null;
+        }
+        if (!model.get(CommonAttributes.SSL).hasDefined(CommonAttributes.PASSWORD)) {
+            return null;
+        }
+        return context.resolveExpressions(model.get(CommonAttributes.SSL, CommonAttributes.PASSWORD)).toString();
     }
 
 }

@@ -1,5 +1,6 @@
 
-        <subsystem xmlns="urn:jboss:domain:messaging:1.0">
+    <subsystem xmlns="urn:jboss:domain:messaging:1.1">
+        <hornetq-server>
             <!-- Default journal file size is 10Mb, reduced here to 100k for faster first boot -->
             <journal-file-size>102400</journal-file-size>
             <journal-min-files>2</journal-min-files>
@@ -165,8 +166,9 @@
                <security-setting match="#">
                    <permission type="createNonDurableQueue" roles="guest"/>
                    <permission type="deleteNonDurableQueue" roles="guest"/>
-                    <permission type="consume" roles="guest"/>
-                    <permission type="send" roles="guest"/>
+                   <permission type="consume" roles="guest"/>
+                   <permission type="send" roles="guest"/>
+                   <permission type="manage" roles="admin"/>
                </security-setting>
             </security-settings>
 
@@ -230,4 +232,7 @@
                  <entry name="topic/test"/>
               </jms-topic>
            </jms-destinations>
-        </subsystem>
+        </hornetq-server>
+
+        <hornetq-server name="empty"/>
+    </subsystem>

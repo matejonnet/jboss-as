@@ -27,27 +27,42 @@ package org.jboss.as.remoting;
  */
 interface CommonAttributes {
 
-    String ADD_CONNECTOR = "add-connector";
     String AUTHENTICATION_PROVIDER = "authentication-provider";
+    String CONNECTION_CREATION_OPTIONS = "connection-creation-options";
     String CONNECTOR = "connector";
     String FORWARD_SECRECY = "forward-secrecy";
     String INCLUDE_MECHANISMS = "include-mechanisms";
+    String LOCAL_OUTBOUND_CONNECTION = "local-outbound-connection";
+    String NAME = "name";
     String NO_ACTIVE = "no-active";
     String NO_ANONYMOUS = "no-anonymous";
     String NO_DICTIONARY = "no-dictionary";
-    String NO_PLAINTEXT = "no-plaintext";
+    String NO_PLAIN_TEXT = "no-plain-text";
+    String OUTBOUND_CONNECTION = "outbound-connection";
+    String OUTBOUND_SOCKET_BINDING_REF = "outbound-socket-binding-ref";
     String PASS_CREDENTIALS = "pass-credentials";
     String POLICY = "policy";
     String PROPERTIES = "properties";
     String PROPERTY = "property";
     String QOP = "qop";
+    String REMOTE_OUTBOUND_CONNECTION = "remote-outbound-connection";
     String REUSE_SESSION= "reuse-session";
     String SASL = "sasl";
+    String SASL_POLICY = "sasl-policy";
+    String SECURITY = "security";
     String SERVER_AUTH = "server-auth";
     String SOCKET_BINDING = "socket-binding";
     String STRENGTH = "strength";
     String SUBSYSTEM = "subsystem";
     String THREAD_POOL = "thread-pool";
+    String URI = "uri";
     String VALUE = "value";
+    String WORKER_READ_THREADS = "worker-read-threads";
+    String WORKER_TASK_CORE_THREADS = "worker-task-core-threads";
+    String WORKER_TASK_KEEPALIVE = "worker-task-keepalive";
+    String WORKER_TASK_LIMIT = "worker-task-limit";
+    String WORKER_TASK_MAX_THREADS = "worker-task-max-threads";
+    String WORKER_WRITE_THREADS = "worker-write-threads";
+
 
 }

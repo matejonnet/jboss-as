@@ -21,7 +21,6 @@ package org.jboss.as.host.controller;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.BOOT_TIME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CONTENT;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CRITERIA;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEFAULT_INTERFACE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEPLOYMENT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ENABLED;
@@ -31,12 +30,15 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HAS
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INCLUDES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INTERFACE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.JVM;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.LOCAL_DESTINATION_OUTBOUND_SOCKET_BINDING;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MANAGEMENT_SUBSYSTEM_ENDPOINT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAMESPACES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PORT_OFFSET;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PROFILE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELATIVE_TO;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOTE_DESTINATION_OUTBOUND_SOCKET_BINDING;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RUNTIME_NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SCHEMA_LOCATIONS;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SERVER_CONFIG;
@@ -60,6 +62,7 @@ import java.util.Set;
 
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.operations.common.ExtensionAddHandler;
 import org.jboss.as.controller.operations.common.InterfaceAddHandler;
 import org.jboss.as.controller.operations.common.NamespaceAddHandler;
@@ -69,10 +72,13 @@ import org.jboss.as.controller.operations.common.SocketBindingAddHandler;
 import org.jboss.as.controller.operations.common.SystemPropertyAddHandler;
 import org.jboss.as.controller.operations.common.Util;
 import org.jboss.as.domain.controller.DomainController;
+import org.jboss.as.domain.controller.FileRepository;
 import org.jboss.as.host.controller.ManagedServer.ManagedServerBootConfiguration;
 import org.jboss.as.process.DefaultJvmUtils;
 import org.jboss.as.server.ServerEnvironment;
 import org.jboss.as.server.services.net.BindingGroupAddHandler;
+import org.jboss.as.server.services.net.LocalDestinationOutboundSocketBindingAddHandler;
+import org.jboss.as.server.services.net.RemoteDestinationOutboundSocketBindingAddHandler;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
 
@@ -100,6 +106,7 @@ class ModelCombiner implements ManagedServerBootConfiguration {
     private final JvmElement jvmElement;
     private final HostControllerEnvironment environment;
     private final DomainController domainController;
+    private final boolean managementSubsystemEndpoint;
 
     ModelCombiner(final String serverName, final ModelNode domainModel, final ModelNode hostModel, final DomainController domainController,
                   final HostControllerEnvironment environment) {
@@ -132,6 +139,12 @@ class ModelCombiner implements ManagedServerBootConfiguration {
                 break;
             }
         }
+
+        boolean managementSubsystemEndpoint = false;
+        if (serverGroup.hasDefined(MANAGEMENT_SUBSYSTEM_ENDPOINT)) {
+            managementSubsystemEndpoint = serverGroup.get(MANAGEMENT_SUBSYSTEM_ENDPOINT).asBoolean();
+        }
+        this.managementSubsystemEndpoint = managementSubsystemEndpoint;
 
         final String jvmName = serverVMName != null ? serverVMName : groupVMName;
         final ModelNode hostVM = jvmName != null ? hostModel.get(JVM, jvmName) : null;
@@ -222,6 +235,11 @@ class ModelCombiner implements ManagedServerBootConfiguration {
         return command;
     }
 
+    @Override
+    public boolean isManagementSubsystemEndpoint() {
+        return managementSubsystemEndpoint;
+    }
+
     private String getJavaCommand() {
         String javaHome = jvmElement.getJavaHome();
         if (javaHome == null) {
@@ -258,7 +276,7 @@ class ModelCombiner implements ManagedServerBootConfiguration {
     private void addNamespaces(Map<String, ModelNode> map, ModelNode namespaces) {
         if (namespaces.isDefined()) {
             for (Property prop : namespaces.asPropertyList()) {
-                map.put(prop.getName(), NamespaceAddHandler.getAddNamespaceOperation(EMPTY, prop));
+                map.put(prop.getName(), NamespaceAddHandler.getAddNamespaceOperation(EMPTY, prop.getName(), prop.getValue().asString()));
             }
         }
     }
@@ -277,7 +295,7 @@ class ModelCombiner implements ManagedServerBootConfiguration {
     private void addSchemaLocations(Map<String, ModelNode> map, ModelNode namespaces) {
         if (namespaces.isDefined()) {
             for (Property prop : namespaces.asPropertyList()) {
-                map.put(prop.getName(), SchemaLocationAddHandler.getAddSchemaLocationOperation(EMPTY, prop));
+                map.put(prop.getName(), SchemaLocationAddHandler.getAddSchemaLocationOperation(EMPTY, prop.getName(), prop.getValue().asString()));
             }
         }
     }
@@ -360,16 +378,16 @@ class ModelCombiner implements ManagedServerBootConfiguration {
         final Map<String, ModelNode> interfaces = new LinkedHashMap<String, ModelNode>();
         addInterfaces(interfaces, domainModel.get(INTERFACE));
         addInterfaces(interfaces, hostModel.get(INTERFACE));
+        addInterfaces(interfaces, hostModel.get(SERVER_CONFIG, serverName, INTERFACE));
 
         for (Entry<String, ModelNode> entry : interfaces.entrySet()) {
-            updates.add(InterfaceAddHandler.getAddInterfaceOperation(pathAddress(PathElement.pathElement(INTERFACE, entry.getKey())), entry.getValue().get(CRITERIA)));
+            updates.add(InterfaceAddHandler.getAddInterfaceOperation(pathAddress(PathElement.pathElement(INTERFACE, entry.getKey())), entry.getValue()));
         }
     }
 
     private void addInterfaces(Map<String, ModelNode> map, ModelNode iface) {
         if (iface.isDefined()) {
             for (Property prop : iface.asPropertyList()) {
-                //TODO merge rather than replace existing?
                 map.put(prop.getName(), prop.getValue());
             }
         }
@@ -427,6 +445,32 @@ class ModelCombiner implements ManagedServerBootConfiguration {
             updates.add(SocketBindingAddHandler.getOperation(pathAddress(PathElement.pathElement(SOCKET_BINDING_GROUP, groupName),
                     PathElement.pathElement(SOCKET_BINDING, name)), binding));
         }
+        // outbound-socket-binding (for local destination)
+        if (group.hasDefined(LOCAL_DESTINATION_OUTBOUND_SOCKET_BINDING)) {
+            for(final Property localDestinationOutboundSocketBindings : group.get(LOCAL_DESTINATION_OUTBOUND_SOCKET_BINDING).asPropertyList()) {
+                final String outboundSocketBindingName = localDestinationOutboundSocketBindings.getName();
+                final ModelNode binding = localDestinationOutboundSocketBindings.getValue();
+                if(! binding.isDefined()) {
+                    continue;
+                }
+                // add the local destination outbound socket binding add operation
+                updates.add(LocalDestinationOutboundSocketBindingAddHandler.getOperation(pathAddress(PathElement.pathElement(SOCKET_BINDING_GROUP, groupName),
+                        PathElement.pathElement(LOCAL_DESTINATION_OUTBOUND_SOCKET_BINDING, outboundSocketBindingName)), binding));
+            }
+        }
+        // outbound-socket-binding (for remote destination)
+        if (group.hasDefined(REMOTE_DESTINATION_OUTBOUND_SOCKET_BINDING)) {
+            for(final Property remoteDestinationOutboundSocketBindings : group.get(REMOTE_DESTINATION_OUTBOUND_SOCKET_BINDING).asPropertyList()) {
+                final String outboundSocketBindingName = remoteDestinationOutboundSocketBindings.getName();
+                final ModelNode binding = remoteDestinationOutboundSocketBindings.getValue();
+                if(! binding.isDefined()) {
+                    continue;
+                }
+                // add the local destination outbound socket binding add operation
+                updates.add(RemoteDestinationOutboundSocketBindingAddHandler.getOperation(pathAddress(PathElement.pathElement(SOCKET_BINDING_GROUP, groupName),
+                        PathElement.pathElement(ModelDescriptionConstants.REMOTE_DESTINATION_OUTBOUND_SOCKET_BINDING, outboundSocketBindingName)), binding));
+            }
+        }
     }
 
     private void addSubsystems(List<ModelNode> updates) {
@@ -436,19 +480,29 @@ class ModelCombiner implements ManagedServerBootConfiguration {
 
     private void addDeployments(List<ModelNode> updates) {
         if (serverGroup.hasDefined(DEPLOYMENT)) {
+
+            FileRepository remoteRepository = null;
+            if (! domainController.getLocalHostInfo().isMasterDomainController()) {
+                remoteRepository = domainController.getRemoteFileRepository();
+            }
+
             for (Property deployment : serverGroup.get(DEPLOYMENT).asPropertyList()) {
                 String name = deployment.getName();
                 ModelNode details = deployment.getValue();
 
-                // Make sure we have a copy of the deployment in the local repo
-
                 ModelNode domainDeployment = domainModel.require(DEPLOYMENT).require(name);
                 ModelNode deploymentContent = domainDeployment.require(CONTENT).clone();
-                for (ModelNode content : deploymentContent.asList()) {
-                    if ((content.hasDefined(HASH))) {
-                        byte[] hash = content.require(HASH).asBytes();
-                        // Ensure the local repo has the files
-                        domainController.getFileRepository().getDeploymentFiles(hash);
+
+                if (remoteRepository != null) {
+                    // Make sure we have a copy of the deployment in the local repo
+                    for (ModelNode content : deploymentContent.asList()) {
+                        if ((content.hasDefined(HASH))) {
+                            byte[] hash = content.require(HASH).asBytes();
+                            File[] files = domainController.getLocalFileRepository().getDeploymentFiles(hash);
+                            if (files == null || files.length == 0) {
+                                remoteRepository.getDeploymentFiles(hash);
+                            }
+                        }
                     }
                 }
 

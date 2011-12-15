@@ -36,6 +36,9 @@ import org.jboss.as.messaging.CommonAttributes;
 import org.jboss.as.messaging.MessagingServices;
 import org.jboss.dmr.ModelNode;
 import org.jboss.msc.service.ServiceController;
+import org.jboss.msc.service.ServiceName;
+
+import static org.jboss.as.messaging.MessagingMessages.MESSAGES;
 
 /**
  * Base class for handlers that handle an "add-jndi" operation.
@@ -60,7 +63,7 @@ public abstract class AbstractAddJndiHandler implements OperationStepHandler, De
         final ModelNode entries = context.readResourceForUpdate(PathAddress.EMPTY_ADDRESS).getModel().get(CommonAttributes.ENTRIES.getName());
         for (ModelNode entry : entries.asList()) {
             if (jndiName.equals(entry.asString())) {
-                throw new OperationFailedException(new ModelNode().set(String.format("JNDI name %s is already registered", jndiName)));
+                throw new OperationFailedException(new ModelNode().set(MESSAGES.jndiNameAlreadyRegistered(jndiName)));
             }
         }
         entries.add(jndiName);
@@ -71,7 +74,9 @@ public abstract class AbstractAddJndiHandler implements OperationStepHandler, De
                 @Override
                 public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
 
-                    ServiceController<?> hqService = context.getServiceRegistry(false).getService(MessagingServices.JBOSS_MESSAGING);
+
+                    final ServiceName hqServiceName = MessagingServices.getHornetQServiceName(PathAddress.pathAddress(operation.get(ModelDescriptionConstants.OP_ADDR)));
+                    ServiceController<?> hqService = context.getServiceRegistry(false).getService(hqServiceName);
                     if (hqService != null) {
                         HornetQServer hqServer = HornetQServer.class.cast(hqService.getValue());
                         String resourceName = PathAddress.pathAddress(operation.require(ModelDescriptionConstants.OP_ADDR)).getLastElement().getValue();

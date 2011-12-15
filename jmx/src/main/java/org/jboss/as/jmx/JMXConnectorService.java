@@ -21,6 +21,9 @@
  */
 package org.jboss.as.jmx;
 
+import static org.jboss.as.jmx.JmxLogger.ROOT_LOGGER;
+import static org.jboss.as.jmx.JmxMessages.MESSAGES;
+
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.InetAddress;
@@ -40,7 +43,6 @@ import javax.management.remote.rmi.RMIConnectorServer;
 import javax.management.remote.rmi.RMIJRMPServerImpl;
 
 import org.jboss.as.network.SocketBinding;
-import org.jboss.logging.Logger;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceListener;
@@ -64,7 +66,6 @@ public class JMXConnectorService implements Service<Void> {
 
     private static final int BACKLOG = 50;
 
-    private final Logger log = Logger.getLogger(JMXConnectorService.class);
     private final InjectedValue<MBeanServer> injectedMBeanServer = new InjectedValue<MBeanServer>();
     private final InjectedValue<SocketBinding> registryPortBinding = new InjectedValue<SocketBinding>();
     private final InjectedValue<SocketBinding> serverPortBinding = new InjectedValue<SocketBinding>();
@@ -72,6 +73,7 @@ public class JMXConnectorService implements Service<Void> {
     private RMIConnectorServer adapter;
     private RMIJRMPServerImpl rmiServer;
     private Registry registry;
+    private JMXServiceURL url;
 
     public static ServiceController<?> addService(final ServiceTarget target, final String serverBinding, final String registryBinding, final ServiceListener<Object>... listeners) {
         JMXConnectorService jmxConnectorService = new JMXConnectorService();
@@ -85,8 +87,8 @@ public class JMXConnectorService implements Service<Void> {
     }
 
     @Override
-    public void start(StartContext context) throws StartException {
-        log.info("Starting remote JMX connector");
+    public synchronized void start(StartContext context) throws StartException {
+        ROOT_LOGGER.debug("Starting remote JMX connector");
         setRmiServerProperty(serverPortBinding.getValue().getAddress().getHostAddress());
         try {
             SocketBinding registryBinding = registryPortBinding.getValue();
@@ -98,7 +100,7 @@ public class JMXConnectorService implements Service<Void> {
             HashMap<String, Object> env = new HashMap<String, Object>();
 
             rmiServer = new RMIJRMPServerImpl(getRmiServerPort(), null, serverSocketFactory, env);
-            JMXServiceURL url = buildJMXServiceURL();
+            url = buildJMXServiceURL();
             adapter = new RMIConnectorServer(url, env, rmiServer, injectedMBeanServer.getValue());
             adapter.start();
             registry.rebind(RMI_BIND_NAME, rmiServer.toStub());
@@ -107,26 +109,26 @@ public class JMXConnectorService implements Service<Void> {
         }
     }
 
-    public void stop(StopContext context) {
+    public synchronized void stop(StopContext context) {
         try {
             registry.unbind(RMI_BIND_NAME);
         } catch (Exception e) {
-            log.error("Could not unbind jmx connector from registry", e);
+            ROOT_LOGGER.cannotUnbindConnector(e);
         } finally {
             try {
                 adapter.stop();
             } catch (Exception e) {
-                log.error("Could not stop connector server", e);
+                ROOT_LOGGER.cannotStopConnectorServer(e);
             } finally {
                 try {
                     UnicastRemoteObject.unexportObject(registry, true);
                 } catch (Exception e) {
-                    log.error("Could not shutdown rmi registry");
+                    ROOT_LOGGER.cannotShutdownRmiRegistry(e);
                 }
             }
         }
 
-        log.info("JMX remote connector stopped");
+        ROOT_LOGGER.debug("JMX remote connector stopped");
     }
 
     private JMXServiceURL buildJMXServiceURL() throws MalformedURLException {
@@ -188,8 +190,7 @@ public class JMXConnectorService implements Service<Void> {
             int fixed = socketBinding.isFixedPort() ? 0 : 1;
             int configuredPort = socketBinding.getPort() + (socketBinding.getSocketBindings().getPortOffset() * fixed);
             if (port != configuredPort) {
-                throw new IllegalStateException(String.format("Received request for server socket %s on port [%d] but am configured for port [%d]",
-                        socketBinding.getName(), port, configuredPort));
+                throw MESSAGES.invalidServerSocketPort(socketBinding.getName(), port, configuredPort);
             }
             return socketBinding.createServerSocket(BACKLOG);
         }

@@ -22,12 +22,24 @@
   ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
   -->
 
-<module xmlns="urn:jboss:module:1.0" name="javax.rmi.api">
+<module xmlns="urn:jboss:module:1.1" name="javax.rmi.api">
     <resources>
         <!-- Insert resources here -->
     </resources>
 
     <dependencies>
         <module name="org.omg.api"/>
+        <module name="javax.transaction.api"/>
+        <module name="org.jboss.as.jacorb"/>
+
+
+        <!-- These must be below the org.omg.api import-->
+        <system>
+            <paths>
+                <path name="sun/misc"/>
+                <path name="org/omg/SendingContext"/>
+                <path name="org/omg/CORBA"/>
+            </paths>
+        </system>
     </dependencies>
 </module>

@@ -29,13 +29,28 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-parent</artifactId>
-        <version>7.1.0.Alpha1-SNAPSHOT</version>
+        <version>7.1.0.Beta1</version>
     </parent>
 
     <groupId>org.jboss.as</groupId>
     <artifactId>jboss-as-server</artifactId>
 
     <name>JBoss Application Server: Server</name>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <compilerArgument>
+                        -AgeneratedTranslationFilesPath=${project.build.directory}/generated-translation-files
+                    </compilerArgument>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
 
     <dependencies>
         <dependency>
@@ -44,7 +59,7 @@
         </dependency>
         <dependency>
             <groupId>org.jboss.as</groupId>
-            <artifactId>jboss-as-domain-http-api</artifactId>
+            <artifactId>jboss-as-domain-http-interface</artifactId>
         </dependency>
         <dependency>
             <groupId>org.jboss.as</groupId>
@@ -77,6 +92,18 @@
         <dependency>
             <groupId>org.jboss.invocation</groupId>
             <artifactId>jboss-invocation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging-processor</artifactId>
+            <!-- This is a compile-time dependency of this project, but is not needed at compile or runtime by other
+                  projects that depend on this project.-->
+            <scope>provided</scope>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.jboss.logmanager</groupId>
@@ -118,6 +145,11 @@
             <groupId>org.jboss</groupId>
             <artifactId>jboss-vfs</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.picketbox</groupId>
+            <artifactId>picketbox</artifactId>
+        </dependency>
+
         <!-- Test Dependencies -->
         <dependency>
             <groupId>junit</groupId>

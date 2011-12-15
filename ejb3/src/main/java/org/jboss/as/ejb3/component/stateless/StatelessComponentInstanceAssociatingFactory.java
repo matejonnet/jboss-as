@@ -24,11 +24,11 @@ package org.jboss.as.ejb3.component.stateless;
 
 import org.jboss.as.ee.component.Component;
 import org.jboss.as.ee.component.ComponentInterceptorFactory;
-import org.jboss.as.ejb3.component.NonPooledEJBComponentInstanceAssociatingInterceptor;
+import org.jboss.as.ejb3.component.interceptors.NonPooledEJBComponentInstanceAssociatingInterceptor;
 import org.jboss.as.ejb3.component.pool.PooledInstanceInterceptor;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorFactoryContext;
-
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * User: jpai
  */
@@ -47,7 +47,7 @@ public class StatelessComponentInstanceAssociatingFactory extends ComponentInter
     @Override
     protected Interceptor create(Component component, InterceptorFactoryContext context) {
         if (component instanceof StatelessSessionComponent == false) {
-            throw new IllegalStateException("Unexpected component type: " + component.getClass() + " expected: " + StatelessSessionComponent.class);
+            throw MESSAGES.unexpectedComponent(component, StatelessSessionComponent.class);
         }
         final StatelessSessionComponent statelessSessionComponent = (StatelessSessionComponent) component;
         if (statelessSessionComponent.getPool() != null) {

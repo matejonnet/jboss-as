@@ -22,13 +22,23 @@
 
 package org.jboss.as.jpa.injectors;
 
+import static org.jboss.as.jpa.JpaLogger.JPA_LOGGER;
+import static org.jboss.as.jpa.JpaMessages.MESSAGES;
+
+import java.lang.reflect.Proxy;
+import java.util.Map;
+
+import javax.persistence.EntityManager;
+import javax.persistence.EntityManagerFactory;
+import javax.persistence.PersistenceContextType;
+
 import org.jboss.as.ee.component.InjectionSource;
+import org.jboss.as.jpa.container.EntityManagerUnwrappedTargetInvocationHandler;
 import org.jboss.as.jpa.container.ExtendedEntityManager;
-import org.jboss.as.jpa.container.NonTxEmCloser;
 import org.jboss.as.jpa.container.SFSBCallStack;
 import org.jboss.as.jpa.container.SFSBXPCMap;
 import org.jboss.as.jpa.container.TransactionScopedEntityManager;
-import org.jboss.as.jpa.service.PersistenceUnitService;
+import org.jboss.as.jpa.service.PersistenceUnitServiceImpl;
 import org.jboss.as.jpa.spi.PersistenceUnitMetadata;
 import org.jboss.as.naming.ManagedReference;
 import org.jboss.as.naming.ManagedReferenceFactory;
@@ -36,17 +46,10 @@ import org.jboss.as.naming.ValueManagedReference;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
-import org.jboss.logging.Logger;
 import org.jboss.msc.inject.Injector;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.value.ImmediateValue;
-
-import javax.persistence.EntityManager;
-import javax.persistence.EntityManagerFactory;
-import javax.persistence.PersistenceContextType;
-import java.util.HashSet;
-import java.util.Map;
 
 /**
  * Represents the PersistenceContext injected into a component.
@@ -61,17 +64,6 @@ public class PersistenceContextInjectionSource extends InjectionSource {
 
     private final ServiceName puServiceName;
 
-    /** the following list of classes determines which unwrap classes are special, in that the underlying entity
-     * manager won't be closed, even if no transaction is active on the calling thread.
-     * TODO:  move this list to PersistenceProviderAdaptor
-     */
-    private static final HashSet<String> skipEntityManagerCloseFor = new HashSet<String>();
-
-    static {
-        skipEntityManagerCloseFor.add("org.hibernate.Session"); // Hibernate session will take ownership of the session
-    }
-
-
     /**
      * Constructor for the PersistenceContextInjectorService
      *
@@ -81,14 +73,13 @@ public class PersistenceContextInjectionSource extends InjectionSource {
      * @param deploymentUnit    represents the deployment that we are injecting into
      * @param scopedPuName      the fully scoped reference to the persistence.xml
      * @param injectionTypeName is normally "javax.persistence.EntityManager" but could be a different target class
-*                          for example "org.hibernate.Session" in which case, EntityManager.unwrap(org.hibernate.Session.class is called)
+     *                          for example "org.hibernate.Session" in which case, EntityManager.unwrap(org.hibernate.Session.class is called)
      * @param sfsbxpcMap        TODO: refactor to only pass in for type == PersistenceContextType.EXTENDED
      * @param pu
      */
     public PersistenceContextInjectionSource(final PersistenceContextType type, final Map properties, final ServiceName puServiceName, final DeploymentUnit deploymentUnit, final String scopedPuName, final String injectionTypeName, final SFSBXPCMap sfsbxpcMap, final PersistenceUnitMetadata pu) {
 
         this.type = type;
-
 
         injectable = new PersistenceContextJndiInjectable(puServiceName, deploymentUnit, this.type, properties, scopedPuName, injectionTypeName, sfsbxpcMap, pu);
         this.puServiceName = puServiceName;
@@ -124,7 +115,6 @@ public class PersistenceContextInjectionSource extends InjectionSource {
         private final PersistenceUnitMetadata pu;
 
         private static final String ENTITY_MANAGER_CLASS = "javax.persistence.EntityManager";
-        private static final Logger log = Logger.getLogger("org.jboss.jpa");
 
         public PersistenceContextJndiInjectable(
             final ServiceName puServiceName,
@@ -148,29 +138,28 @@ public class PersistenceContextInjectionSource extends InjectionSource {
 
         @Override
         public ManagedReference getReference() {
-            PersistenceUnitService service = (PersistenceUnitService) deploymentUnit.getServiceRegistry().getRequiredService(puServiceName).getValue();
+            PersistenceUnitServiceImpl service = (PersistenceUnitServiceImpl) deploymentUnit.getServiceRegistry().getRequiredService(puServiceName).getValue();
             EntityManagerFactory emf = service.getEntityManagerFactory();
             EntityManager entityManager;
-            boolean isExtended;
+            boolean standardEntityManager = ENTITY_MANAGER_CLASS.equals(injectionTypeName);
+
             if (type.equals(PersistenceContextType.TRANSACTION)) {
-                isExtended = false;
                 entityManager = new TransactionScopedEntityManager(unitName, properties, emf);
-                if (log.isDebugEnabled())
-                    log.debug("created new TransactionScopedEntityManager for unit name=" + unitName);
+                if (JPA_LOGGER.isDebugEnabled())
+                    JPA_LOGGER.debugf("created new TransactionScopedEntityManager for unit name=%s", unitName);
             } else {
                 // handle PersistenceContextType.EXTENDED
-                isExtended = true;
                 EntityManager entityManager1 = SFSBCallStack.findPersistenceContext(unitName, sfsbxpcMap);
                 if (entityManager1 == null) {
                     entityManager1 = emf.createEntityManager(properties);
                     entityManager = new ExtendedEntityManager(unitName, entityManager1);
-                    if (log.isDebugEnabled())
-                        log.debug("created new ExtendedEntityManager for unit name=" + unitName);
+                    if (JPA_LOGGER.isDebugEnabled())
+                        JPA_LOGGER.debugf("created new ExtendedEntityManager for unit name=%s", unitName);
 
                 } else {
                     entityManager = entityManager1;
-                    if (log.isDebugEnabled())
-                        log.debug("inherited existing ExtendedEntityManager from SFSB invocation stack, unit name=" + unitName);
+                    if (JPA_LOGGER.isDebugEnabled())
+                        JPA_LOGGER.debugf("inherited existing ExtendedEntityManager from SFSB invocation stack, unit name=%s", unitName);
                 }
 
                 // register the EntityManager on TL so that SFSBCreateInterceptor will see it.
@@ -182,24 +171,51 @@ public class PersistenceContextInjectionSource extends InjectionSource {
 
             }
 
-            if (!ENTITY_MANAGER_CLASS.equals(injectionTypeName)) { // inject non-standard wrapped class (e.g. org.hibernate.Session)
+            if (!standardEntityManager) {
+                /**
+                 * inject non-standard wrapped class (e.g. org.hibernate.Session).
+                 * To accomplish this, we will create an instance of the (underlying provider's) entity manager and
+                 * invoke the EntityManager.unwrap(TargetInjectionClass).
+                 */
                 Class extensionClass;
                 try {
                     // provider classes should be on application classpath
                     extensionClass = pu.getClassLoader().loadClass(injectionTypeName);
                 } catch (ClassNotFoundException e) {
-                    throw new RuntimeException("couldn't load " + injectionTypeName + " from JPA modules classloader", e);
+                    throw MESSAGES.cannotLoadFromJpa(e, injectionTypeName);
                 }
-                boolean skipAutoCloseAfterUnwrap = skipEntityManagerCloseFor.contains(injectionTypeName);
-                if (!skipAutoCloseAfterUnwrap && !isExtended) {
-                    NonTxEmCloser.pushCall();   // create thread local to hold underlying entity manager that unwrap will create
-                }
+                // get example of target object
                 Object targetValueToInject = entityManager.unwrap(extensionClass);
-                if (!skipAutoCloseAfterUnwrap && !isExtended) {
-                    NonTxEmCloser.popCall();    // close entity manager that unwrap created
+
+                // build array of classes that proxy will represent.
+                Class[] targetInterfaces = targetValueToInject.getClass().getInterfaces();
+                Class[] proxyInterfaces = new Class[targetInterfaces.length + 1];  // include extra element for extensionClass
+                boolean alreadyHasInterfaceClass = false;
+                for (int interfaceIndex = 0; interfaceIndex < targetInterfaces.length; interfaceIndex++) {
+                    Class interfaceClass =  targetInterfaces[interfaceIndex];
+                    if (interfaceClass.equals(extensionClass)) {
+                        proxyInterfaces = targetInterfaces;                     // targetInterfaces already has all interfaces
+                        alreadyHasInterfaceClass = true;
+                        break;
+                    }
+                    proxyInterfaces[1 + interfaceIndex] = interfaceClass;
+                }
+                if (!alreadyHasInterfaceClass) {
+                    proxyInterfaces[0] = extensionClass;
                 }
 
-                return new ValueManagedReference(new ImmediateValue<Object>(targetValueToInject));
+                EntityManagerUnwrappedTargetInvocationHandler entityManagerUnwrappedTargetInvocationHandler =
+                    new EntityManagerUnwrappedTargetInvocationHandler(entityManager, extensionClass);
+                Object proxyForUnwrappedObject = Proxy.newProxyInstance(
+                                    extensionClass.getClassLoader(), //use the target classloader so the proxy has the same scope
+                                    proxyInterfaces,
+                                    entityManagerUnwrappedTargetInvocationHandler
+                                );
+
+                if (JPA_LOGGER.isDebugEnabled())
+                    JPA_LOGGER.debugf("injecting entity manager into a '%s' (unit name=%s)", extensionClass.getName(), unitName);
+
+                return new ValueManagedReference(new ImmediateValue<Object>(proxyForUnwrappedObject));
             }
 
             return new ValueManagedReference(new ImmediateValue<Object>(entityManager));

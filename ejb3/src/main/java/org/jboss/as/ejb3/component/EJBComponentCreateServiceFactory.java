@@ -22,26 +22,19 @@
 
 package org.jboss.as.ejb3.component;
 
-import org.jboss.as.ee.component.BasicComponentCreateService;
-import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ee.component.ComponentCreateServiceFactory;
-import org.jboss.as.ejb3.component.messagedriven.MessageDrivenComponentCreateService;
-import org.jboss.as.ejb3.component.singleton.SingletonComponentCreateService;
-import org.jboss.as.ejb3.component.stateful.StatefulSessionComponentCreateService;
-import org.jboss.as.ejb3.component.stateless.StatelessComponentCreateServiceFactory;
-import org.jboss.as.ejb3.component.stateless.StatelessSessionComponentCreateService;
-import org.jboss.as.ejb3.deployment.EjbJarConfiguration;
-
+import org.jboss.as.ejb3.deployment.ApplicationExceptions;
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * User: jpai
  */
 public abstract class EJBComponentCreateServiceFactory implements ComponentCreateServiceFactory {
 
-    protected EjbJarConfiguration ejbJarConfiguration;
+    protected ApplicationExceptions ejbJarConfiguration;
 
-    public void setEjbJarConfiguration(EjbJarConfiguration ejbJarConfiguration) {
+    public void setEjbJarConfiguration(ApplicationExceptions ejbJarConfiguration) {
         if (ejbJarConfiguration == null) {
-            throw new IllegalArgumentException("EjbJarConfiguration cannot be null");
+            throw MESSAGES.EjbJarConfigurationIsNull();
         }
         this.ejbJarConfiguration = ejbJarConfiguration;
     }

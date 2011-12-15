@@ -22,9 +22,12 @@
 
 package org.jboss.as.logging;
 
-import java.util.logging.Handler;
-import org.jboss.as.controller.OperationFailedException;
+import static org.jboss.as.logging.CommonAttributes.APPEND;
+import static org.jboss.as.logging.CommonAttributes.AUTOFLUSH;
 import static org.jboss.as.logging.CommonAttributes.SUFFIX;
+
+import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationFailedException;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logmanager.handlers.PeriodicRotatingFileHandler;
 
@@ -33,23 +36,45 @@ import org.jboss.logmanager.handlers.PeriodicRotatingFileHandler;
  *
  * @author John Bailey
  */
-public class PeriodicHandlerUpdateProperties extends FlushingHandlerUpdateProperties {
+public class PeriodicHandlerUpdateProperties extends HandlerUpdateProperties<PeriodicRotatingFileHandler> {
     static final PeriodicHandlerUpdateProperties INSTANCE = new PeriodicHandlerUpdateProperties();
 
-    @Override
-    protected void updateModel(final ModelNode operation, final ModelNode model) {
-        super.updateModel(operation, model);
-
-        if (operation.hasDefined(SUFFIX)) {
-            apply(operation, model, SUFFIX);
-        }
+    private PeriodicHandlerUpdateProperties() {
+        super(APPEND, AUTOFLUSH, SUFFIX);
     }
 
     @Override
-    protected void updateRuntime(final ModelNode operation, final Handler handler) throws OperationFailedException {
-        super.updateRuntime(operation, handler);
-        if (operation.hasDefined(SUFFIX)) {
-            PeriodicRotatingFileHandler.class.cast(handler).setSuffix(operation.get(SUFFIX).asString());
+    protected boolean applyUpdateToRuntime(final OperationContext context, final String handlerName, final ModelNode model,
+                                           final ModelNode originalModel, final PeriodicRotatingFileHandler handler) throws OperationFailedException {
+        final ModelNode autoflush = AUTOFLUSH.resolveModelAttribute(context, model);
+        if (autoflush.isDefined()) {
+            handler.setAutoFlush(autoflush.asBoolean());
+        }
+        final ModelNode append = APPEND.resolveModelAttribute(context, model);
+        if (append.isDefined()) {
+            handler.setAppend(append.asBoolean());
+        }
+        final ModelNode suffix = SUFFIX.resolveModelAttribute(context, model);
+        if (suffix.isDefined()) {
+            handler.setSuffix(suffix.asString());
+        }
+        return false;
+    }
+
+    @Override
+    protected void revertUpdateToRuntime(final OperationContext context, final String handlerName, final ModelNode model,
+                                         final ModelNode originalModel, final PeriodicRotatingFileHandler handler) throws OperationFailedException {
+        final ModelNode autoflush = AUTOFLUSH.resolveModelAttribute(context, originalModel);
+        if (autoflush.isDefined()) {
+            handler.setAutoFlush(autoflush.asBoolean());
+        }
+        final ModelNode append = APPEND.resolveModelAttribute(context, originalModel);
+        if (append.isDefined()) {
+            handler.setAppend(append.asBoolean());
+        }
+        final ModelNode suffix = SUFFIX.resolveModelAttribute(context, originalModel);
+        if (suffix.isDefined()) {
+            handler.setSuffix(suffix.asString());
         }
     }
 }

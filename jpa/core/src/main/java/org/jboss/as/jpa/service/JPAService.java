@@ -22,9 +22,13 @@
 
 package org.jboss.as.jpa.service;
 
+import javax.transaction.TransactionManager;
+import javax.transaction.TransactionSynchronizationRegistry;
+
 import org.jboss.as.jpa.transaction.TransactionUtil;
-import org.jboss.as.txn.TransactionManagerService;
-import org.jboss.as.txn.TransactionSynchronizationRegistryService;
+import org.jboss.as.jpa.util.JPAServiceNames;
+import org.jboss.as.txn.service.TransactionManagerService;
+import org.jboss.as.txn.service.TransactionSynchronizationRegistryService;
 import org.jboss.msc.inject.CastingInjector;
 import org.jboss.msc.inject.InjectionException;
 import org.jboss.msc.inject.Injector;
@@ -37,9 +41,6 @@ import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
 
-import javax.transaction.TransactionManager;
-import javax.transaction.TransactionSynchronizationRegistry;
-
 /**
  * represents the global JPA Service
  *
@@ -47,7 +48,7 @@ import javax.transaction.TransactionSynchronizationRegistry;
  */
 public class JPAService implements Service<Void> {
 
-    public static final ServiceName SERVICE_NAME = ServiceName.JBOSS.append("jpa");
+    public static final ServiceName SERVICE_NAME = JPAServiceNames.getJPAServiceName();
 
     private static String defaultDataSourceName = null;
 
@@ -61,34 +62,34 @@ public class JPAService implements Service<Void> {
 
         // set the transaction manager to be accessible via TransactionUtil
         final Injector<TransactionManager> transactionManagerInjector =
-                new Injector<TransactionManager>() {
-                    public void inject(final TransactionManager value) throws InjectionException {
-                        TransactionUtil.setTransactionManager(value);
-                    }
+            new Injector<TransactionManager>() {
+                public void inject(final TransactionManager value) throws InjectionException {
+                    TransactionUtil.setTransactionManager(value);
+                }
 
-                    public void uninject() {
-                        // injector.uninject();
-                    }
-                };
+                public void uninject() {
+                    // injector.uninject();
+                }
+            };
         // set the transaction service registry to be accessible via TransactionUtil (after service is installed below)
         final Injector<TransactionSynchronizationRegistry> transactionRegistryInjector =
-                new Injector<TransactionSynchronizationRegistry>() {
-                    public void inject(final TransactionSynchronizationRegistry value) throws
-                            InjectionException {
-                        TransactionUtil.setTransactionSynchronizationRegistry(value);
-                    }
+            new Injector<TransactionSynchronizationRegistry>() {
+                public void inject(final TransactionSynchronizationRegistry value) throws
+                    InjectionException {
+                    TransactionUtil.setTransactionSynchronizationRegistry(value);
+                }
 
-                    public void uninject() {
-                        // injector.uninject();
-                    }
-                };
+                public void uninject() {
+                    // injector.uninject();
+                }
+            };
 
         return target.addService(SERVICE_NAME, jpaService)
-                .addListener(listeners)
-                .setInitialMode(ServiceController.Mode.ACTIVE)
-                .addDependency(TransactionManagerService.SERVICE_NAME, new CastingInjector<TransactionManager>(transactionManagerInjector, TransactionManager.class))
-                .addDependency(TransactionSynchronizationRegistryService.SERVICE_NAME, new CastingInjector<TransactionSynchronizationRegistry>(transactionRegistryInjector, TransactionSynchronizationRegistry.class))
-                .install();
+            .addListener(listeners)
+            .setInitialMode(ServiceController.Mode.ACTIVE)
+            .addDependency(TransactionManagerService.SERVICE_NAME, new CastingInjector<TransactionManager>(transactionManagerInjector, TransactionManager.class))
+            .addDependency(TransactionSynchronizationRegistryService.SERVICE_NAME, new CastingInjector<TransactionSynchronizationRegistry>(transactionRegistryInjector, TransactionSynchronizationRegistry.class))
+            .install();
     }
 
     @Override

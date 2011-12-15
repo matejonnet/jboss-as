@@ -52,6 +52,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
+import static org.jboss.as.connector.ConnectorLogger.DEPLOYMENT_CONNECTOR_LOGGER;
+import static org.jboss.as.connector.ConnectorMessages.MESSAGES;
+
 /**
  * A ResourceAdapterDeploymentService.
  * @author <a href="mailto:stefano.maestri@redhat.com">Stefano Maestri</a>
@@ -60,19 +63,24 @@ import java.util.Set;
 public final class ResourceAdapterDeploymentService extends AbstractResourceAdapterDeploymentService implements
         Service<ResourceAdapterDeployment> {
 
-    private static final Logger log = Logger.getLogger("org.jboss.as.deployment.connector");
+    private static final DeployersLogger DEPLOYERS_LOGGER = Logger.getMessageLogger(DeployersLogger.class, "org.jboss.as.connector.deployers.RADeployer");
 
     private final Module module;
     private final ConnectorXmlDescriptor connectorXmlDescriptor;
     private final Connector cmd;
     private final IronJacamar ijmd;
 
+    private String raName;
+    private ServiceName deploymentServiceName;
+
     public ResourceAdapterDeploymentService(final ConnectorXmlDescriptor connectorXmlDescriptor, final Connector cmd,
-            final IronJacamar ijmd, final Module module) {
+                                            final IronJacamar ijmd, final Module module, final ServiceName deploymentServiceName) {
         this.connectorXmlDescriptor = connectorXmlDescriptor;
         this.cmd = cmd;
         this.ijmd = ijmd;
         this.module = module;
+        this.raName = null;
+        this.deploymentServiceName = deploymentServiceName;
     }
 
     @Override
@@ -82,30 +90,31 @@ public final class ResourceAdapterDeploymentService extends AbstractResourceAdap
         final String deploymentName = connectorXmlDescriptor == null ? null : connectorXmlDescriptor.getDeploymentName();
         final File root = connectorXmlDescriptor == null ? null : connectorXmlDescriptor.getRoot();
         CommonDeployment raDeployment = null;
-        final AS7RaDeployer raDeployer = new AS7RaDeployer(context.getChildTarget(), url, deploymentName, root, module.getClassLoader(), cmd,
-                ijmd);
+        DEPLOYMENT_CONNECTOR_LOGGER.debugf("DEPLOYMENT name = %s",deploymentName);
+        final AS7RaDeployer raDeployer =
+            new AS7RaDeployer(context.getChildTarget(), url, deploymentName, root, module.getClassLoader(), cmd, ijmd);
         raDeployer.setConfiguration(config.getValue());
 
         try {
             raDeployment = raDeployer.doDeploy();
         } catch (Throwable t) {
-            throw new StartException("Failed to start RA deployment [" + deploymentName + "]", t);
+            throw MESSAGES.failedToStartRaDeployment(t, deploymentName);
         }
 
         value = new ResourceAdapterDeployment(raDeployment);
+
         managementRepository.getValue().getConnectors().add(value.getDeployment().getConnector());
+        raName = value.getDeployment().getDeploymentName();
 
-        if (raDeployment.getResourceAdapter() != null) {
+        if (raDeployer.checkActivation(cmd, ijmd)) {
             registry.getValue().registerResourceAdapterDeployment(value);
-            log.debugf("Starting sevice %s",
-                    ConnectorServices.RESOURCE_ADAPTER_SERVICE_PREFIX.append(this.value.getDeployment().getDeploymentName()));
 
+            ServiceName raServiceName = ConnectorServices.registerResourceAdapter(raName);
             context.getChildTarget()
-                    .addService(ServiceName.of(value.getDeployment().getDeploymentName()),
-                            new ResourceAdapterService(value.getDeployment().getResourceAdapter())).setInitialMode(Mode.ACTIVE)
+                    .addService(raServiceName,
+                                new ResourceAdapterService(raName, raServiceName, value.getDeployment().getResourceAdapter())).setInitialMode(Mode.ACTIVE)
                     .install();
         }
-
     }
 
     /**
@@ -113,8 +122,13 @@ public final class ResourceAdapterDeploymentService extends AbstractResourceAdap
      */
     @Override
     public void stop(StopContext context) {
-        log.debugf("Stopping sevice %s",
-                ConnectorServices.RESOURCE_ADAPTER_SERVICE_PREFIX.append(this.value.getDeployment().getDeploymentName()));
+        DEPLOYMENT_CONNECTOR_LOGGER.debugf("Stopping sevice %s",
+            ConnectorServices.RESOURCE_ADAPTER_DEPLOYMENT_SERVICE_PREFIX.append(this.value.getDeployment().getDeploymentName()));
+
+        if (raName != null && deploymentServiceName != null) {
+            ConnectorServices.unregisterDeployment(raName, deploymentServiceName);
+        }
+
         managementRepository.getValue().getConnectors().remove(value.getDeployment().getConnector());
         super.stop(context);
     }
@@ -152,8 +166,8 @@ public final class ResourceAdapterDeploymentService extends AbstractResourceAdap
                     raMcfClasses.add(ra10.getManagedConnectionFactoryClass().getValue());
                 } else {
                     ResourceAdapter1516 ra = (ResourceAdapter1516) cmd.getResourceadapter();
-                    if (ra != null && ra.getOutboundResourceadapter() != null
-                            && ra.getOutboundResourceadapter().getConnectionDefinitions() != null) {
+                    if (ra != null && ra.getOutboundResourceadapter() != null &&
+                        ra.getOutboundResourceadapter().getConnectionDefinitions() != null) {
                         List<ConnectionDefinition> cdMetas = ra.getOutboundResourceadapter().getConnectionDefinitions();
                         if (cdMetas.size() > 0) {
                             for (ConnectionDefinition cdMeta : cdMetas) {
@@ -177,61 +191,23 @@ public final class ResourceAdapterDeploymentService extends AbstractResourceAdap
                 }
 
                 if (ijmd != null) {
-                    Set<String> ijMcfClasses = new HashSet<String>();
-                    Set<String> ijAoClasses = new HashSet<String>();
-
-                    boolean mcfSingle = false;
-                    boolean aoSingle = false;
-
-                    boolean mcfOk = true;
-                    boolean aoOk = true;
-
                     if (ijmd.getConnectionDefinitions() != null) {
                         for (org.jboss.jca.common.api.metadata.common.CommonConnDef def : ijmd.getConnectionDefinitions()) {
                             String clz = def.getClassName();
 
-                            if (clz == null) {
-                                if (raMcfClasses.size() == 1) {
-                                    mcfSingle = true;
-                                }
-                            } else {
-                                ijMcfClasses.add(clz);
-                            }
-                        }
-                    }
-
-                    if (!mcfSingle) {
-                        Iterator<String> it = raMcfClasses.iterator();
-                        while (mcfOk && it.hasNext()) {
-                            String clz = it.next();
-                            if (!ijMcfClasses.contains(clz))
-                                mcfOk = false;
+                            if (raMcfClasses.contains(clz))
+                                return true;
                         }
                     }
 
                     if (ijmd.getAdminObjects() != null) {
                         for (org.jboss.jca.common.api.metadata.common.CommonAdminObject def : ijmd.getAdminObjects()) {
                             String clz = def.getClassName();
-                            if (clz == null) {
-                                if (raAoClasses.size() == 1) {
-                                    aoSingle = true;
-                                }
-                            } else {
-                                ijAoClasses.add(clz);
-                            }
+
+                            if (raAoClasses.contains(clz))
+                                return true;
                         }
                     }
-
-                    if (!aoSingle) {
-                        Iterator<String> it = raAoClasses.iterator();
-                        while (aoOk && it.hasNext()) {
-                            String clz = it.next();
-                            if (!ijAoClasses.contains(clz))
-                                aoOk = false;
-                        }
-                    }
-
-                    return mcfOk && aoOk;
                 }
             }
 
@@ -240,8 +216,7 @@ public final class ResourceAdapterDeploymentService extends AbstractResourceAdap
 
         @Override
         protected DeployersLogger getLogger() {
-
-            return Logger.getMessageLogger(DeployersLogger.class, AS7RaDeployer.class.getName());
+            return DEPLOYERS_LOGGER;
         }
     }
 

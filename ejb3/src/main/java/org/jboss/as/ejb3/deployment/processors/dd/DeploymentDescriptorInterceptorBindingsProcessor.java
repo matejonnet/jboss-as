@@ -21,6 +21,15 @@
  */
 package org.jboss.as.ejb3.deployment.processors.dd;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import org.jboss.as.ee.component.Attachments;
 import org.jboss.as.ee.component.ComponentDescription;
 import org.jboss.as.ee.component.EEModuleDescription;
@@ -33,23 +42,13 @@ import org.jboss.as.server.deployment.DeploymentUnitProcessor;
 import org.jboss.as.server.deployment.reflect.ClassReflectionIndex;
 import org.jboss.as.server.deployment.reflect.DeploymentReflectionIndex;
 import org.jboss.invocation.proxy.MethodIdentifier;
-import org.jboss.logging.Logger;
-import org.jboss.metadata.ejb.spec.EjbJar3xMetaData;
 import org.jboss.metadata.ejb.spec.EjbJarMetaData;
 import org.jboss.metadata.ejb.spec.InterceptorBindingMetaData;
 import org.jboss.metadata.ejb.spec.InterceptorMetaData;
 import org.jboss.metadata.ejb.spec.NamedMethodMetaData;
 import org.jboss.modules.Module;
-
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
+import static org.jboss.as.ejb3.EjbLogger.ROOT_LOGGER;
 /**
  * Processor that handles interceptor bindings that are defined in the deployment descriptor.
  *
@@ -58,26 +57,21 @@ import java.util.Set;
 public class DeploymentDescriptorInterceptorBindingsProcessor implements DeploymentUnitProcessor {
 
 
-    private static final Logger log = Logger.getLogger(DeploymentDescriptorInterceptorBindingsProcessor.class);
 
     @Override
     public void deploy(final DeploymentPhaseContext phaseContext) throws DeploymentUnitProcessingException {
 
         final DeploymentUnit deploymentUnit = phaseContext.getDeploymentUnit();
-        final EjbJarMetaData ejbJarMetaData = deploymentUnit.getAttachment(EjbDeploymentAttachmentKeys.EJB_JAR_METADATA);
+        final EjbJarMetaData metaData = deploymentUnit.getAttachment(EjbDeploymentAttachmentKeys.EJB_JAR_METADATA);
         final EEModuleDescription eeModuleDescription = deploymentUnit.getAttachment(Attachments.EE_MODULE_DESCRIPTION);
         final Module module = deploymentUnit.getAttachment(org.jboss.as.server.deployment.Attachments.MODULE);
         final DeploymentReflectionIndex index = deploymentUnit.getAttachment(org.jboss.as.server.deployment.Attachments.REFLECTION_INDEX);
 
 
-        if (ejbJarMetaData == null) {
-            return;
-        }
-        if (!(ejbJarMetaData instanceof EjbJar3xMetaData)) {
+        if (metaData == null) {
             return;
         }
 
-        final EjbJar3xMetaData metaData = (EjbJar3xMetaData) ejbJarMetaData;
         if (metaData.getAssemblyDescriptor() == null) {
             return;
         }
@@ -99,7 +93,7 @@ public class DeploymentDescriptorInterceptorBindingsProcessor implements Deploym
         for (final InterceptorBindingMetaData binding : metaData.getAssemblyDescriptor().getInterceptorBindings()) {
             if (binding.getEjbName().equals("*")) {
                 if (binding.getMethod() != null) {
-                    throw new DeploymentUnitProcessingException("Default interceptors cannot specify a method to bind to in ejb-jar.xml");
+                    throw MESSAGES.defaultInterceptorsNotBindToMethod();
                 }
                 defaultInterceptorBindings.add(binding);
             } else {
@@ -121,7 +115,7 @@ public class DeploymentDescriptorInterceptorBindingsProcessor implements Deploym
                     if (interceptorClasses.contains(clazz)) {
                         defaultInterceptors.add(new InterceptorDescription(clazz));
                     } else {
-                        log.warnf("Default interceptor class %s is not listed in the <interceptors> section of ejb-jar.xml and will not be applied", clazz);
+                        ROOT_LOGGER.defaultInterceptorClassNotListed(clazz);
                     }
                 }
             }
@@ -135,7 +129,7 @@ public class DeploymentDescriptorInterceptorBindingsProcessor implements Deploym
             try {
                 componentClass = module.getClassLoader().loadClass(componentDescription.getComponentClassName());
             } catch (ClassNotFoundException e) {
-                throw new DeploymentUnitProcessingException("Could not load component class " + componentDescription.getComponentClassName());
+                throw MESSAGES.failToLoadComponentClass(componentDescription.getComponentClassName());
             }
 
             final List<InterceptorBindingMetaData> bindings = bindingsPerComponent.get(componentDescription.getComponentName());
@@ -143,7 +137,7 @@ public class DeploymentDescriptorInterceptorBindingsProcessor implements Deploym
             final List<InterceptorBindingMetaData> classLevelBindings = new ArrayList<InterceptorBindingMetaData>();
             //we only want to exclude default and class level interceptors if every binding
             //has the exclude element.
-            Boolean classLevelExcludeDefaultInterceptors = null;
+            boolean classLevelExcludeDefaultInterceptors = false;
             Map<Method, Boolean> methodLevelExcludeDefaultInterceptors = new HashMap<Method, Boolean>();
             Map<Method, Boolean> methodLevelExcludeClassInterceptors = new HashMap<Method, Boolean>();
 
@@ -158,14 +152,12 @@ public class DeploymentDescriptorInterceptorBindingsProcessor implements Deploym
                     if (binding.getMethod() == null) {
                         classLevelBindings.add(binding);
                         //if even one binding does not say exclude default then we do not exclude
-                        if (binding.isExcludeDefaultInterceptors() && classLevelExcludeDefaultInterceptors == null) {
+                        if (binding.isExcludeDefaultInterceptors()) {
                             classLevelExcludeDefaultInterceptors = true;
-                        } else if (!binding.isExcludeClassInterceptors()) {
-                            classLevelExcludeDefaultInterceptors = false;
                         }
                         if (binding.isTotalOrdering()) {
                             if (classLevelAbsoluteOrder) {
-                                throw new DeploymentUnitProcessingException("Two ejb-jar.xml bindings for " + componentClass + " specify an absolute order");
+                                throw MESSAGES.twoEjbBindingsSpecifyAbsoluteOrder(componentClass.toString());
                             } else {
                                 classLevelAbsoluteOrder = true;
                             }
@@ -180,9 +172,9 @@ public class DeploymentDescriptorInterceptorBindingsProcessor implements Deploym
                         if (methodData.getMethodParams() == null) {
                             final Collection<Method> methods = classIndex.getAllMethods(methodData.getMethodName());
                             if (methods.isEmpty()) {
-                                throw new DeploymentUnitProcessingException("Could not find method" + componentClass.getName() + "." + methodData.getMethodName() + " referenced in ejb-jar.xml");
+                                throw MESSAGES.failToFindMethodInEjbJarXml(componentClass.getName(),methodData.getMethodName());
                             } else if (methods.size() > 1) {
-                                throw new DeploymentUnitProcessingException("More than one method " + methodData.getMethodName() + "found on class" + componentClass.getName() + " referenced in ejb-jar.xml. Specify the parameter types to resolve the ambiguity");
+                                throw MESSAGES.multipleMethodReferencedInEjbJarXml(methodData.getMethodName(),componentClass.getName());
                             }
                             resolvedMethod = methods.iterator().next();
                         } else {
@@ -201,7 +193,7 @@ public class DeploymentDescriptorInterceptorBindingsProcessor implements Deploym
                                 }
                             }
                             if (resolvedMethod == null) {
-                                throw new DeploymentUnitProcessingException("Could not find method" + componentClass.getName() + "." + methodData.getMethodName() + "with parameter types" + methodData.getMethodParams() + " referenced in ejb-jar.xml");
+                                throw MESSAGES.failToFindMethodWithParameterTypes(componentClass.getName(), methodData.getMethodName(), methodData.getMethodParams());
                             }
                         }
                         List<InterceptorBindingMetaData> list = methodInterceptors.get(resolvedMethod);
@@ -222,7 +214,7 @@ public class DeploymentDescriptorInterceptorBindingsProcessor implements Deploym
 
                         if (binding.isTotalOrdering()) {
                             if (methodLevelAbsoluteOrder.containsKey(resolvedMethod)) {
-                                throw new DeploymentUnitProcessingException("Two ejb-jar.xml bindings for " + resolvedMethod + " specify an absolute order");
+                                throw MESSAGES.twoEjbBindingsSpecifyAbsoluteOrder(resolvedMethod.toString());
                             } else {
                                 methodLevelAbsoluteOrder.put(resolvedMethod, true);
                             }
@@ -236,8 +228,7 @@ public class DeploymentDescriptorInterceptorBindingsProcessor implements Deploym
             //build the list of default interceptors
             componentDescription.setDefaultInterceptors(defaultInterceptors);
 
-            boolean classLevelExclude = classLevelExcludeDefaultInterceptors == null ? false : classLevelExcludeDefaultInterceptors;
-            if(classLevelExclude) {
+            if(classLevelExcludeDefaultInterceptors) {
                 componentDescription.setExcludeDefaultInterceptors(true);
             }
 
@@ -277,7 +268,7 @@ public class DeploymentDescriptorInterceptorBindingsProcessor implements Deploym
                 Boolean excludeDefaultInterceptors = methodLevelExcludeDefaultInterceptors.get(method);
                 excludeDefaultInterceptors = excludeDefaultInterceptors == null ? false : excludeDefaultInterceptors;
                 if (!excludeDefaultInterceptors) {
-                    excludeDefaultInterceptors = componentDescription.isExcludeDefaultInterceptors(methodIdentifier);
+                    excludeDefaultInterceptors = componentDescription.isExcludeDefaultInterceptors() || componentDescription.isExcludeDefaultInterceptors(methodIdentifier);
                 }
 
                 Boolean excludeClassInterceptors = methodLevelExcludeClassInterceptors.get(method);

@@ -18,12 +18,6 @@
  */
 package org.jboss.as.controller.descriptions.common;
 
-import org.jboss.dmr.ModelNode;
-import org.jboss.dmr.ModelType;
-
-import java.util.Locale;
-import java.util.ResourceBundle;
-
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ARCHIVE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ATTRIBUTES;
@@ -38,8 +32,10 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HAS
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HEAD_COMMENT_ALLOWED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INPUT_STREAM_INDEX;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MAX_LENGTH;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MIN;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MIN_LENGTH;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MIN_VALUE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MIN_OCCURS;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MODEL_DESCRIPTION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NILLABLE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATIONS;
@@ -54,6 +50,8 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQ
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUIRED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RUNTIME_NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.STATUS;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBDEPLOYMENT;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TAIL_COMMENT_ALLOWED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TO_REPLACE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
@@ -63,6 +61,12 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.UPL
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.UPLOAD_DEPLOYMENT_URL;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.URL;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE_TYPE;
+
+import java.util.Locale;
+import java.util.ResourceBundle;
+
+import org.jboss.dmr.ModelNode;
+import org.jboss.dmr.ModelType;
 
 /**
  * Model descriptions for deployment resources.
@@ -76,7 +80,7 @@ public class DeploymentDescription {
     private DeploymentDescription() {
     }
 
-    public static final ModelNode getDeploymentDescription(Locale locale, boolean includeEnabled, boolean includeContent) {
+    public static final ModelNode getDeploymentDescription(Locale locale, boolean includeEnabled, boolean includeContent, boolean includeRuntime) {
         final ResourceBundle bundle = getResourceBundle(locale);
         final ModelNode root = new ModelNode();
         root.get(DESCRIPTION).set(bundle.getString("deployment"));
@@ -100,7 +104,7 @@ public class DeploymentDescription {
             root.get(ATTRIBUTES, CONTENT, VALUE_TYPE, INPUT_STREAM_INDEX, TYPE).set(ModelType.INT);
             root.get(ATTRIBUTES, CONTENT, VALUE_TYPE, INPUT_STREAM_INDEX, DESCRIPTION).set(bundle.getString("deployment.inputstream"));
             root.get(ATTRIBUTES, CONTENT, VALUE_TYPE, INPUT_STREAM_INDEX, REQUIRED).set(false);
-            root.get(ATTRIBUTES, CONTENT, VALUE_TYPE, INPUT_STREAM_INDEX, MIN_VALUE).set(0);
+            root.get(ATTRIBUTES, CONTENT, VALUE_TYPE, INPUT_STREAM_INDEX, MIN).set(0);
             root.get(ATTRIBUTES, CONTENT, VALUE_TYPE, INPUT_STREAM_INDEX, NILLABLE).set(true);
             root.get(ATTRIBUTES, CONTENT, VALUE_TYPE, HASH, TYPE).set(ModelType.BYTES);
             root.get(ATTRIBUTES, CONTENT, VALUE_TYPE, HASH, DESCRIPTION).set(bundle.getString("deployment.hash"));
@@ -147,8 +151,36 @@ public class DeploymentDescription {
                 root.get(ATTRIBUTES, STATUS, REQUIRED).set(false);
             }
         }
-        root.get(OPERATIONS);
-        root.get(CHILDREN).setEmptyObject();
+
+        root.get(OPERATIONS);  // placeholder
+
+        if (includeRuntime) {
+            root.get(CHILDREN, SUBSYSTEM, DESCRIPTION).set(bundle.getString("deployment.subsystem"));
+            root.get(CHILDREN, SUBSYSTEM, MIN_OCCURS).set(0);
+            root.get(CHILDREN, SUBSYSTEM, MODEL_DESCRIPTION);
+
+            root.get(CHILDREN, SUBDEPLOYMENT, DESCRIPTION).set(bundle.getString("deployment.subdeployment"));
+            root.get(CHILDREN, SUBDEPLOYMENT, MIN_OCCURS).set(0);
+            root.get(CHILDREN, SUBDEPLOYMENT, MODEL_DESCRIPTION);
+        } else {
+            root.get(CHILDREN).setEmptyObject();
+        }
+
+        return root;
+    }
+
+    public static ModelNode getSubDeploymentDescription(Locale locale) {
+        final ResourceBundle bundle = getResourceBundle(locale);
+        final ModelNode root = new ModelNode();
+        root.get(DESCRIPTION).set(bundle.getString("deployment.subdeployment"));
+
+        root.get(ATTRIBUTES).setEmptyObject();
+        root.get(OPERATIONS); // placeholder
+
+        root.get(CHILDREN, SUBSYSTEM, DESCRIPTION).set(bundle.getString("deployment.subsystem"));
+        root.get(CHILDREN, SUBSYSTEM, MIN_OCCURS).set(0);
+        root.get(CHILDREN, SUBSYSTEM, MODEL_DESCRIPTION);
+
         return root;
     }
 
@@ -193,10 +225,10 @@ public class DeploymentDescription {
         final ModelNode root = new ModelNode();
         root.get(OPERATION_NAME).set(UPLOAD_DEPLOYMENT_STREAM);
         root.get(DESCRIPTION).set(bundle.getString("deployment.upload-stream"));
-        root.get(REQUEST_PROPERTIES, INPUT_STREAM_INDEX, TYPE).set(ModelType.STRING);
+        root.get(REQUEST_PROPERTIES, INPUT_STREAM_INDEX, TYPE).set(ModelType.INT);
         root.get(REQUEST_PROPERTIES, INPUT_STREAM_INDEX, DESCRIPTION).set(bundle.getString("deployment.inputstream"));
         root.get(REQUEST_PROPERTIES, INPUT_STREAM_INDEX, REQUIRED).set(true);
-        root.get(REQUEST_PROPERTIES, INPUT_STREAM_INDEX, MIN_VALUE).set(0);
+        root.get(REQUEST_PROPERTIES, INPUT_STREAM_INDEX, MIN).set(0);
         root.get(REQUEST_PROPERTIES, INPUT_STREAM_INDEX, NILLABLE).set(false);
         root.get(REPLY_PROPERTIES, TYPE).set(ModelType.BYTES);
         root.get(REPLY_PROPERTIES, DESCRIPTION).set(bundle.getString("deployment.hash"));
@@ -307,7 +339,7 @@ public class DeploymentDescription {
         root.get(REQUEST_PROPERTIES, CONTENT, VALUE_TYPE, INPUT_STREAM_INDEX, TYPE).set(ModelType.INT);
         root.get(REQUEST_PROPERTIES, CONTENT, VALUE_TYPE, INPUT_STREAM_INDEX, DESCRIPTION).set(bundle.getString("deployment.inputstream"));
         root.get(REQUEST_PROPERTIES, CONTENT, VALUE_TYPE, INPUT_STREAM_INDEX, REQUIRED).set(false);
-        root.get(REQUEST_PROPERTIES, CONTENT, VALUE_TYPE, INPUT_STREAM_INDEX, MIN_VALUE).set(0);
+        root.get(REQUEST_PROPERTIES, CONTENT, VALUE_TYPE, INPUT_STREAM_INDEX, MIN).set(0);
         root.get(REQUEST_PROPERTIES, CONTENT, VALUE_TYPE, INPUT_STREAM_INDEX, NILLABLE).set(true);
         root.get(REQUEST_PROPERTIES, CONTENT, VALUE_TYPE, HASH, TYPE).set(ModelType.BYTES);
         root.get(REQUEST_PROPERTIES, CONTENT, VALUE_TYPE, HASH, DESCRIPTION).set(bundle.getString("deployment.hash"));
@@ -348,7 +380,7 @@ public class DeploymentDescription {
     }
 
     public static void main(String[] args) {
-        System.out.println(getDeploymentDescription(null, true, true));
+        System.out.println(getDeploymentDescription(null, true, true, false));
         System.out.println(getAddDeploymentOperation(null, true));
         System.out.println(getDeployDeploymentOperation(null));
         System.out.println(getFullReplaceDeploymentOperation(null));

@@ -39,12 +39,12 @@ public abstract class AbstractAddStepHandler implements OperationStepHandler {
     /** {@inheritDoc */
     public void execute(final OperationContext context, final ModelNode operation) throws OperationFailedException {
         final Resource resource = context.createResource(PathAddress.EMPTY_ADDRESS);
-        populateModel(operation, resource);
+        populateModel(context, operation, resource);
         final ModelNode model = resource.getModel();
 
         if (requiresRuntime(context)) {
             context.addStep(new OperationStepHandler() {
-                public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
+                public void execute(final OperationContext context, final ModelNode operation) throws OperationFailedException {
                     final List<ServiceController<?>> controllers = new ArrayList<ServiceController<?>>();
                     final ServiceVerificationHandler verificationHandler = new ServiceVerificationHandler();
                     performRuntime(context, operation, model, verificationHandler, controllers);
@@ -53,13 +53,32 @@ public abstract class AbstractAddStepHandler implements OperationStepHandler {
                         context.addStep(verificationHandler, OperationContext.Stage.VERIFY);
                     }
 
-                    if (context.completeStep() == OperationContext.ResultAction.ROLLBACK) {
-                        rollbackRuntime(context, operation, model, controllers);
-                    }
+                    context.completeStep(new OperationContext.RollbackHandler() {
+                        @Override
+                        public void handleRollback(OperationContext context, ModelNode operation) {
+                            rollbackRuntime(context, operation, model, controllers);
+                        }
+                    });
                 }
             }, OperationContext.Stage.RUNTIME);
         }
-        context.completeStep();
+        context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
+    }
+
+    /**
+     * Populate the given resource in the persistent configuration model based on the values in the given operation.
+     * <p>
+     * This default implementation simply calls {@link #populateModel(ModelNode, Resource)}.
+     * </p>
+     *
+     * @param context the operation context
+     * @param operation the operation
+     * @param resource the resource that corresponds to the address of {@code operation}
+     *
+     * @throws OperationFailedException if {@code operation} is invalid or populating the model otherwise fails
+     */
+    protected void populateModel(final OperationContext context, final ModelNode operation, final Resource resource) throws  OperationFailedException {
+        populateModel(operation, resource);
     }
 
     /**

@@ -21,12 +21,15 @@
  */
 package org.jboss.as.web.deployment;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.apache.catalina.Context;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.Realm;
 import org.apache.catalina.core.StandardContext;
-import org.jboss.as.naming.context.NamespaceContextSelector;
-import org.jboss.as.web.NamingValve;
+import org.jboss.as.server.deployment.SetupAction;
+import org.jboss.as.web.ThreadSetupBindingListener;
 import org.jboss.as.web.deployment.jsf.JsfInjectionProvider;
 import org.jboss.logging.Logger;
 import org.jboss.msc.service.Service;
@@ -44,43 +47,50 @@ class WebDeploymentService implements Service<Context> {
 
     private static final Logger log = Logger.getLogger("org.jboss.web");
     private final StandardContext context;
-    private final InjectedValue<NamespaceContextSelector> namespaceSelector = new InjectedValue<NamespaceContextSelector>();
     private final InjectedValue<Realm> realm = new InjectedValue<Realm>();
     private final WebInjectionContainer injectionContainer;
+    private final List<SetupAction> setupActions;
 
-    public WebDeploymentService(final StandardContext context, final WebInjectionContainer injectionContainer) {
+    public WebDeploymentService(final StandardContext context, final WebInjectionContainer injectionContainer, final List<SetupAction> setupActions) {
         this.context = context;
         this.injectionContainer = injectionContainer;
+        this.setupActions = setupActions;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     public synchronized void start(StartContext startContext) throws StartException {
         context.setRealm(realm.getValue());
 
         JsfInjectionProvider.getInjectionContainer().set(injectionContainer);
+        final List<SetupAction> actions = new ArrayList<SetupAction>();
+        actions.addAll(setupActions);
+        context.setThreadBindingListener(new ThreadSetupBindingListener(actions));
         try {
-            NamingValve.beginComponentStart(namespaceSelector.getOptionalValue());
             try {
-                try {
-                    context.create();
-                } catch (Exception e) {
-                    throw new StartException("failed to create context", e);
-                }
-                try {
-                    context.start();
-                } catch (LifecycleException e) {
-                    throw new StartException("failed to start context", e);
-                }
-                log.info("registering web context: " + context.getName());
-            } finally {
-                NamingValve.endComponentStart();
+                context.create();
+            } catch (Exception e) {
+                throw new StartException("failed to create context", e);
             }
+            try {
+                context.start();
+            } catch (LifecycleException e) {
+                throw new StartException("failed to start context", e);
+            }
+            if (context.getState() != 1) {
+                throw new StartException("failed to start context");
+            }
+            log.info("registering web context: " + context.getName());
+
         } finally {
             JsfInjectionProvider.getInjectionContainer().set(null);
         }
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     public synchronized void stop(StopContext stopContext) {
         try {
             context.stop();
@@ -94,17 +104,15 @@ class WebDeploymentService implements Service<Context> {
         }
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     public synchronized Context getValue() throws IllegalStateException {
         final Context context = this.context;
         if (context == null) {
             throw new IllegalStateException();
         }
         return context;
-    }
-
-    public InjectedValue<NamespaceContextSelector> getNamespaceSelector() {
-        return namespaceSelector;
     }
 
     public InjectedValue<Realm> getRealm() {

@@ -34,11 +34,15 @@ import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 
 import org.jboss.as.controller.ModelController;
+import org.jboss.as.process.protocol.StreamUtils;
 import org.jboss.as.protocol.mgmt.ManagementChannel;
-import org.jboss.as.protocol.old.StreamUtils;
+import org.jboss.as.remoting.EndpointService;
+import org.jboss.as.remoting.RemotingServices;
+import org.jboss.as.remoting.management.ManagementRemotingServices;
 import org.jboss.as.server.mgmt.domain.HostControllerConnectionService;
 import org.jboss.as.server.mgmt.domain.HostControllerServerClient;
 import org.jboss.logmanager.Level;
+import org.jboss.logmanager.handlers.ConsoleHandler;
 import org.jboss.logmanager.log4j.BridgeRepositorySelector;
 import org.jboss.marshalling.ByteInput;
 import org.jboss.marshalling.MarshallerFactory;
@@ -84,6 +88,12 @@ public final class DomainServerMain {
         final InputStream initialInput = System.in;
         final PrintStream initialError = System.err;
 
+        // Make sure our original stdio is properly captured.
+        try {
+            Class.forName(ConsoleHandler.class.getName(), true, ConsoleHandler.class.getClassLoader());
+        } catch (Throwable ignored) {
+        }
+
         // Install JBoss Stdio to avoid any nasty crosstalk.
         StdioContext.install();
         final StdioContext context = StdioContext.create(
@@ -95,7 +105,7 @@ public final class DomainServerMain {
 
         final byte[] authKey = new byte[16];
         try {
-            StreamUtils.readFully(initialInput, authKey);
+            org.jboss.as.process.protocol.StreamUtils.readFully(initialInput, authKey);
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(1);
@@ -131,11 +141,13 @@ public final class DomainServerMain {
         for (;;) try {
             String hostName = StreamUtils.readUTFZBytes(initialInput);
             int port = StreamUtils.readInt(initialInput);
+            boolean managementSubsystemEndpoint = StreamUtils.readBoolean(initialInput);
+            byte[] asAuthKey = new byte[16];
+            StreamUtils.readFully(initialInput, asAuthKey);
 
             final CountDownLatch latch = new CountDownLatch(2);
             final UninstallListener connectionListener = new UninstallListener(latch, HostControllerConnectionService.SERVICE_NAME);
             final UninstallListener clientListener = new UninstallListener(latch, HostControllerServerClient.SERVICE_NAME);
-
 
             //Disconnect from the old HC
             final ServiceContainer container = containerFuture.get();
@@ -155,7 +167,7 @@ public final class DomainServerMain {
             connection.removeListener(connectionListener);
 
             //Connect to the new HC address
-            addCommunicationServices(container, name, processName, authKey, new InetSocketAddress(InetAddress.getByName(hostName), port));
+            addCommunicationServices(container, name, processName, asAuthKey, new InetSocketAddress(InetAddress.getByName(hostName), port), managementSubsystemEndpoint, true);
 
         } catch (InterruptedIOException e) {
             Thread.interrupted();
@@ -173,8 +185,22 @@ public final class DomainServerMain {
         throw new IllegalStateException(); // not reached
     }
 
-    private static void addCommunicationServices(final ServiceTarget serviceTarget, final String serverName, final String serverProcessName, final byte[] authKey, final InetSocketAddress managementSocket) {
-        HostControllerConnectionService.install(serviceTarget, managementSocket, serverName, authKey);
+    private static void addCommunicationServices(final ServiceTarget serviceTarget, final String serverName, final String serverProcessName, final byte[] authKey,
+            final InetSocketAddress managementSocket, final boolean managementSubsystemEndpoint, final boolean isReconnect) {
+
+
+        final ServiceName endpointName;
+        if (!managementSubsystemEndpoint) {
+            endpointName = ManagementRemotingServices.MANAGEMENT_ENDPOINT;
+            if (!isReconnect) {
+                ManagementRemotingServices.installRemotingEndpoint(serviceTarget, ManagementRemotingServices.MANAGEMENT_ENDPOINT,
+                        SecurityActions.getSystemProperty(ServerEnvironment.NODE_NAME), EndpointService.EndpointType.MANAGEMENT, null, null);
+            }
+        } else {
+            endpointName = RemotingServices.SUBSYSTEM_ENDPOINT;
+        }
+
+        HostControllerConnectionService.install(serviceTarget, endpointName, managementSocket, serverName, authKey);
 
         final HostControllerServerClient client = new HostControllerServerClient(serverName, serverProcessName);
         serviceTarget.addService(HostControllerServerClient.SERVICE_NAME, client)
@@ -185,24 +211,26 @@ public final class DomainServerMain {
     }
 
     public static final class HostControllerCommunicationActivator implements ServiceActivator, Serializable {
-        private static final long serialVersionUID = 6671220116719309952L;
+        private static final long serialVersionUID = -633960958861565102L;
         private final InetSocketAddress managementSocket;
         private final String serverName;
         private final String serverProcessName;
         private final byte[] authKey;
+        private final boolean managementSubsystemEndpoint;
 
-        public HostControllerCommunicationActivator(final InetSocketAddress managementSocket, final String serverName, final String serverProcessName, final byte[] authKey) {
+        public HostControllerCommunicationActivator(final InetSocketAddress managementSocket, final String serverName, final String serverProcessName, final byte[] authKey, final boolean managementSubsystemEndpoint) {
             this.managementSocket = managementSocket;
             this.serverName = serverName;
             this.serverProcessName = serverProcessName;
             this.authKey = authKey;
+            this.managementSubsystemEndpoint = managementSubsystemEndpoint;
         }
 
         @Override
         public void activate(final ServiceActivatorContext serviceActivatorContext) {
             final ServiceTarget serviceTarget = serviceActivatorContext.getServiceTarget();
             // TODO - Correct the authKey propagation.
-            addCommunicationServices(serviceTarget, serverName, serverProcessName, authKey, managementSocket);
+            addCommunicationServices(serviceTarget, serverName, serverProcessName, authKey, managementSocket, managementSubsystemEndpoint, false);
         }
     }
 

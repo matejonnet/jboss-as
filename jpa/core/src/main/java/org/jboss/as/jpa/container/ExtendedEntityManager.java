@@ -22,11 +22,13 @@
 
 package org.jboss.as.jpa.container;
 
-import org.jboss.as.jpa.transaction.TransactionUtil;
+import static org.jboss.as.jpa.JpaMessages.MESSAGES;
 
-import javax.ejb.EJBException;
-import javax.persistence.EntityManager;
 import java.io.Serializable;
+
+import javax.persistence.EntityManager;
+
+import org.jboss.as.jpa.transaction.TransactionUtil;
 
 /**
  * Extended lifetime scoped (XPC) entity manager will only be injected into SFSB beans.  At bean invocation time, they
@@ -85,15 +87,7 @@ public class ExtendedEntityManager extends AbstractEntityManager implements Seri
             EntityManager existing = TransactionUtil.getInstance().getTransactionScopedEntityManager(puScopedName);
             if (existing != null && existing != this) {
                 // should be enough to test if not the same object
-                throw new EJBException(
-                    "Found extended persistence context in SFSB invocation call stack but that cannot be used " +
-                        "because the transaction already has a transactional context associated with it.  " +
-                        "This can be avoided by changing application code, either eliminate the extended " +
-                        "persistence context or the transactional context.  See JPA spec 2.0 section 7.6.3.1.  " +
-                        "Scoped persistence unit name=" + puScopedName +
-                        ", persistence context already in transaction =" + existing +
-                        ", extended persistence context =" + this +
-                        ", extended persistence context underlying entity manager =" + underlyingEntityManager);
+                throw MESSAGES.cannotUseExtendedPersistenceTransaction(puScopedName, existing, this);
             } else if (existing == null) {
                 // JPA 7.9.1 join the transaction if not already done.
                 TransactionUtil.getInstance().registerExtendedUnderlyingWithTransaction(puScopedName, this, underlyingEntityManager);
@@ -119,8 +113,7 @@ public class ExtendedEntityManager extends AbstractEntityManager implements Seri
     @Override
     public void close() {
         // An extended entity manager will be closed when the EJB SFSB @remove method is invoked.
-        throw new IllegalStateException("Container managed entity manager can only be closed by the container " +
-            "(will happen when @remove method is invoked on containing SFSB)");
+        throw MESSAGES.cannotCloseContainerManagedEntityManager();
 
     }
 

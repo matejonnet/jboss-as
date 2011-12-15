@@ -20,7 +20,39 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */package org.jboss.as.server.controller.descriptions;
 
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.*;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ALLOWED;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ATTRIBUTES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CHILDREN;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.COMPOSITE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CORE_SERVICE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEPLOYMENT;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIPTION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DUMP_SERVICES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.EXTENSION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HEAD_COMMENT_ALLOWED;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INTERFACE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MIN_LENGTH;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MIN_OCCURS;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MODEL_DESCRIPTION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAME;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAMESPACES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NILLABLE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATIONS;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATION_NAME;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELEASE_CODENAME;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELEASE_VERSION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REPLY_PROPERTIES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUEST_PROPERTIES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUIRED;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SCHEMA_LOCATIONS;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SHUTDOWN;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOCKET_BINDING_GROUP;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.STEPS;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SYSTEM_PROPERTY;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TAIL_COMMENT_ALLOWED;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
 import static org.jboss.as.server.controller.descriptions.ServerDescriptionConstants.LAUNCH_TYPE;
 import static org.jboss.as.server.controller.descriptions.ServerDescriptionConstants.PROCESS_TYPE;
 import static org.jboss.as.server.controller.descriptions.ServerDescriptionConstants.PROFILE_NAME;
@@ -31,6 +63,7 @@ import java.util.ResourceBundle;
 
 import org.jboss.as.controller.descriptions.common.CommonDescriptions;
 import org.jboss.as.server.ServerEnvironment;
+import org.jboss.as.server.operations.ServerRestartRequiredHandler;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 
@@ -59,6 +92,18 @@ public class ServerRootDescription {
         root.get(ATTRIBUTES, NAME, REQUIRED).set(false);
         root.get(ATTRIBUTES, NAME, NILLABLE).set(true);
         root.get(ATTRIBUTES, NAME, MIN_LENGTH).set(1);
+
+        root.get(ATTRIBUTES, RELEASE_VERSION, DESCRIPTION).set(bundle.getString("server.release-version"));
+        root.get(ATTRIBUTES, RELEASE_VERSION, TYPE).set(ModelType.STRING);
+        root.get(ATTRIBUTES, RELEASE_VERSION, REQUIRED).set(true);
+        root.get(ATTRIBUTES, RELEASE_VERSION, NILLABLE).set(false);
+        root.get(ATTRIBUTES, RELEASE_VERSION, MIN_LENGTH).set(1);
+
+        root.get(ATTRIBUTES, RELEASE_CODENAME, DESCRIPTION).set(bundle.getString("server.release-codename"));
+        root.get(ATTRIBUTES, RELEASE_CODENAME, TYPE).set(ModelType.STRING);
+        root.get(ATTRIBUTES, RELEASE_CODENAME, REQUIRED).set(true);
+        root.get(ATTRIBUTES, RELEASE_CODENAME, NILLABLE).set(false);
+        root.get(ATTRIBUTES, RELEASE_CODENAME, MIN_LENGTH).set(1);
 
         root.get(ATTRIBUTES, PROFILE_NAME, DESCRIPTION).set(bundle.getString("server.profile"));
         root.get(ATTRIBUTES, PROFILE_NAME, TYPE).set(ModelType.STRING);
@@ -119,6 +164,11 @@ public class ServerRootDescription {
         root.get(CHILDREN, DEPLOYMENT, MIN_OCCURS).set(0);
         root.get(CHILDREN, DEPLOYMENT, MODEL_DESCRIPTION);
 
+        root.get(CHILDREN, SUBSYSTEM, DESCRIPTION).set(bundle.getString("server.subsystem"));
+        root.get(CHILDREN, SUBSYSTEM, MIN_OCCURS).set(0);
+        root.get(CHILDREN, SUBSYSTEM, MODEL_DESCRIPTION);
+
+
         return root;
     }
 
@@ -157,6 +207,17 @@ public class ServerRootDescription {
         node.get(DESCRIPTION).set(bundle.getString("dump-services"));
         node.get(REQUEST_PROPERTIES).setEmptyObject();
         node.get(REPLY_PROPERTIES, TYPE).set(ModelType.STRING);
+        return node;
+    }
+
+     public static ModelNode getRestartRequiredDescription(final Locale locale) {
+        ResourceBundle bundle = getResourceBundle(locale);
+
+        ModelNode node = new ModelNode();
+        node.get(OPERATION_NAME).set(ServerRestartRequiredHandler.OPERATION_NAME);
+        node.get(DESCRIPTION).set(bundle.getString("restart-required"));
+        node.get(REQUEST_PROPERTIES).setEmptyObject();
+        node.get(REPLY_PROPERTIES).setEmptyObject();
         return node;
     }
 

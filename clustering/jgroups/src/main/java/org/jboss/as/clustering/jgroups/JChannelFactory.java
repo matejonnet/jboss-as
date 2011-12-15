@@ -37,24 +37,23 @@ import javax.management.MBeanServer;
 import org.jboss.as.clustering.ManagedExecutorService;
 import org.jboss.as.clustering.ManagedScheduledExecutorService;
 import org.jboss.as.network.SocketBinding;
-import org.jboss.logging.Logger;
-import org.jgroups.Address;
 import org.jgroups.Channel;
-import org.jgroups.ChannelException;
 import org.jgroups.ChannelListener;
 import org.jgroups.Global;
+import org.jgroups.JChannel;
 import org.jgroups.conf.ProtocolStackConfigurator;
 import org.jgroups.jmx.JmxConfigurator;
 import org.jgroups.protocols.TP;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.SocketFactory;
 
+import static org.jboss.as.clustering.jgroups.JGroupsLogger.ROOT_LOGGER;
+
 /**
  * @author Paul Ferraro
  *
  */
 public class JChannelFactory implements ChannelFactory, ChannelListener, ProtocolStackConfigurator {
-    private static final Logger log = Logger.getLogger(JChannelFactory.class);
 
     private final ProtocolStackConfiguration configuration;
     private final Map<Channel, String> channels = Collections.synchronizedMap(new WeakHashMap<Channel, String>());
@@ -65,7 +64,7 @@ public class JChannelFactory implements ChannelFactory, ChannelListener, Protoco
 
     @Override
     public Channel createChannel(String id) throws Exception {
-        JChannel channel = new JChannel(this);
+        JChannel channel = new MuxChannel(this);
 
         // We need to synchronize on shared transport,
         // so we don't attempt to init a shared transport multiple times
@@ -78,10 +77,7 @@ public class JChannelFactory implements ChannelFactory, ChannelListener, Protoco
             this.init(transport);
         }
 
-        // Get hostname without triggering reverse dns lookup
-        String address = transport.getBindAddressAsInetAddress().toString();
-        int index = address.indexOf("/");
-        channel.setName(InetSocketAddress.createUnresolved((index > 0) ? address.substring(0, index) : address.substring(1), transport.getBindPort()).toString());
+        channel.setName(configuration.getEnvironment().getNodeName() + "/" + id);
 
         MBeanServer server = this.configuration.getMBeanServer();
         if (server != null) {
@@ -89,7 +85,7 @@ public class JChannelFactory implements ChannelFactory, ChannelListener, Protoco
                 this.channels.put(channel, id);
                 JmxConfigurator.registerChannel(channel, server, id);
             } catch (Exception e) {
-                log.warn(e.getMessage(), e);
+                ROOT_LOGGER.warn(e.getMessage(), e);
             }
             channel.addChannelListener(this);
         }
@@ -214,7 +210,7 @@ public class JChannelFactory implements ChannelFactory, ChannelListener, Protoco
                 properties.put(portProperty, String.valueOf(mcastSocketAddress.getPort()));
             }
         } catch (IllegalStateException e) {
-            log.tracef(e, "Could not set %s.%s and %s.%s, %s socket binding does not specify a multicast socket", config.getProtocolName(), addressProperty, config.getProtocolName(), portProperty, binding.getName());
+            ROOT_LOGGER.tracef(e, "Could not set %s.%s and %s.%s, %s socket binding does not specify a multicast socket", config.getProtocolName(), addressProperty, config.getProtocolName(), portProperty, binding.getName());
         }
     }
 
@@ -231,11 +227,11 @@ public class JChannelFactory implements ChannelFactory, ChannelListener, Protoco
     }
 
     private void setValue(Protocol protocol, String property, Object value) {
-        log.tracef("Setting %s.%s=%d", protocol.getName(), property, value);
+        ROOT_LOGGER.tracef("Setting %s.%s=%d", protocol.getName(), property, value);
         try {
             protocol.setValue(property, value);
         } catch (IllegalArgumentException e) {
-            log.tracef(e, "Failed to set non-existent %s.%s=%d", protocol.getName(), property, value);
+            ROOT_LOGGER.tracef(e, "Failed to set non-existent %s.%s=%d", protocol.getName(), property, value);
         }
     }
 
@@ -256,87 +252,8 @@ public class JChannelFactory implements ChannelFactory, ChannelListener, Protoco
             try {
                 JmxConfigurator.unregisterChannel((JChannel) channel, server, this.channels.remove(channel));
             } catch (Exception e) {
-                log.warn(e.getMessage(), e);
+                ROOT_LOGGER.warn(e.getMessage(), e);
             }
-        }
-    }
-
-    @Override
-    @Deprecated
-    public void channelShunned() {
-        // no-op
-    }
-
-    @Override
-    @Deprecated
-    public void channelReconnected(Address addr) {
-        // no-op
-    }
-
-    // Workaround for JGRP-1314
-    // Synchronize on shared transport during channel connect
-    public static class JChannel extends org.jgroups.JChannel {
-        JChannel(ProtocolStackConfigurator configurator) throws ChannelException {
-            super(configurator);
-        }
-
-        @Override
-        public void connect(final String clusterName, final boolean useFlushIfPresent) throws ChannelException {
-            ConnectTask connectTask = new ConnectTask() {
-                @Override
-                public void connect() throws ChannelException {
-                    JChannel.super.connect(clusterName, useFlushIfPresent);
-                }
-            };
-            this.connect(connectTask);
-        }
-
-        @Override
-        public void connect(final String clusterName) throws ChannelException {
-            ConnectTask connectTask = new ConnectTask() {
-                @Override
-                public void connect() throws ChannelException {
-                    JChannel.super.connect(clusterName);
-                }
-            };
-            this.connect(connectTask);
-        }
-
-        @Override
-        public void connect(final String clusterName, final Address target, final String stateId, final long timeout) throws ChannelException {
-            ConnectTask connectTask = new ConnectTask() {
-                @Override
-                public void connect() throws ChannelException {
-                    JChannel.super.connect(clusterName, target, stateId, timeout);
-                }
-            };
-            this.connect(connectTask);
-        }
-
-        @Override
-        public void connect(final String clusterName, final Address target, final String stateId, final long timeout, final boolean useFlushIfPresent) throws ChannelException {
-            ConnectTask connectTask = new ConnectTask() {
-                @Override
-                public void connect() throws ChannelException {
-                    JChannel.super.connect(clusterName, target, stateId, timeout, useFlushIfPresent);
-                }
-            };
-            this.connect(connectTask);
-        }
-
-        private void connect(ConnectTask connectTask) throws ChannelException {
-            TP transport = this.getProtocolStack().getTransport();
-            if (transport.isSingleton()) {
-                synchronized (transport) {
-                    connectTask.connect();
-                }
-            } else {
-                connectTask.connect();
-            }
-        }
-
-        private interface ConnectTask {
-            void connect() throws ChannelException;
         }
     }
 }

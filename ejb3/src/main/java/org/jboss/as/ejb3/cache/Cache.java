@@ -21,8 +21,9 @@
  */
 package org.jboss.as.ejb3.cache;
 
-import javax.ejb.NoSuchEJBException;
-import java.io.Serializable;
+import javax.transaction.TransactionManager;
+
+import org.jboss.ejb.client.SessionID;
 
 /**
  * Cache a stateful object and make sure any life cycle callbacks are
@@ -44,17 +45,16 @@ public interface Cache<T extends Identifiable> {
      *
      * @param key the identifier of the object
      */
-    void discard(Serializable key);
+    void discard(SessionID key);
 
     /**
      * Get the specified object from cache. This will mark
      * the object as being in use.
      *
      * @param key the identifier of the object
-     * @return the object
-     * @throws javax.ejb.NoSuchEJBException if the object does not exist
+     * @return the object, or null if it does not exist
      */
-    T get(Serializable key) throws NoSuchEJBException;
+    T get(SessionID key);
 
     /**
      * Peek at an object which might be in use.
@@ -77,7 +77,7 @@ public interface Cache<T extends Identifiable> {
      *
      * @param key the identifier of the object
      */
-    void remove(Serializable key);
+    void remove(final TransactionManager transactionManager, SessionID key);
 
     /**
      * Associate the cache with a stateful object factory.

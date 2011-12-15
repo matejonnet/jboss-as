@@ -22,11 +22,18 @@
 
 package org.jboss.as.ee.datasource;
 
+import static org.jboss.as.ee.EeMessages.MESSAGES;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
+import javax.annotation.sql.DataSourceDefinition;
+import javax.annotation.sql.DataSourceDefinitions;
+
 import org.jboss.as.ee.component.Attachments;
 import org.jboss.as.ee.component.BindingConfiguration;
-import org.jboss.as.ee.component.ClassConfigurator;
 import org.jboss.as.ee.component.EEApplicationClasses;
-import org.jboss.as.ee.component.EEModuleClassConfiguration;
 import org.jboss.as.ee.component.EEModuleClassDescription;
 import org.jboss.as.ee.component.EEModuleDescription;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
@@ -39,12 +46,6 @@ import org.jboss.jandex.AnnotationTarget;
 import org.jboss.jandex.AnnotationValue;
 import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.DotName;
-
-import javax.annotation.sql.DataSourceDefinition;
-import javax.annotation.sql.DataSourceDefinitions;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
 
 /**
  * Deployment processor responsible for processing {@link DataSourceDefinition} and {@link DataSourceDefinitions}
@@ -71,8 +72,7 @@ public class DataSourceDefinitionAnnotationParser implements DeploymentUnitProce
             for (AnnotationInstance annotation : datasourceDefinitions) {
                 final AnnotationTarget target = annotation.target();
                 if (target instanceof ClassInfo == false) {
-                    throw new DeploymentUnitProcessingException("@DataSourceDefinitions can only be applied " +
-                            "on class. " + target + " is not a class");
+                    throw MESSAGES.classOnlyAnnotation("@DataSourceDefinitions", target);
                 }
                 // get the nested @DataSourceDefinition out of the outer @DataSourceDefinitions
                 List<AnnotationInstance> datasources = this.getNestedDataSourceAnnotations(annotation);
@@ -90,8 +90,7 @@ public class DataSourceDefinitionAnnotationParser implements DeploymentUnitProce
             for (AnnotationInstance datasource : datasources) {
                 final AnnotationTarget target = datasource.target();
                 if (target instanceof ClassInfo == false) {
-                    throw new DeploymentUnitProcessingException("@DataSourceDefinition can only be applied " +
-                            "on class. " + target + " is not a class");
+                    throw MESSAGES.classOnlyAnnotation("@DataSourceDefinition", target);
                 }
                 // create binding configurations out of it
                 this.processDataSourceDefinition(eeModuleDescription, datasource, (ClassInfo) target, applicationClasses);
@@ -106,21 +105,16 @@ public class DataSourceDefinitionAnnotationParser implements DeploymentUnitProce
     private void processDataSourceDefinition(final EEModuleDescription eeModuleDescription, final AnnotationInstance datasourceDefinition, final ClassInfo targetClass, final EEApplicationClasses applicationClasses) throws DeploymentUnitProcessingException {
         // create BindingConfiguration out of the @DataSource annotation
         final BindingConfiguration bindingConfiguration = this.getBindingConfiguration(datasourceDefinition);
-        EEModuleClassDescription classDescription = applicationClasses.getOrAddClassByName(targetClass.name().toString());
+        EEModuleClassDescription classDescription = eeModuleDescription.addOrGetLocalClassDescription(targetClass.name().toString());
         // add the binding configuration via a class configurator
-        classDescription.getConfigurators().add(new ClassConfigurator() {
-            @Override
-            public void configure(DeploymentPhaseContext context, EEModuleClassDescription description, EEModuleClassConfiguration configuration) throws DeploymentUnitProcessingException {
-                configuration.getBindingConfigurations().add(bindingConfiguration);
-            }
-        });
+        classDescription.getBindingConfigurations().add(bindingConfiguration);
     }
 
     private BindingConfiguration getBindingConfiguration(final AnnotationInstance datasourceAnnotation) {
 
         final AnnotationValue nameValue = datasourceAnnotation.value("name");
         if (nameValue == null || nameValue.asString().isEmpty()) {
-            throw new IllegalArgumentException("@DataSourceDefinition annotations must provide a name.");
+            throw MESSAGES.annotationAttributeMissing("@DataSourceDefinition", "name");
         }
         String name = nameValue.asString();
         // if the name doesn't have a namespace then it defaults to java:comp/env
@@ -130,7 +124,7 @@ public class DataSourceDefinitionAnnotationParser implements DeploymentUnitProce
 
         final AnnotationValue classValue = datasourceAnnotation.value("className");
         if (classValue == null || classValue.asString().equals(Object.class.getName())) {
-            throw new IllegalArgumentException("@DataSourceDefinition annotations must provide a driver class name.");
+            throw MESSAGES.annotationAttributeMissing("@DataSourceDefinition", "className");
         }
 
         final String type = classValue.asString();

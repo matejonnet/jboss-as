@@ -23,11 +23,11 @@
 package org.jboss.as.ejb3.component.singleton;
 
 import org.jboss.as.ee.component.ComponentInstance;
-import org.jboss.as.ejb3.component.AbstractEJBInterceptor;
+import org.jboss.as.ejb3.component.interceptors.AbstractEJBInterceptor;
 import org.jboss.invocation.ImmediateInterceptorFactory;
 import org.jboss.invocation.InterceptorContext;
 import org.jboss.invocation.InterceptorFactory;
-
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * Responsible for associating the single component instance for a singleton bean during invocation.
  *
@@ -47,7 +47,7 @@ public class SingletonComponentInstanceAssociationInterceptor extends AbstractEJ
         // get the component instance
         ComponentInstance singletonComponentInstance = singletonComponent.getComponentInstance();
         if (singletonComponent == null) {
-            throw new Exception("Component instance isn't available for invocation: " + interceptorContext);
+            throw MESSAGES.componentInstanceNotAvailable(interceptorContext);
         }
         interceptorContext.putPrivateData(ComponentInstance.class, singletonComponentInstance);
         return interceptorContext.proceed();

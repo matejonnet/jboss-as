@@ -22,14 +22,17 @@
 
 package org.jboss.as.jpa.container;
 
-import org.jboss.as.jpa.spi.SFSBContextHandle;
-import org.jboss.as.server.deployment.AttachmentKey;
-import org.jboss.as.server.deployment.DeploymentUnit;
+import static org.jboss.as.jpa.JpaMessages.MESSAGES;
 
-import javax.persistence.EntityManager;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+
+import javax.persistence.EntityManager;
+
+import org.jboss.as.jpa.spi.SFSBContextHandle;
+import org.jboss.as.server.deployment.AttachmentKey;
+import org.jboss.as.server.deployment.DeploymentUnit;
 
 /**
  * For stateful session bean life cycle management and tracking XPC Inheritance.
@@ -98,11 +101,11 @@ public class SFSBXPCMap {
     public static void registerPersistenceContext(EntityManager xpc) {
 
         if (xpc == null) {
-            throw new RuntimeException("internal SFSBXPCMap.RegisterPersistenceContext error, null EntityManager passed in");
+            throw MESSAGES.nullParameter("SFSBXPCMap.RegisterPersistenceContext", "EntityManager");
         }
 
         if (!(xpc instanceof AbstractEntityManager)) {
-            throw new RuntimeException("internal error, XPC needs to be a AbstractEntityManager so that we can get metadata");
+            throw MESSAGES.parameterMustBeAbstractEntityManager("XPC");
         }
 
         List<EntityManager> store = deferToPostConstruct.get();
@@ -128,7 +131,7 @@ public class SFSBXPCMap {
      */
     public void register(SFSBContextHandle beanContextHandle, EntityManager entityManager) {
         if (!(entityManager instanceof AbstractEntityManager)) {
-            throw new RuntimeException("internal error, XPC needs to be a AbstractEntityManager so that we can get metadata");
+            throw MESSAGES.parameterMustBeAbstractEntityManager("XPC");
         }
         List<EntityManager> xpcList = contextToXPCMap.get(beanContextHandle);
         if (xpcList == null) {
@@ -140,8 +143,7 @@ public class SFSBXPCMap {
             // no other thread should put at the same time on the same beanContextHandle
             Object existingList = contextToXPCMap.put(beanContextHandle, xpcList);
             if (existingList != null) {
-                throw new RuntimeException("More than one thread is invoking stateful session bean '" +
-                    beanContextHandle.getBeanContextHandle() + "' at the same time.");
+                throw MESSAGES.multipleThreadsInvokingSfsb(beanContextHandle.getBeanContextHandle());
             }
         } else {
             // session bean was already registered, just add XPC to existing list.
@@ -155,8 +157,7 @@ public class SFSBXPCMap {
             sfsbList = new ArrayList<SFSBContextHandle>();
             Object existingList = XPCToContextMap.put(entityManager, sfsbList);
             if (existingList != null) {
-                throw new RuntimeException("More than one thread is using EntityManager instance '" +
-                    entityManager + "' at the same time.");
+                throw MESSAGES.multipleThreadsUsingEntityManager(entityManager);
             }
         }
         // XPC was already registered, just add SFSB to existing list.
@@ -194,16 +195,17 @@ public class SFSBXPCMap {
 
     /**
      * Get or create a SFSBXPCMap that is shared over the top level deployment
+     *
      * @param deploymentUnit
      * @return
      */
     public static SFSBXPCMap getXpcMap(final DeploymentUnit deploymentUnit) {
         final DeploymentUnit top = deploymentUnit.getParent() == null ? deploymentUnit : deploymentUnit.getParent();
         SFSBXPCMap sfsbMap = top.getAttachment(SFSBXPCMap.ATTACHMENT_KEY);
-        if(sfsbMap == null) {
+        if (sfsbMap == null) {
             synchronized (top) {
                 sfsbMap = top.getAttachment(SFSBXPCMap.ATTACHMENT_KEY);
-                if(sfsbMap == null) {
+                if (sfsbMap == null) {
                     top.putAttachment(SFSBXPCMap.ATTACHMENT_KEY, sfsbMap = new SFSBXPCMap());
                 }
             }

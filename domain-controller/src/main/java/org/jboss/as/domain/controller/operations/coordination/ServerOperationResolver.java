@@ -4,12 +4,9 @@
 package org.jboss.as.domain.controller.operations.coordination;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.AUTO_START;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CONTENT;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CRITERIA;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEPLOYMENT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.GROUP;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INCLUDES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INTERFACE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.JVM;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAME;
@@ -26,21 +23,28 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOC
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SYSTEM_PROPERTY;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.WRITE_ATTRIBUTE_OPERATION;
+import static org.jboss.as.domain.controller.operations.coordination.DomainServerUtils.getAllRunningServers;
+import static org.jboss.as.domain.controller.operations.coordination.DomainServerUtils.getRelatedElements;
+import static org.jboss.as.domain.controller.operations.coordination.DomainServerUtils.getServersForGroup;
+import static org.jboss.as.domain.controller.operations.coordination.DomainServerUtils.getServersForType;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import org.jboss.as.controller.PathAddress;
+import org.jboss.as.controller.ProxyController;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
+import org.jboss.as.controller.descriptions.common.InterfaceDescription;
+import org.jboss.as.controller.operations.common.ResolveExpressionHandler;
 import org.jboss.as.controller.operations.common.SystemPropertyAddHandler;
 import org.jboss.as.controller.operations.common.SystemPropertyRemoveHandler;
 import org.jboss.as.controller.operations.common.Util;
 import org.jboss.as.domain.controller.ServerIdentity;
+import org.jboss.as.domain.controller.operations.ResolveExpressionOnDomainHandler;
 import org.jboss.as.domain.controller.operations.deployment.DeploymentFullReplaceHandler;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
@@ -130,9 +134,11 @@ public class ServerOperationResolver {
     }
 
     private final String localHostName;
+    private final Map<String,ProxyController> serverProxies;
 
-    public ServerOperationResolver(final String localHostName) {
+    public ServerOperationResolver(final String localHostName, final Map<String,ProxyController> serverProxies) {
         this.localHostName = localHostName;
+        this.serverProxies = serverProxies;
     }
 
     public Map<Set<ServerIdentity>, ModelNode> getServerOperations(ModelNode operation, PathAddress address, ModelNode domain, ModelNode host) {
@@ -147,7 +153,7 @@ public class ServerOperationResolver {
             DomainKey domainKey = DomainKey.forName(address.getElement(0).getKey());
             switch (domainKey) {
                 case EXTENSION: {
-                    Set<ServerIdentity> allServers = getAllRunningServers(host);
+                    Set<ServerIdentity> allServers = getAllRunningServers(host, localHostName, serverProxies);
                     return Collections.singletonMap(allServers, operation);
                 }
                 case DEPLOYMENT: {
@@ -180,62 +186,6 @@ public class ServerOperationResolver {
         }
     }
 
-    private Set<ServerIdentity> getAllRunningServers(ModelNode hostModel) {
-        return getServersForGroup(null, hostModel);
-    }
-
-    private Set<ServerIdentity> getServersForGroup(String groupName, ModelNode hostModel) {
-        Set<ServerIdentity> result;
-        if (hostModel.hasDefined(SERVER_CONFIG)) {
-            result = new HashSet<ServerIdentity>();
-            for (Property prop : hostModel.get(SERVER_CONFIG).asPropertyList()) {
-                ModelNode server = prop.getValue();
-
-                String serverGroupName = server.require(GROUP).asString();
-                if (groupName != null && !groupName.equals(serverGroupName)) {
-                    continue;
-                }
-
-                if (server.hasDefined(AUTO_START) && !server.get(AUTO_START).asBoolean()) {
-                    continue;
-                }
-
-                ServerIdentity groupedServer = new ServerIdentity(localHostName, serverGroupName, prop.getName());
-                result.add(groupedServer);
-            }
-        }
-        else {
-            result = Collections.emptySet();
-        }
-        return result;
-    }
-
-    private Set<ServerIdentity> getServersForType(String type, String ref, ModelNode domainModel, ModelNode hostModel) {
-        Set<String> groups = getGroupsForType(type, ref, domainModel);
-        Set<ServerIdentity> allServers = new HashSet<ServerIdentity>();
-        for (String group : groups) {
-            allServers.addAll(getServersForGroup(group, hostModel));
-        }
-        return allServers;
-    }
-
-    private Set<String> getGroupsForType(String type, String ref, ModelNode domainModel) {
-        Set<String> groups;
-        if (domainModel.hasDefined(SERVER_GROUP)) {
-            groups = new HashSet<String>();
-            for (Property prop : domainModel.get(SERVER_GROUP).asPropertyList()) {
-                ModelNode serverGroup = prop.getValue();
-                if (ref.equals(serverGroup.get(type).asString())) {
-                    groups.add(prop.getName());
-                }
-            }
-        }
-        else {
-            groups = Collections.emptySet();
-        }
-        return groups;
-    }
-
     private Map<Set<ServerIdentity>, ModelNode> getServerProfileOperations(ModelNode operation, PathAddress address,
             ModelNode domain, ModelNode host) {
         if (address.size() == 1) {
@@ -245,7 +195,7 @@ public class ServerOperationResolver {
         Set<String> relatedProfiles = getRelatedElements(PROFILE, profileName, domain);
         Set<ServerIdentity> allServers = new HashSet<ServerIdentity>();
         for (String profile : relatedProfiles) {
-            allServers.addAll(getServersForType(PROFILE, profile, domain, host));
+            allServers.addAll(getServersForType(PROFILE, profile, domain, host, localHostName, serverProxies));
         }
         ModelNode serverOp = operation.clone();
         PathAddress serverAddress = address.subAddress(1);
@@ -260,12 +210,18 @@ public class ServerOperationResolver {
         if (forDomain && hostModel.hasDefined(INTERFACE) && hostModel.get(INTERFACE).keys().contains(pathName)) {
             // Host will take precedence; ignore the domain
             result = Collections.emptyMap();
-        } else if (ADD.equals(operation.get(OP).asString()) && ! operation.has(CRITERIA)) {
+        } else if (ADD.equals(operation.get(OP).asString()) && InterfaceDescription.isOperationDefined(operation)) {
             // don't create named interfaces
             result = Collections.emptyMap();
         } else if (hostModel.hasDefined(SERVER_CONFIG)) {
             Set<ServerIdentity> servers = new HashSet<ServerIdentity>();
             for (Property prop : hostModel.get(SERVER_CONFIG).asPropertyList()) {
+
+                String serverName = prop.getName();
+                if (serverProxies.get(serverName) == null) {
+                    continue;
+                }
+
                 ModelNode server = prop.getValue();
 
                 String serverGroupName = server.require(GROUP).asString();
@@ -275,11 +231,7 @@ public class ServerOperationResolver {
                     continue;
                 }
 
-                if (server.hasDefined(AUTO_START) && !server.get(AUTO_START).asBoolean()) {
-                    continue;
-                }
-
-                ServerIdentity groupedServer = new ServerIdentity(localHostName, serverGroupName, prop.getName());
+                ServerIdentity groupedServer = new ServerIdentity(localHostName, serverGroupName, serverName);
                 servers.add(groupedServer);
             }
 
@@ -293,8 +245,7 @@ public class ServerOperationResolver {
         return result;
     }
 
-    private Map<Set<ServerIdentity>, ModelNode> getServerPathOperations(ModelNode operation, PathAddress address,
-            ModelNode hostModel, boolean forDomain) {
+    private Map<Set<ServerIdentity>, ModelNode> getServerPathOperations(ModelNode operation, PathAddress address, ModelNode hostModel, boolean forDomain) {
         String pathName = address.getElement(0).getValue();
         Map<Set<ServerIdentity>, ModelNode> result;
         if (forDomain && hostModel.hasDefined(PATH) && hostModel.get(PATH).keys().contains(pathName)) {
@@ -307,6 +258,12 @@ public class ServerOperationResolver {
         else if (hostModel.hasDefined(SERVER_CONFIG)) {
             Set<ServerIdentity> servers = new HashSet<ServerIdentity>();
             for (Property prop : hostModel.get(SERVER_CONFIG).asPropertyList()) {
+
+                String serverName = prop.getName();
+                if (serverProxies.get(serverName) == null) {
+                    continue;
+                }
+
                 ModelNode server = prop.getValue();
 
                 String serverGroupName = server.require(GROUP).asString();
@@ -316,11 +273,7 @@ public class ServerOperationResolver {
                     continue;
                 }
 
-                if (server.hasDefined(AUTO_START) && !server.get(AUTO_START).asBoolean()) {
-                    continue;
-                }
-
-                ServerIdentity groupedServer = new ServerIdentity(localHostName, serverGroupName, prop.getName());
+                ServerIdentity groupedServer = new ServerIdentity(localHostName, serverGroupName, serverName);
                 servers.add(groupedServer);
             }
 
@@ -340,7 +293,7 @@ public class ServerOperationResolver {
         Set<String> relatedBindingGroups = getRelatedElements(SOCKET_BINDING_GROUP, bindingGroupName, domain);
         Set<ServerIdentity> result = new HashSet<ServerIdentity>();
         for (String bindingGroup : relatedBindingGroups) {
-            result.addAll(getServersForType(SOCKET_BINDING_GROUP,bindingGroup, domain, host));
+            result.addAll(getServersForType(SOCKET_BINDING_GROUP,bindingGroup, domain, host, localHostName, serverProxies));
         }
         for (Iterator<ServerIdentity> iter = result.iterator(); iter.hasNext();) {
             ServerIdentity gs = iter.next();
@@ -351,52 +304,6 @@ public class ServerOperationResolver {
         }
         ModelNode serverOp = operation.clone();
         return Collections.singletonMap(result, serverOp);
-    }
-
-    private Set<String> getRelatedElements(String containerType, String parent, ModelNode domainModel) {
-        Set<String> result = new HashSet<String>();
-        result.add(parent);
-        Set<String> checked = new HashSet<String>();
-        checked.add(parent);
-
-        // Ignore any peers the target element includes
-        ModelNode targetContainer = domainModel.get(containerType, parent);
-        if (targetContainer.hasDefined(INCLUDES)) {
-            for (ModelNode include : targetContainer.get(INCLUDES).asList()) {
-                checked.add(include.asString());
-            }
-        }
-
-        List<Property> allContainers = domainModel.get(containerType).asPropertyList();
-        while (checked.size() < allContainers.size()) {
-            for (Property prop : allContainers) {
-                String name = prop.getName();
-                if (!checked.contains(name)) {
-                    ModelNode container = prop.getValue();
-                    if (!container.hasDefined(INCLUDES)) {
-                        checked.add(name);
-                    }
-                    else {
-                        boolean allKnown = true;
-                        for (ModelNode include : container.get(INCLUDES).asList()) {
-                            String includeName = include.asString();
-                            if (result.contains(includeName)) {
-                                result.add(includeName);
-                                break;
-                            }
-                            else if (!checked.contains(includeName)) {
-                                allKnown = false;
-                                break;
-                            }
-                        }
-                        if (allKnown) {
-                            checked.add(name);
-                        }
-                    }
-                }
-            }
-        }
-        return result;
     }
 
     private Map<Set<ServerIdentity>, ModelNode> getServerGroupOperations(ModelNode operation, PathAddress address,
@@ -410,7 +317,7 @@ public class ServerOperationResolver {
             }
             else if (DEPLOYMENT.equals(type)) {
                 String groupName = address.getElement(0).getValue();
-                Set<ServerIdentity> servers = getServersForGroup(groupName, host);
+                Set<ServerIdentity> servers = getServersForGroup(groupName, host, localHostName, serverProxies);
                 ModelNode serverOp = operation.clone();
                 if (ADD.equals(serverOp.get(OP).asString())) {
                     // The op is missing the runtime-name and content values that the server will need
@@ -430,7 +337,7 @@ public class ServerOperationResolver {
             }
         } else if (REPLACE_DEPLOYMENT.equals(operation.require(OP).asString())) {
             String groupName = address.getElement(0).getValue();
-            Set<ServerIdentity> servers = getServersForGroup(groupName, host);
+            Set<ServerIdentity> servers = getServersForGroup(groupName, host, localHostName, serverProxies);
             ModelNode serverOp = operation.clone();
             serverOp.get(OP_ADDR).setEmptyList();
             // The op is missing the runtime-name and content values that the server will need
@@ -454,9 +361,15 @@ public class ServerOperationResolver {
             Set<String> groups = getServerGroupsForDeployment(propName, domain);
             Set<ServerIdentity> allServers = new HashSet<ServerIdentity>();
             for (String group : groups) {
-                allServers.addAll(getServersForGroup(group, host));
+                allServers.addAll(getServersForGroup(group, host, localHostName, serverProxies));
             }
-            return Collections.singletonMap(allServers, operation);
+            result = Collections.singletonMap(allServers, operation);
+        } else if (ResolveExpressionOnDomainHandler.OPERATION_NAME.equals(opName)) {
+            final ModelNode serverOp = operation.clone();
+            serverOp.get(OP).set(ResolveExpressionHandler.OPERATION_NAME);
+            serverOp.get(OP_ADDR).setEmptyList();
+            final Set<ServerIdentity> allServers = getAllRunningServers(host, localHostName, serverProxies);
+            result = Collections.singletonMap(allServers, serverOp);
         }
 
         if (result == null) {
@@ -484,14 +397,13 @@ public class ServerOperationResolver {
     }
 
     private boolean hasSystemProperty(ModelNode resource, String propName) {
-        boolean result = false;
         return resource.hasDefined(SYSTEM_PROPERTY) && resource.get(SYSTEM_PROPERTY).hasDefined(propName);
     }
 
     private Map<Set<ServerIdentity>, ModelNode> getServerHostOperations(ModelNode operation, PathAddress address,
             ModelNode domain, ModelNode host) {
         if (address.size() == 1) {
-            return Collections.emptyMap();
+            return resolveHostRootOperation(operation, domain, host);
         }
         else {
             HostKey hostKey = HostKey.forName(address.getElement(1).getKey());
@@ -522,6 +434,24 @@ public class ServerOperationResolver {
                     throw new IllegalStateException(String.format("Unexpected initial path key %s", address.getElement(0).getKey()));
             }
         }
+    }
+
+    private Map<Set<ServerIdentity>, ModelNode> resolveHostRootOperation(ModelNode operation, ModelNode domain, ModelNode host) {
+        Map<Set<ServerIdentity>, ModelNode> result = null;
+        String opName = operation.require(OP).asString();
+        if (ResolveExpressionOnDomainHandler.OPERATION_NAME.equals(opName)) {
+            final ModelNode serverOp = operation.clone();
+            serverOp.get(OP).set(ResolveExpressionHandler.OPERATION_NAME);
+            serverOp.get(OP_ADDR).setEmptyList();
+            final Set<ServerIdentity> allServers = getAllRunningServers(host, localHostName, serverProxies);
+            result = Collections.singletonMap(allServers, serverOp);
+        }
+
+        if (result == null) {
+            result = Collections.emptyMap();
+        }
+
+        return result;
     }
 
     /**
@@ -568,12 +498,17 @@ public class ServerOperationResolver {
             if (!overridden && host.hasDefined(SERVER_CONFIG)) {
                 servers = new HashSet<ServerIdentity>();
                 for (Property serverProp : host.get(SERVER_CONFIG).asPropertyList()) {
+
+                    String serverName = serverProp.getName();
+                    if (serverProxies.get(serverName) == null) {
+                        continue;
+                    }
+
                     ModelNode server = serverProp.getValue();
-                    if (!hasSystemProperty(server, propName)
-                            && (!server.hasDefined(AUTO_START) || server.get(AUTO_START).asBoolean())) {
+                    if (!hasSystemProperty(server, propName)) {
                         String groupName = server.require(GROUP).asString();
                         if (groups == null || groups.contains(groupName)) {
-                            servers.add(new ServerIdentity(localHostName, groupName, serverProp.getName()));
+                            servers.add(new ServerIdentity(localHostName, groupName, serverName));
                         }
                     }
                 }

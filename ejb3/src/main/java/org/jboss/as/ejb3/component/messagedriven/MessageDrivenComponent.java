@@ -21,29 +21,6 @@
  */
 package org.jboss.as.ejb3.component.messagedriven;
 
-import org.jboss.as.ee.component.BasicComponentInstance;
-import org.jboss.as.ejb3.component.EJBComponent;
-import org.jboss.as.ejb3.component.pool.PoolConfig;
-import org.jboss.as.ejb3.component.pool.PooledComponent;
-import org.jboss.as.ejb3.inflow.JBossMessageEndpointFactory;
-import org.jboss.as.ejb3.inflow.MessageEndpointService;
-import org.jboss.as.ejb3.timerservice.PooledTimedObjectInvokerImpl;
-import org.jboss.as.ejb3.timerservice.spi.TimedObjectInvoker;
-import org.jboss.as.naming.ManagedReference;
-import org.jboss.as.ejb3.context.spi.MessageDrivenBeanComponent;
-import org.jboss.as.ejb3.pool.Pool;
-import org.jboss.as.ejb3.pool.StatelessObjectFactory;
-import org.jboss.invocation.Interceptor;
-import org.jboss.invocation.InterceptorFactory;
-import org.jboss.invocation.InterceptorFactoryContext;
-import org.jboss.logging.Logger;
-import org.jboss.msc.service.StopContext;
-
-import javax.resource.ResourceException;
-import javax.resource.spi.ActivationSpec;
-import javax.resource.spi.ResourceAdapter;
-import javax.resource.spi.endpoint.MessageEndpointFactory;
-import javax.transaction.TransactionManager;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.HashMap;
@@ -51,15 +28,39 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import javax.resource.ResourceException;
+import javax.resource.spi.ActivationSpec;
+import javax.resource.spi.ResourceAdapter;
+import javax.resource.spi.endpoint.MessageEndpointFactory;
+import javax.transaction.TransactionManager;
+
+import org.jboss.as.ee.component.BasicComponentInstance;
+import org.jboss.as.ejb3.component.EJBComponent;
+import org.jboss.as.ejb3.component.pool.PoolConfig;
+import org.jboss.as.ejb3.component.pool.PooledComponent;
+import org.jboss.as.ejb3.inflow.JBossMessageEndpointFactory;
+import org.jboss.as.ejb3.inflow.MessageEndpointService;
+import org.jboss.as.ejb3.pool.Pool;
+import org.jboss.as.ejb3.pool.StatelessObjectFactory;
+import org.jboss.as.ejb3.timerservice.PooledTimedObjectInvokerImpl;
+import org.jboss.as.ejb3.timerservice.spi.TimedObjectInvoker;
+import org.jboss.as.naming.ManagedReference;
+import org.jboss.invocation.Interceptor;
+import org.jboss.invocation.InterceptorFactory;
+import org.jboss.invocation.InterceptorFactoryContext;
+import org.jboss.logging.Logger;
+import org.jboss.msc.service.StopContext;
+
 import static java.util.Collections.emptyMap;
 import static javax.ejb.TransactionAttributeType.REQUIRED;
 import static org.jboss.as.ejb3.component.MethodIntf.BEAN;
+import static org.jboss.as.ejb3.EjbLogger.ROOT_LOGGER;
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 
 /**
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
  */
-public class MessageDrivenComponent extends EJBComponent implements MessageDrivenBeanComponent, PooledComponent<MessageDrivenComponentInstance> {
-    private static final Logger logger = Logger.getLogger(MessageDrivenComponent.class);
+public class MessageDrivenComponent extends EJBComponent implements PooledComponent<MessageDrivenComponentInstance> {
 
     private final Pool<MessageDrivenComponentInstance> pool;
 
@@ -67,6 +68,7 @@ public class MessageDrivenComponent extends EJBComponent implements MessageDrive
     private final MessageEndpointFactory endpointFactory;
     private final Class<?> messageListenerInterface;
     private ResourceAdapter resourceAdapter;
+    private final TimedObjectInvoker timedObjectInvoker;
 
     /**
      * Construct a new instance.
@@ -84,16 +86,15 @@ public class MessageDrivenComponent extends EJBComponent implements MessageDrive
 
             @Override
             public void destroy(MessageDrivenComponentInstance obj) {
-                throw new RuntimeException("NYI");
-                //destroyInstance(obj);
+                obj.destroy();
             }
         };
         final PoolConfig poolConfig = ejbComponentCreateService.getPoolConfig();
         if (poolConfig == null) {
-            logger.debug("Pooling is disabled for MDB " + ejbComponentCreateService.getComponentName());
+            ROOT_LOGGER.debug("Pooling is disabled for MDB " + ejbComponentCreateService.getComponentName());
             this.pool = null;
         } else {
-            logger.debug("Using pool config " + poolConfig + " to create pool for MDB " + ejbComponentCreateService.getComponentName());
+            ROOT_LOGGER.debug("Using pool config " + poolConfig + " to create pool for MDB " + ejbComponentCreateService.getComponentName());
             this.pool = poolConfig.createPool(factory);
         }
 
@@ -129,6 +130,13 @@ public class MessageDrivenComponent extends EJBComponent implements MessageDrive
             }
         };
         this.endpointFactory = new JBossMessageEndpointFactory(getComponentClass().getClassLoader(), service);
+        final String deploymentName;
+        if(ejbComponentCreateService.getDistinctName() == null || ejbComponentCreateService.getDistinctName().length() == 0) {
+            deploymentName = ejbComponentCreateService.getApplicationName() + "." + ejbComponentCreateService.getModuleName();
+        } else {
+            deploymentName = ejbComponentCreateService.getApplicationName() + "." + ejbComponentCreateService.getModuleName() + "." + ejbComponentCreateService.getDistinctName();
+        }
+        this.timedObjectInvoker = new PooledTimedObjectInvokerImpl(this, deploymentName);
     }
 
     @Override
@@ -157,7 +165,7 @@ public class MessageDrivenComponent extends EJBComponent implements MessageDrive
     @Override
     public void start() {
         if (resourceAdapter == null)
-            throw new IllegalStateException("No resource-adapter has been specified for " + this);
+            throw MESSAGES.resourceAdapterNotSpecified(this);
 
         super.start();
 
@@ -177,6 +185,6 @@ public class MessageDrivenComponent extends EJBComponent implements MessageDrive
 
     @Override
     public TimedObjectInvoker getTimedObjectInvoker() {
-        return new PooledTimedObjectInvokerImpl(this);
+        return timedObjectInvoker;
     }
 }

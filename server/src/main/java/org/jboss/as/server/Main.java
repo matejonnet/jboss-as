@@ -35,6 +35,7 @@ import java.util.Properties;
 import org.jboss.as.process.CommandLineConstants;
 import org.jboss.logmanager.Level;
 import org.jboss.logmanager.Logger;
+import org.jboss.logmanager.handlers.ConsoleHandler;
 import org.jboss.logmanager.log4j.BridgeRepositorySelector;
 import org.jboss.modules.Module;
 import org.jboss.modules.ModuleIdentifier;
@@ -56,16 +57,24 @@ public final class Main {
     public static void usage() {
         System.out.println("Usage: ./standalone.sh [args...]\n");
         System.out.println("where args include:");
-        System.out.println("    -b=<value>                         Set system property jboss.bind.address.public to the given value");
+        System.out.println("    -b=<value>                         Set system property jboss.bind.address to the given value");
+        System.out.println("    -b <value>                         Set system property jboss.bind.address to the given value");
         System.out.println("    -b<interface>=<value>              Set system property jboss.bind.address.<interface> to the given value");
+        System.out.println("    -c=<config>                        Name of the server configuration file to use (default is \"standalone.xml\")");
+        System.out.println("    -c <config>                        Name of the server configuration file to use (default is \"standalone.xml\")");
         System.out.println("    -D<name>[=<value>]                 Set a system property");
         System.out.println("    -h                                 Display this message and exit");
         System.out.println("    --help                             Display this message and exit");
         System.out.println("    -P=<url>                           Load system properties from the given url");
+        System.out.println("    -P <url>                           Load system properties from the given url");
         System.out.println("    --properties=<url>                 Load system properties from the given url");
         System.out.println("    --server-config=<config>           Name of the server configuration file to use (default is \"standalone.xml\")");
-        System.out.println("    -V                                 Print version and exit\n");
-        System.out.println("    --version                          Print version and exit\n");
+        System.out.println("    -u=<value>                         Set system property jboss.default.multicast.address to the given value");
+        System.out.println("    -u <value>                         Set system property jboss.default.multicast.address to the given value");
+        System.out.println("    -V                                 Print version and exit");
+        System.out.println("    -v                                 Print version and exit");
+        System.out.println("    --version                          Print version and exit");
+        System.out.println();
     }
 
     private Main() {
@@ -79,6 +88,12 @@ public final class Main {
     public static void main(String[] args) {
         SecurityActions.setSystemProperty("log4j.defaultInitOverride", "true");
         new BridgeRepositorySelector().start();
+
+        // Make sure our original stdio is properly captured.
+        try {
+            Class.forName(ConsoleHandler.class.getName(), true, ConsoleHandler.class.getClassLoader());
+        } catch (Throwable ignored) {
+        }
 
         // Install JBoss Stdio to avoid any nasty crosstalk.
         StdioContext.install();
@@ -123,16 +138,23 @@ public final class Main {
         for (int i = 0; i < argsLength; i++) {
             final String arg = args[i];
             try {
-                if (CommandLineConstants.VERSION.equals(arg) || CommandLineConstants.SHORT_VERSION.equals(arg) || CommandLineConstants.OLD_VERSION.equals(arg)) {
+                if (CommandLineConstants.VERSION.equals(arg) || CommandLineConstants.SHORT_VERSION.equals(arg)
+                        || CommandLineConstants.OLD_VERSION.equals(arg) || CommandLineConstants.OLD_SHORT_VERSION.equals(arg)) {
                     System.out.println("JBoss Application Server " + getVersionString());
                     return null;
                 } else if (CommandLineConstants.HELP.equals(arg) || CommandLineConstants.SHORT_HELP.equals(arg) || CommandLineConstants.OLD_HELP.equals(arg)) {
                     usage();
                     return null;
-                } else if (CommandLineConstants.SERVER_CONFIG.equals(arg) || CommandLineConstants.OLD_SERVER_CONFIG.equals(arg)) {
+                } else if (CommandLineConstants.SERVER_CONFIG.equals(arg) || CommandLineConstants.SHORT_SERVER_CONFIG.equals(arg)
+                        || CommandLineConstants.OLD_SERVER_CONFIG.equals(arg)) {
                     serverConfig = args[++i];
                 } else if (arg.startsWith(CommandLineConstants.SERVER_CONFIG)) {
                     serverConfig = parseValue(arg, CommandLineConstants.SERVER_CONFIG);
+                    if (serverConfig == null) {
+                        return null;
+                    }
+                } else if (arg.startsWith(CommandLineConstants.SHORT_SERVER_CONFIG)) {
+                    serverConfig = parseValue(arg, CommandLineConstants.SHORT_SERVER_CONFIG);
                     if (serverConfig == null) {
                         return null;
                     }
@@ -162,7 +184,7 @@ public final class Main {
                     if (urlSpec == null || !processProperties(arg, urlSpec)) {
                         return null;
                     }
-                } else if (arg.startsWith("-D")) {
+                } else if (arg.startsWith(CommandLineConstants.SYS_PROP)) {
 
                     // set a system property
                     String name, value;
@@ -176,7 +198,7 @@ public final class Main {
                     }
                     systemProperties.setProperty(name, value);
                     SecurityActions.setSystemProperty(name, value);
-                } else if (arg.startsWith("-b")) {
+                } else if (arg.startsWith(CommandLineConstants.PUBLIC_BIND_ADDRESS)) {
 
                     int idx = arg.indexOf('=');
                     if (idx == arg.length() - 1) {
@@ -186,20 +208,31 @@ public final class Main {
                     }
                     String value = idx > -1 ? arg.substring(idx + 1) : args[++i];
 
-                    String logicalName = null;
+                    String propertyName = null;
                     if (idx < 0) {
                         // -b xxx -bmanagement xxx
-                        logicalName = arg.length() == 2 ? "public" : arg.substring(2);
+                        propertyName = arg.length() == 2 ? ServerEnvironment.JBOSS_BIND_ADDRESS : ServerEnvironment.JBOSS_BIND_ADDRESS_PREFIX + arg.substring(2);
                     } else if (idx == 2) {
                         // -b=xxx
-                        logicalName = "public";
+                        propertyName = ServerEnvironment.JBOSS_BIND_ADDRESS;
                     } else {
                         // -bmanagement=xxx
-                        logicalName = arg.substring(2, idx);
+                        propertyName =  ServerEnvironment.JBOSS_BIND_ADDRESS_PREFIX + arg.substring(2, idx);
                     }
-                    String propertyName = ServerEnvironment.JBOSS_BIND_ADDRESS_PREFIX + logicalName;
                     systemProperties.setProperty(propertyName, value);
                     SecurityActions.setSystemProperty(propertyName, value);
+                } else if (arg.startsWith(CommandLineConstants.DEFAULT_MULTICAST_ADDRESS)) {
+
+                    int idx = arg.indexOf('=');
+                    if (idx == arg.length() - 1) {
+                        System.err.printf("Argument expected for option %s\n", arg);
+                        usage();
+                        return null;
+                    }
+                    String value = idx > -1 ? arg.substring(idx + 1) : args[++i];
+
+                    systemProperties.setProperty(ServerEnvironment.JBOSS_DEFAULT_MULTICAST_ADDRESS, value);
+                    SecurityActions.setSystemProperty(ServerEnvironment.JBOSS_DEFAULT_MULTICAST_ADDRESS, value);
                 } else {
                     System.err.printf("Invalid option '%s'\n", arg);
                     usage();

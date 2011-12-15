@@ -21,16 +21,7 @@
  */
 package org.jboss.as.weld.ejb;
 
-import org.jboss.as.ee.component.ComponentView;
-import org.jboss.as.ee.component.ComponentViewInstance;
-import org.jboss.as.ejb3.component.stateful.StatefulSessionComponent;
-import org.jboss.as.server.CurrentServiceContainer;
-import org.jboss.msc.service.ServiceController;
-import org.jboss.msc.service.ServiceName;
-import org.jboss.weld.ejb.api.SessionObjectReference;
-import org.jboss.weld.ejb.spi.BusinessInterfaceDescriptor;
-
-import javax.ejb.NoSuchEJBException;
+import java.io.IOException;
 import java.io.Serializable;
 import java.util.Collections;
 import java.util.HashMap;
@@ -38,6 +29,17 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+
+import javax.ejb.NoSuchEJBException;
+
+import org.jboss.as.ee.component.ComponentView;
+import org.jboss.as.ejb3.component.stateful.StatefulSessionComponent;
+import org.jboss.as.server.CurrentServiceContainer;
+import org.jboss.ejb.client.SessionID;
+import org.jboss.msc.service.ServiceController;
+import org.jboss.msc.service.ServiceName;
+import org.jboss.weld.ejb.api.SessionObjectReference;
+import org.jboss.weld.ejb.spi.BusinessInterfaceDescriptor;
 
 /**
  * Implementation for SFSB's
@@ -47,15 +49,30 @@ import java.util.Set;
 public class StatefulSessionObjectReferenceImpl implements SessionObjectReference, Serializable {
 
     private volatile boolean removed = false;
-    private final Map<String, ServiceName> viewServices;
-    private transient StatefulSessionComponent ejbComponent;
-    private final ServiceName createServiceName;
-    private final Serializable id;
 
+    private final Map<String, ServiceName> viewServices;
+    private final ServiceName createServiceName;
+    private final SessionID id;
+    private final StatefulSessionComponent ejbComponent;
+
+    public StatefulSessionObjectReferenceImpl(final SessionID id, final ServiceName createServiceName, final Map<String, ServiceName> viewServices) {
+        this.id = id;
+        this.createServiceName = createServiceName;
+        this.viewServices = viewServices;
+        final ServiceController<?> controller = CurrentServiceContainer.getServiceContainer().getRequiredService(createServiceName);
+        ejbComponent = (StatefulSessionComponent) controller.getValue();
+    }
 
     public StatefulSessionObjectReferenceImpl(EjbDescriptorImpl<?> descriptor) {
-        createServiceName = descriptor.getCreateServiceName();
+        this.createServiceName = descriptor.getCreateServiceName();
+        final ServiceController<?> controller = CurrentServiceContainer.getServiceContainer().getRequiredService(createServiceName);
+        ejbComponent = (StatefulSessionComponent) controller.getValue();
+        this.id = ejbComponent.createSession();
+        this.viewServices = buildViews(descriptor);
 
+    }
+
+    private static Map<String, ServiceName> buildViews(final EjbDescriptorImpl<?> descriptor) {
         final Map<String, ServiceName> viewServices = new HashMap<String, ServiceName>();
         final Map<String, Class<?>> views = new HashMap<String, Class<?>>();
         for (BusinessInterfaceDescriptor<?> view : descriptor.getRemoteBusinessInterfaces()) {
@@ -94,9 +111,7 @@ public class StatefulSessionObjectReferenceImpl implements SessionObjectReferenc
                 }
             }
         }
-        id = getComponent().createSession();
-        this.viewServices = viewServices;
-
+        return viewServices;
     }
 
 
@@ -109,17 +124,20 @@ public class StatefulSessionObjectReferenceImpl implements SessionObjectReferenc
         if (viewServices.containsKey(businessInterfaceType.getName())) {
             final ServiceController<?> serviceController = CurrentServiceContainer.getServiceContainer().getRequiredService(viewServices.get(businessInterfaceType.getName()));
             final ComponentView view = (ComponentView) serviceController.getValue();
-            final ComponentViewInstance instance = view.createInstance(Collections.<Object, Object>singletonMap(StatefulSessionComponent.SESSION_ATTACH_KEY, id));
-            return (S) instance.createProxy();
+            return (S) view.createInstance(Collections.<Object, Object>singletonMap(SessionID.SESSION_ID_KEY, id)).getInstance();
         } else {
-            throw new IllegalStateException("View of type " + businessInterfaceType + " not found on bean " + getComponent());
+            throw new IllegalStateException("View of type " + businessInterfaceType + " not found on bean " + ejbComponent);
         }
+    }
+
+    protected Object writeReplace() throws IOException {
+        return new SerializedStatefulSessionObject(createServiceName, id, viewServices);
     }
 
     @Override
     public void remove() {
         if (!isRemoved()) {
-            getComponent().removeSession(id);
+            ejbComponent.removeSession(id);
             removed = true;
         }
     }
@@ -127,22 +145,10 @@ public class StatefulSessionObjectReferenceImpl implements SessionObjectReferenc
     @Override
     public boolean isRemoved() {
         if (!removed) {
-            try {
-                getComponent().getCache().get(id);
-                return false;
-            } catch (NoSuchEJBException e) {
-                return true;
-            }
+            return ejbComponent.getCache().get(id) == null;
         }
         return true;
     }
 
-    private StatefulSessionComponent getComponent() {
-        if (ejbComponent == null) {
-            final ServiceController<?> controller = CurrentServiceContainer.getServiceContainer().getRequiredService(createServiceName);
-            ejbComponent = (StatefulSessionComponent) controller.getValue();
-        }
-        return ejbComponent;
-    }
 
 }

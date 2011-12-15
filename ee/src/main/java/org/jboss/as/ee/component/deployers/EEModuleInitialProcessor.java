@@ -23,7 +23,6 @@
 package org.jboss.as.ee.component.deployers;
 
 import org.jboss.as.ee.component.Attachments;
-import org.jboss.as.ee.component.EEApplicationClasses;
 import org.jboss.as.ee.component.EEModuleDescription;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
@@ -37,8 +36,7 @@ public final class EEModuleInitialProcessor implements DeploymentUnitProcessor {
 
     public void deploy(final DeploymentPhaseContext phaseContext) throws DeploymentUnitProcessingException {
         final DeploymentUnit deploymentUnit = phaseContext.getDeploymentUnit();
-        final DeploymentUnit parent = deploymentUnit.getParent();
-        String deploymentUnitName = deploymentUnit.getName();
+        final String deploymentUnitName = deploymentUnit.getName();
         final String moduleName;
         if (deploymentUnitName.endsWith(".war") || deploymentUnitName.endsWith(".jar") || deploymentUnitName.endsWith(".ear") || deploymentUnitName.endsWith(".rar")) {
             moduleName = deploymentUnitName.substring(0, deploymentUnitName.length() - 4);
@@ -46,25 +44,15 @@ public final class EEModuleInitialProcessor implements DeploymentUnitProcessor {
             moduleName = deploymentUnitName;
         }
         final String appName;
-        if (parent == null) {
+        final String earApplicationName = deploymentUnit.getAttachment(Attachments.EAR_APPLICATION_NAME);
+        //the ear application name takes into account the name set in application.xml
+        //if this is non-null this is always the one we want to use
+        if(earApplicationName != null) {
+            appName = earApplicationName;
+        } else {
             appName = moduleName;
-        } else {
-            final String parentName = parent.getName();
-            if (parentName.endsWith(".ear")) {
-                appName = parentName.substring(0, parentName.length() - 4);
-            } else {
-                appName = parentName;
-            }
         }
-        deploymentUnit.putAttachment(Attachments.EE_MODULE_DESCRIPTION, new EEModuleDescription(appName, moduleName));
-        final EEApplicationClasses classes;
-        if(parent == null) {
-            classes = new EEApplicationClasses();
-        } else {
-            EEApplicationClasses parentClasses = parent.getAttachment(Attachments.EE_APPLICATION_CLASSES_DESCRIPTION);
-            classes = new EEApplicationClasses(parentClasses);
-        }
-        deploymentUnit.putAttachment(Attachments.EE_APPLICATION_CLASSES_DESCRIPTION, classes);
+        deploymentUnit.putAttachment(Attachments.EE_MODULE_DESCRIPTION, new EEModuleDescription(appName, moduleName, earApplicationName));
     }
 
     public void undeploy(final DeploymentUnit context) {

@@ -22,23 +22,40 @@
 package org.jboss.as.webservices.deployer;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ALLOW_RESOURCE_SERVICE_RESTART;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATION_HEADERS;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ROLLBACK_ON_RUNTIME_FAILURE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
 import static org.jboss.as.security.Constants.AUTHENTICATION;
+import static org.jboss.as.security.Constants.CLASSIC;
 import static org.jboss.as.security.Constants.CODE;
 import static org.jboss.as.security.Constants.FLAG;
+import static org.jboss.as.security.Constants.LOGIN_MODULES;
 import static org.jboss.as.security.Constants.MODULE_OPTIONS;
 import static org.jboss.as.security.Constants.SECURITY_DOMAIN;
 
+import javax.security.auth.callback.Callback;
+import javax.security.auth.callback.CallbackHandler;
+import javax.security.auth.callback.NameCallback;
+import javax.security.auth.callback.PasswordCallback;
+import javax.security.auth.callback.UnsupportedCallbackException;
+import javax.security.sasl.RealmCallback;
+import javax.security.sasl.RealmChoiceCallback;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URL;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.jboss.as.controller.client.ModelControllerClient;
+import org.jboss.as.controller.client.OperationBuilder;
 import org.jboss.as.controller.client.helpers.standalone.DeploymentAction;
 import org.jboss.as.controller.client.helpers.standalone.DeploymentPlan;
 import org.jboss.as.controller.client.helpers.standalone.DeploymentPlanBuilder;
@@ -59,17 +76,21 @@ public final class RemoteDeployer implements Deployer {
 
     private static final Logger LOGGER = Logger.getLogger(RemoteDeployer.class);
     private static final int PORT = 9999;
+    private static final String JBWS_DEPLOYER_AUTH_USER = "jbossws.deployer.authentication.username";
+    private static final String JBWS_DEPLOYER_AUTH_PWD = "jbossws.deployer.authentication.password";
     private final Map<URL, String> url2Id = new HashMap<URL, String>();
     private final InetAddress address = InetAddress.getByName("127.0.0.1");
 
+    private CallbackHandler callbackHandler;
     private ServerDeploymentManager deploymentManager;
 
     public RemoteDeployer() throws IOException {
-        deploymentManager = ServerDeploymentManager.Factory.create(address, PORT);
+        callbackHandler = getCallbackHandler();
+        deploymentManager = ServerDeploymentManager.Factory.create(address, PORT, callbackHandler);
     }
 
     @Override
-    public void deploy(final URL archiveURL) throws Exception {
+    public void deploy(URL archiveURL) throws Exception {
         final DeploymentPlanBuilder builder = deploymentManager.newDeploymentPlan().add(archiveURL).andDeploy();
         final DeploymentPlan plan = builder.build();
         final DeploymentAction deployAction = builder.getLastAction();
@@ -114,44 +135,62 @@ public final class RemoteDeployer implements Deployer {
 
     @Override
     public void addSecurityDomain(String name, Map<String, String> authenticationOptions) throws Exception {
-        ModelControllerClient client = ModelControllerClient.Factory.create(address, PORT);
-        ModelNode result = createSecurityDomain(client, name, authenticationOptions);
-        checkResult(result);
-    }
+        final ModelControllerClient client = ModelControllerClient.Factory.create(address, PORT, callbackHandler);
+        final List<ModelNode> updates = new ArrayList<ModelNode>();
 
-    @Override
-    public void removeSecurityDomain(String name) throws Exception {
-        ModelControllerClient client = ModelControllerClient.Factory.create(address, PORT);
-        ModelNode result = removeSecurityDomain(client, name);
-        checkResult(result);
-    }
-
-    private static ModelNode createSecurityDomain(ModelControllerClient client, String name, Map<String, String> authenticationOptions) throws IOException {
         ModelNode op = new ModelNode();
         op.get(OP).set(ADD);
         op.get(OP_ADDR).add(SUBSYSTEM, "security");
         op.get(OP_ADDR).add(SECURITY_DOMAIN, name);
-        ModelNode loginModule = op.get(AUTHENTICATION).add();
+        updates.add(op);
+
+        op = new ModelNode();
+        op.get(OP).set(ADD);
+        op.get(OP_ADDR).add(SUBSYSTEM, "security");
+        op.get(OP_ADDR).add(SECURITY_DOMAIN, name);
+        op.get(OP_ADDR).add(AUTHENTICATION, CLASSIC);
+
+        final ModelNode loginModule = op.get(LOGIN_MODULES).add();
         loginModule.get(CODE).set("UsersRoles");
         loginModule.get(FLAG).set("required");
-        ModelNode moduleOptions = loginModule.get(MODULE_OPTIONS);
+        op.get(OPERATION_HEADERS).get(ALLOW_RESOURCE_SERVICE_RESTART).set(true);
+        updates.add(op);
+
+        final ModelNode moduleOptions = loginModule.get(MODULE_OPTIONS);
         if (authenticationOptions != null) {
-            for (String k : authenticationOptions.keySet()) {
+            for (final String k : authenticationOptions.keySet()) {
                 moduleOptions.add(k, authenticationOptions.get(k));
             }
         }
-        return client.execute(op);
+
+        applyUpdates(updates, client);
     }
 
-    private static ModelNode removeSecurityDomain(ModelControllerClient client, String name) throws IOException {
-        ModelNode op = new ModelNode();
+    @Override
+    public void removeSecurityDomain(String name) throws Exception {
+        final ModelControllerClient client = ModelControllerClient.Factory.create(address, PORT, callbackHandler);
+        final ModelNode op = new ModelNode();
         op.get(OP).set(REMOVE);
         op.get(OP_ADDR).add(SUBSYSTEM, "security");
         op.get(OP_ADDR).add(SECURITY_DOMAIN, name);
-        return client.execute(op);
+        // Don't rollback when the AS detects the war needs the module
+        op.get(OPERATION_HEADERS, ROLLBACK_ON_RUNTIME_FAILURE).set(false);
+
+        applyUpdate(op, client);
     }
 
-    private static void checkResult(ModelNode result) throws Exception {
+    private static void applyUpdates(final List<ModelNode> updates, final ModelControllerClient client) throws Exception {
+        for (final ModelNode update : updates) {
+            applyUpdate(update, client);
+        }
+    }
+
+    private static void applyUpdate(final ModelNode update, final ModelControllerClient client) throws Exception {
+        final ModelNode result = client.execute(new OperationBuilder(update).build());
+        checkResult(result);
+    }
+
+    private static void checkResult(final ModelNode result) throws Exception {
         if (result.hasDefined("outcome") && "success".equals(result.get("outcome").asString())) {
             if (result.hasDefined("result")) {
                 LOGGER.info(result.get("result"));
@@ -161,5 +200,46 @@ public final class RemoteDeployer implements Deployer {
         } else {
             throw new Exception("Operation not successful; outcome = " + result.get("outcome"));
         }
+    }
+
+    private static CallbackHandler getCallbackHandler() {
+        final String username = getSystemProperty(JBWS_DEPLOYER_AUTH_USER, null);
+        if (username == null || ("${" + JBWS_DEPLOYER_AUTH_USER + "}").equals(username)) {
+           return null;
+        }
+        String pwd = getSystemProperty(JBWS_DEPLOYER_AUTH_PWD, null);
+        if (("${" + JBWS_DEPLOYER_AUTH_PWD + "}").equals(pwd)) {
+           pwd = null;
+        }
+        final String password = pwd;
+        return new CallbackHandler() {
+            public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
+                for (Callback current : callbacks) {
+                    if (current instanceof NameCallback) {
+                        NameCallback ncb = (NameCallback) current;
+                        ncb.setName(username);
+                    } else if (current instanceof PasswordCallback) {
+                        PasswordCallback pcb = (PasswordCallback) current;
+                        pcb.setPassword(password.toCharArray());
+                    } else if (current instanceof RealmCallback) {
+                        RealmCallback rcb = (RealmCallback) current;
+                        rcb.setText(rcb.getDefaultText());
+                    } else if (current instanceof RealmChoiceCallback) {
+                        // Ignored but not rejected.
+                    } else {
+                        throw new UnsupportedCallbackException(current);
+                    }
+                }
+            }
+        };
+    }
+
+    private static String getSystemProperty(final String name, final String defaultValue) {
+        PrivilegedAction<String> action = new PrivilegedAction<String>() {
+            public String run() {
+                return System.getProperty(name, defaultValue);
+            }
+        };
+        return AccessController.doPrivileged(action);
     }
 }

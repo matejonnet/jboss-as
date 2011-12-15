@@ -23,6 +23,7 @@
 package org.jboss.as.messaging.jms;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
+import static org.jboss.as.messaging.MessagingMessages.MESSAGES;
 
 import java.util.Locale;
 
@@ -32,7 +33,9 @@ import org.hornetq.core.server.HornetQServer;
 import org.jboss.as.controller.AbstractRuntimeOnlyHandler;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
+import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.operations.validation.ParametersValidator;
 import org.jboss.as.controller.operations.validation.StringLengthValidator;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
@@ -41,6 +44,7 @@ import org.jboss.as.messaging.MessagingServices;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 import org.jboss.msc.service.ServiceController;
+import org.jboss.msc.service.ServiceName;
 
 /**
  * Handles operations and attribute reads supported by a HornetQ {@link org.hornetq.api.jms.management.JMSServerControl}.
@@ -130,18 +134,18 @@ public class JMSServerControlHandler extends AbstractRuntimeOnlyHandler {
                 context.getResult().set(html);
             } else {
                 // Bug
-                throw new IllegalStateException(String.format("Support for operation %s was not properly implemented", operationName));
+                throw MESSAGES.unsupportedOperation(operationName);
             }
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            context.getFailureDescription().set(e.toString());
+            context.getFailureDescription().set(e.getLocalizedMessage());
         }
 
         context.completeStep();
     }
 
-    public void register(final ManagementResourceRegistration registry) {
+    public void registerOperations(final ManagementResourceRegistration registry) {
 
         registry.registerOperationHandler(LIST_CONNECTIONS_AS_JSON, this, new DescriptionProvider() {
             @Override
@@ -212,7 +216,8 @@ public class JMSServerControlHandler extends AbstractRuntimeOnlyHandler {
     }
 
     private JMSServerControl getServerControl(final OperationContext context, final ModelNode operation) {
-        ServiceController<?> hqService = context.getServiceRegistry(false).getService(MessagingServices.JBOSS_MESSAGING);
+        final ServiceName hqServiceName = MessagingServices.getHornetQServiceName(PathAddress.pathAddress(operation.get(ModelDescriptionConstants.OP_ADDR)));
+        ServiceController<?> hqService = context.getServiceRegistry(false).getService(hqServiceName);
         HornetQServer hqServer = HornetQServer.class.cast(hqService.getValue());
         return JMSServerControl.class.cast(hqServer.getManagementService().getResource(ResourceNames.JMS_SERVER));
     }

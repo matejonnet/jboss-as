@@ -27,11 +27,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.jboss.as.controller.AttributeDefinition;
-import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.ReloadRequiredWriteAttributeHandler;
 import org.jboss.as.controller.registry.AttributeAccess;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
-import org.jboss.as.server.operations.ServerWriteAttributeOperationHandler;
 import org.jboss.dmr.ModelNode;
 
 /**
@@ -39,15 +38,12 @@ import org.jboss.dmr.ModelNode;
  *
  * @author Brian Stansberry (c) 2011 Red Hat Inc.
  */
-public class DivertConfigurationWriteHandler extends ServerWriteAttributeOperationHandler {
+public class DivertConfigurationWriteHandler extends ReloadRequiredWriteAttributeHandler {
 
     public static final DivertConfigurationWriteHandler INSTANCE = new DivertConfigurationWriteHandler();
 
-    private final Map<String, AttributeDefinition> attributes = new HashMap<String, AttributeDefinition>();
     private DivertConfigurationWriteHandler() {
-        for (AttributeDefinition attr : CommonAttributes.DIVERT_ATTRIBUTES) {
-            attributes.put(attr.getName(), attr);
-        }
+        super(CommonAttributes.DIVERT_ATTRIBUTES);
     }
 
     public void registerAttributes(final ManagementResourceRegistration registry) {
@@ -55,24 +51,6 @@ public class DivertConfigurationWriteHandler extends ServerWriteAttributeOperati
         for (AttributeDefinition attr : CommonAttributes.DIVERT_ATTRIBUTES) {
             registry.registerReadWriteAttribute(attr.getName(), null, this, flags);
         }
-    }
-
-    @Override
-    protected void validateValue(String name, ModelNode value) throws OperationFailedException {
-        AttributeDefinition attr = attributes.get(name);
-        attr.getValidator().validateParameter(name, value);
-    }
-
-    @Override
-    protected void validateResolvedValue(String name, ModelNode value) throws OperationFailedException {
-        // no-op, as we are not going to apply this value until the server is reloaded, so allow the
-        // any system property to be set between now and then
-    }
-
-    @Override
-    protected boolean applyUpdateToRuntime(OperationContext context, ModelNode operation, String attributeName,
-                                           ModelNode newValue, ModelNode currentValue) throws OperationFailedException {
-        return true;
     }
 
 }

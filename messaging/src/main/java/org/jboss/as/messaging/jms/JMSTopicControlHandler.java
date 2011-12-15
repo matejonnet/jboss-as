@@ -23,6 +23,7 @@
 package org.jboss.as.messaging.jms;
 
 import static org.jboss.as.messaging.CommonAttributes.*;
+import static org.jboss.as.messaging.MessagingMessages.MESSAGES;
 
 import java.util.EnumSet;
 import java.util.Locale;
@@ -45,8 +46,8 @@ import org.jboss.as.messaging.MessagingDescriptions;
 import org.jboss.as.messaging.MessagingServices;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
-import org.jboss.dmr.Property;
 import org.jboss.msc.service.ServiceController;
+import org.jboss.msc.service.ServiceName;
 
 /**
  * Handler for runtime operations that invoke on a HornetQ {@link org.hornetq.api.jms.management.TopicControl}.
@@ -71,7 +72,7 @@ public class JMSTopicControlHandler extends AbstractRuntimeOnlyHandler {
     public static final String DROP_ALL_SUBSCRIPTIONS = "drop-all-subscriptions";
     public static final String REMOVE_MESSAGES = "remove-messages";
 
-    private static final String TOPIC = "topic";
+    private static final String TOPIC = "jms-topic";
 
     private final ParametersValidator listMessagesForSubscriptionValidator = new ParametersValidator();
     private final ParametersValidator countMessagesForSubscriptionValidator = new ParametersValidator();
@@ -186,9 +187,11 @@ public class JMSTopicControlHandler extends AbstractRuntimeOnlyHandler {
     @Override
     protected void executeRuntimeStep(OperationContext context, ModelNode operation) throws OperationFailedException {
 
+        final ServiceName hqServiceName = MessagingServices.getHornetQServiceName(PathAddress.pathAddress(operation.get(ModelDescriptionConstants.OP_ADDR)));
+
         final String operationName = operation.require(ModelDescriptionConstants.OP).asString();
         final String topicName = PathAddress.pathAddress(operation.require(ModelDescriptionConstants.OP_ADDR)).getLastElement().getValue();
-        ServiceController<?> hqService = context.getServiceRegistry(false).getService(MessagingServices.JBOSS_MESSAGING);
+        ServiceController<?> hqService = context.getServiceRegistry(false).getService(hqServiceName);
         HornetQServer hqServer = HornetQServer.class.cast(hqService.getValue());
         TopicControl control = TopicControl.class.cast(hqServer.getManagementService().getResource(ResourceNames.JMS_TOPIC + topicName));
 
@@ -240,7 +243,7 @@ public class JMSTopicControlHandler extends AbstractRuntimeOnlyHandler {
                 context.getResult().set(control.removeMessages(filter));
             } else {
                 // Bug
-                throw new IllegalStateException(String.format("Support for operation %s was not properly implemented", operationName));
+                throw MESSAGES.unsupportedOperation(operationName);
             }
         } catch (RuntimeException e) {
             throw e;

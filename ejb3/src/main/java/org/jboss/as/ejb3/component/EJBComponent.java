@@ -23,15 +23,18 @@ package org.jboss.as.ejb3.component;
 
 import org.jboss.as.ee.component.BasicComponent;
 import org.jboss.as.ee.component.ComponentView;
-import org.jboss.as.ee.component.ComponentViewInstance;
 import org.jboss.as.ejb3.context.CurrentInvocationContext;
-import org.jboss.as.ejb3.context.spi.InvocationContext;
+import org.jboss.as.ejb3.remote.EJBRemoteTransactionsRepository;
 import org.jboss.as.ejb3.security.EJBSecurityMetaData;
 import org.jboss.as.ejb3.timerservice.spi.TimedObjectInvoker;
 import org.jboss.as.ejb3.tx.ApplicationExceptionDetails;
+import org.jboss.as.naming.ManagedReference;
 import org.jboss.as.naming.context.NamespaceContextSelector;
 import org.jboss.as.security.service.SimpleSecurityManager;
 import org.jboss.as.server.CurrentServiceContainer;
+import org.jboss.ejb.client.EJBClient;
+import org.jboss.ejb.client.EJBHomeLocator;
+import org.jboss.invocation.InterceptorContext;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.proxy.MethodIdentifier;
 import org.jboss.logging.Logger;
@@ -56,10 +59,13 @@ import java.security.Principal;
 import java.util.Collections;
 import java.util.Map;
 
+import static org.jboss.as.ejb3.EjbLogger.ROOT_LOGGER;
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
+
 /**
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
  */
-public abstract class EJBComponent extends BasicComponent implements org.jboss.as.ejb3.context.spi.EJBComponent {
+public abstract class EJBComponent extends BasicComponent {
     private static final Logger log = Logger.getLogger(EJBComponent.class);
 
     private static final ApplicationExceptionDetails APPLICATION_EXCEPTION = new ApplicationExceptionDetails("java.lang.Exception", true, false);
@@ -71,10 +77,19 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.a
     private final Map<Class<?>, ApplicationExceptionDetails> applicationExceptions;
     private final EJBSecurityMetaData securityMetaData;
     private final Map<String, ServiceName> viewServices;
+    private final ServiceName ejbLocalHome;
+    private final ServiceName ejbHome;
+    private final ServiceName ejbObject;
+    private final ServiceName ejbLocalObject;
+
     private final TimerService timerService;
     protected final Map<Method, InterceptorFactory> timeoutInterceptors;
     private final Method timeoutMethod;
-
+    private final String applicationName;
+    private final String earApplicationName;
+    private final String moduleName;
+    private final String distinctName;
+    private final EJBRemoteTransactionsRepository ejbRemoteTransactionsRepository;
 
 
     /**
@@ -86,7 +101,7 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.a
         super(ejbComponentCreateService);
 
 
-        this.applicationExceptions = Collections.unmodifiableMap(ejbComponentCreateService.getEjbJarConfiguration().getApplicationExceptions());
+        this.applicationExceptions = Collections.unmodifiableMap(ejbComponentCreateService.getApplicationExceptions().getApplicationExceptions());
 
         this.utilities = ejbComponentCreateService.getEJBUtilities();
 
@@ -104,19 +119,35 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.a
         this.timerService = ejbComponentCreateService.getTimerService();
         this.timeoutInterceptors = ejbComponentCreateService.getTimeoutInterceptors();
         this.timeoutMethod = ejbComponentCreateService.getTimeoutMethod();
+        this.ejbLocalHome = ejbComponentCreateService.getEjbLocalHome();
+        this.ejbHome = ejbComponentCreateService.getEjbHome();
+        this.applicationName = ejbComponentCreateService.getApplicationName();
+        this.earApplicationName = ejbComponentCreateService.getEarApplicationName();
+        this.distinctName = ejbComponentCreateService.getDistinctName();
+        this.moduleName = ejbComponentCreateService.getModuleName();
+        this.ejbObject = ejbComponentCreateService.getEjbObject();
+        this.ejbLocalObject = ejbComponentCreateService.getEjbLocalObject();
+
+
+        this.ejbRemoteTransactionsRepository = ejbComponentCreateService.getEJBRemoteTransactionsRepository();
     }
 
     protected <T> T createViewInstanceProxy(final Class<T> viewInterface, final Map<Object, Object> contextData) {
         if (viewInterface == null)
             throw new IllegalArgumentException("View interface is null");
         if (viewServices.containsKey(viewInterface.getName())) {
-            final ServiceController<?> serviceController = CurrentServiceContainer.getServiceContainer().getRequiredService(viewServices.get(viewInterface.getName()));
-            final ComponentView view = (ComponentView) serviceController.getValue();
-            final ComponentViewInstance instance = view.createInstance(contextData);
-            return viewInterface.cast(instance.createProxy());
+            final ServiceName serviceName = viewServices.get(viewInterface.getName());
+            return createViewInstanceProxy(viewInterface, contextData, serviceName);
         } else {
             throw new IllegalStateException("View of type " + viewInterface + " not found on bean " + this);
         }
+    }
+
+    protected <T> T createViewInstanceProxy(final Class<T> viewInterface, final Map<Object, Object> contextData, final ServiceName serviceName) {
+        final ServiceController<?> serviceController = CurrentServiceContainer.getServiceContainer().getRequiredService(serviceName);
+        final ComponentView view = (ComponentView) serviceController.getValue();
+        final ManagedReference instance = view.createInstance(contextData);
+        return viewInterface.cast(instance.getInstance());
     }
 
     public ApplicationExceptionDetails getApplicationException(Class<?> exceptionClass, Method invokedMethod) {
@@ -164,41 +195,68 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.a
     }
 
     protected TransactionAttributeType getCurrentTransactionAttribute() {
-        final InvocationContext currentInvocationContext = CurrentInvocationContext.get();
-        if (currentInvocationContext == null) {
-            return null;
+
+        final InterceptorContext invocation = CurrentInvocationContext.get();
+        //for timer invocations there is no view, so the methodInf is attached directly
+        //to the context. Otherwise we retrive it from the invoked view
+        MethodIntf methodIntf = invocation.getPrivateData(MethodIntf.class);
+        if (methodIntf == null) {
+            final ComponentView componentView = invocation.getPrivateData(ComponentView.class);
+            if (componentView != null) {
+                methodIntf = componentView.getPrivateData(MethodIntf.class);
+            } else {
+                methodIntf = MethodIntf.BEAN;
+            }
         }
-        final Method invokedMethod = currentInvocationContext.getMethod();
-        // if method is null, then it's a lifecycle invocation
-        if (invokedMethod == null) {
-            return null;
-        }
-        // get the tx attribute of the invoked method
-        return this.getTransactionAttributeType(invokedMethod);
+
+        return getTransactionAttributeType(methodIntf, invocation.getMethod());
     }
 
-    @Override
     public EJBHome getEJBHome() throws IllegalStateException {
-        throw new RuntimeException("NYI: org.jboss.as.ejb3.component.EJBComponent.getEJBHome");
+        if (ejbHome == null) {
+            throw MESSAGES.beanHomeInterfaceIsNull(getComponentName());
+        }
+        final ServiceController<?> serviceController = CurrentServiceContainer.getServiceContainer().getRequiredService(ejbHome);
+        final ComponentView view = (ComponentView) serviceController.getValue();
+        final String locatorAppName = earApplicationName == null ? "" : earApplicationName;
+        return EJBClient.createProxy(new EJBHomeLocator<EJBHome>((Class<EJBHome>) view.getViewClass(), locatorAppName, moduleName, getComponentName(), distinctName));
     }
 
-    @Override
+    public Class<?> getEjbObjectType() {
+        if(ejbObject == null) {
+            return null;
+        }
+        final ServiceController<?> serviceController = CurrentServiceContainer.getServiceContainer().getRequiredService(ejbObject);
+        final ComponentView view = (ComponentView) serviceController.getValue();
+        return view.getViewClass();
+    }
+
+    public Class<?> getEjbLocalObjectType() {
+        if(ejbLocalObject == null) {
+            return null;
+        }
+        final ServiceController<?> serviceController = CurrentServiceContainer.getServiceContainer().getRequiredService(ejbLocalObject);
+        final ComponentView view = (ComponentView) serviceController.getValue();
+        return view.getViewClass();
+    }
+
     public EJBLocalHome getEJBLocalHome() throws IllegalStateException {
-        throw new RuntimeException("NYI: org.jboss.as.ejb3.component.EJBComponent.getEJBLocalHome");
+        if (ejbLocalHome == null) {
+            throw MESSAGES.beanLocalHomeInterfaceIsNull(getComponentName());
+        }
+        return createViewInstanceProxy(EJBLocalHome.class, Collections.emptyMap(), ejbLocalHome);
     }
 
-    @Override
     public boolean getRollbackOnly() throws IllegalStateException {
         if (isBeanManagedTransaction()) {
-            throw new IllegalStateException("EJB 3.1 FR 13.6.1 Only beans with container-managed transaction demarcation " +
-                    "can use getRollbackOnly.");
+            throw MESSAGES.failToCallgetRollbackOnly();
         }
         try {
             TransactionManager tm = this.getTransactionManager();
 
             // The getRollbackOnly method should be used only in the context of a transaction.
             if (tm.getTransaction() == null) {
-                throw new IllegalStateException("getRollbackOnly() not allowed without a transaction.");
+                throw MESSAGES.failToCallgetRollbackOnlyOnNoneTransaction();
             }
 
             // EJBTHREE-805, consider an asynchronous rollback due to timeout
@@ -206,19 +264,19 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.a
 
             int status = tm.getStatus();
             if (log.isTraceEnabled()) {
-                log.trace("Current transaction status is " + status);
+                ROOT_LOGGER.trace("Current transaction status is " + status);
             }
             switch (status) {
                 case Status.STATUS_COMMITTED:
                 case Status.STATUS_ROLLEDBACK:
-                    throw new IllegalStateException("getRollbackOnly() not allowed after transaction is completed (EJBTHREE-1445)");
+                    throw MESSAGES.failToCallgetRollbackOnlyAfterTxcompleted();
                 case Status.STATUS_MARKED_ROLLBACK:
                 case Status.STATUS_ROLLING_BACK:
                     return true;
             }
             return false;
         } catch (SystemException se) {
-            log.warn("failed to get tx manager status; ignoring", se);
+            ROOT_LOGGER.getTxManagerStatusFailed(se);
             return true;
         }
     }
@@ -227,18 +285,16 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.a
         return utilities.getSecurityManager();
     }
 
-    @Override
     public TimerService getTimerService() throws IllegalStateException {
         return timerService;
     }
 
-    @Deprecated
-    public TransactionAttributeType getTransactionAttributeType(Method method) {
-        return getTransactionAttributeType(MethodIntf.BEAN, method);
-    }
-
-    public TransactionAttributeType getTransactionAttributeType(MethodIntf methodIntf, Method method) {
+    public TransactionAttributeType getTransactionAttributeType(final MethodIntf methodIntf, final Method method) {
         TransactionAttributeType txAttr = txAttrs.get(new MethodTransactionAttributeKey(methodIntf, MethodIdentifier.getIdentifierForMethod(method)));
+        //fall back to type bean if not found
+        if(txAttr == null && methodIntf != MethodIntf.BEAN) {
+            txAttr = txAttrs.get(new MethodTransactionAttributeKey(MethodIntf.BEAN, MethodIdentifier.getIdentifierForMethod(method)));
+        }
         if (txAttr == null)
             return TransactionAttributeType.REQUIRED;
         return txAttr;
@@ -256,10 +312,9 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.a
         return -1; // un-configured
     }
 
-    @Override
     public UserTransaction getUserTransaction() throws IllegalStateException {
         if (!isBeanManagedTransaction())
-            throw new IllegalStateException("EJB 3.1 FR 4.3.3 & 5.4.5 Only beans with bean-managed transaction demarcation can use this method.");
+            throw MESSAGES.failToCallIsBeanManagedTransaction();
         return utilities.getUserTransaction();
     }
 
@@ -268,23 +323,16 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.a
     }
 
     public boolean isCallerInRole(final String roleName) throws IllegalStateException {
-        return utilities.getSecurityManager().isCallerInRole(roleName);
+        return utilities.getSecurityManager().isCallerInRole(securityMetaData.getSecurityRoles(), roleName);
     }
 
-    @Deprecated
-    @Override
-    public boolean isCallerInRole(final Principal callerPrincipal, final String roleName) throws IllegalStateException {
-        return isCallerInRole(roleName);
-    }
-
-    @Override
     public Object lookup(String name) throws IllegalArgumentException {
         if (name == null) {
-            throw new IllegalArgumentException("jndi name cannot be null during lookup");
+            throw MESSAGES.jndiNameCannotBeNull();
         }
         final NamespaceContextSelector namespaceContextSelector = NamespaceContextSelector.getCurrentSelector();
         if (namespaceContextSelector == null) {
-            throw new IllegalStateException("No NamespaceContextSelector available, cannot lookup " + name);
+            throw MESSAGES.noNamespaceContextSelectorAvailable(name);
         }
         Context jndiContext = null;
         String namespaceStrippedJndiName = name;
@@ -311,37 +359,34 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.a
             try {
                 jndiContext = new InitialContext();
             } catch (NamingException ne) {
-                throw new RuntimeException("Could not lookup jndi name: " + name, ne);
+                throw MESSAGES.failToLookupJNDI(name,ne);
             }
         } else {
-            throw new IllegalArgumentException("Cannot lookup jndi name: " + name + " since it" +
-                    " doesn't belong to java:app, java:module, java:comp or java:global namespace");
+            throw MESSAGES.failToLookupJNDINameSpace(name);
         }
-        log.debug("Looking up " + namespaceStrippedJndiName + " in jndi context: " + jndiContext);
+        ROOT_LOGGER.debug("Looking up " + namespaceStrippedJndiName + " in jndi context: " + jndiContext);
         try {
             return jndiContext.lookup(namespaceStrippedJndiName);
         } catch (NamingException ne) {
-            throw new IllegalArgumentException("Could not lookup jndi name: " + namespaceStrippedJndiName + " in context: " + jndiContext, ne);
+            throw MESSAGES.failToLookupStrippedJNDI(namespaceContextSelector,jndiContext,ne);
         }
     }
 
-    @Override
     public void setRollbackOnly() throws IllegalStateException {
         if (isBeanManagedTransaction()) {
-            throw new IllegalStateException("EJB 3.1 FR 13.6.1 Only beans with container-managed transaction demarcation " +
-                    "can use setRollbackOnly.");
+            throw MESSAGES.failToCallSetRollbackOnlyOnNoneCMB();
         }
         try {
             // get the transaction manager
             TransactionManager tm = getTransactionManager();
             // check if there's a tx in progress. If not, then it's an error to call setRollbackOnly()
             if (tm.getTransaction() == null) {
-                throw new IllegalStateException("setRollbackOnly() not allowed without a transaction.");
+                throw MESSAGES.failToCallSetRollbackOnlyWithNoTx();
             }
             // set rollback
             tm.setRollbackOnly();
         } catch (SystemException se) {
-            log.warn("failed to set rollback only; ignoring", se);
+            ROOT_LOGGER.setRollbackOnlyFailed(se);
         }
     }
 
@@ -355,5 +400,31 @@ public abstract class EJBComponent extends BasicComponent implements org.jboss.a
 
     public Method getTimeoutMethod() {
         return timeoutMethod;
+    }
+
+    public String getApplicationName() {
+        return applicationName;
+    }
+
+    public String getEarApplicationName() {
+        return this.earApplicationName;
+    }
+
+    public String getDistinctName() {
+        return distinctName;
+    }
+
+    public String getModuleName() {
+        return moduleName;
+    }
+
+    /**
+     * Returns the {@link EJBRemoteTransactionsRepository} if there is atleast one remote view (either
+     * ejb3.x business remote, ejb2.x remote component or home view) is exposed. Else returns null.
+     *
+     * @return
+     */
+    public EJBRemoteTransactionsRepository getEjbRemoteTransactionsRepository() {
+        return this.ejbRemoteTransactionsRepository;
     }
 }

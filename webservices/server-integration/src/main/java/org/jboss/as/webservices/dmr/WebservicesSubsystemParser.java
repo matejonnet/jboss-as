@@ -4,7 +4,6 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
-import static org.jboss.as.controller.parsing.ParseUtils.missingRequiredElement;
 import static org.jboss.as.controller.parsing.ParseUtils.requireNoAttributes;
 import static org.jboss.as.controller.parsing.ParseUtils.unexpectedElement;
 import static org.jboss.as.webservices.dmr.Constants.ENDPOINT_CONFIG;
@@ -17,6 +16,13 @@ import static org.jboss.as.webservices.dmr.Constants.WSDL_PORT;
 import static org.jboss.as.webservices.dmr.Constants.WSDL_SECURE_PORT;
 import static org.jboss.wsf.spi.util.StAXUtils.match;
 
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+
 import org.jboss.as.controller.persistence.SubsystemMarshallingContext;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
@@ -24,13 +30,6 @@ import org.jboss.staxmapper.XMLElementReader;
 import org.jboss.staxmapper.XMLElementWriter;
 import org.jboss.staxmapper.XMLExtendedStreamReader;
 import org.jboss.staxmapper.XMLExtendedStreamWriter;
-
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.List;
 
 final class WebservicesSubsystemParser implements XMLStreamConstants, XMLElementReader<List<ModelNode>>,
         XMLElementWriter<SubsystemMarshallingContext> {
@@ -48,8 +47,8 @@ final class WebservicesSubsystemParser implements XMLStreamConstants, XMLElement
         writer.writeNamespace("javaee", Namespace.JAVAEE.getUriString());
         writer.writeNamespace("jaxwsconfig", Namespace.JAXWSCONFIG.getUriString());
         ModelNode node = context.getModelNode();
-        writeElement(writer, Element.WSDL_HOST, node.require(WSDL_HOST));
         writeElement(writer, Element.MODIFY_WSDL_ADDRESS, node.require(MODIFY_WSDL_ADDRESS));
+        writeElement(writer, Element.WSDL_HOST, node.require(WSDL_HOST));
         if (has(node, WSDL_SECURE_PORT)) {
             writeElement(writer, Element.WSDL_SECURE_PORT, node.require(WSDL_SECURE_PORT));
         }
@@ -183,13 +182,11 @@ final class WebservicesSubsystemParser implements XMLStreamConstants, XMLElement
         final List<ModelNode> endpointConfigs = new ArrayList<ModelNode>();
 
         // elements
-        final EnumSet<Element> required = EnumSet.of(Element.MODIFY_WSDL_ADDRESS, Element.WSDL_HOST);
         final EnumSet<Element> encountered = EnumSet.noneOf(Element.class);
         while (reader.hasNext() && reader.nextTag() != END_ELEMENT) {
             switch (Namespace.forUri(reader.getNamespaceURI())) {
                 case WEBSERVICES_1_0: {
                     final Element element = Element.forName(reader.getLocalName());
-                    required.remove(element);
                     if (element != Element.ENDPOINT_CONFIG && !encountered.add(element)) {
                         throw unexpectedElement(reader);
                     }
@@ -227,10 +224,6 @@ final class WebservicesSubsystemParser implements XMLStreamConstants, XMLElement
                     throw unexpectedElement(reader);
                 }
             }
-        }
-
-        if (!required.isEmpty()) {
-            throw missingRequiredElement(reader, required);
         }
 
         list.add(subsystem);

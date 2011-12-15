@@ -30,7 +30,6 @@ import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.DeploymentUnitProcessor;
 import org.jboss.as.server.deployment.module.ModuleSpecification;
-import org.jboss.logging.Logger;
 
 /**
  * {@link DeploymentUnitProcessor} responsible for setting the default ear subdeployments isolation for each .ear
@@ -38,20 +37,17 @@ import org.jboss.logging.Logger;
  * Unless, the specific deployment unit overrides the isolation via jboss-deployment-structure.xml, this
  * default value will be used to setup isolation of the subdeployments within a .ear.
  * <p/>
- * <b>Note: This deployer must run before the {@link org.jboss.as.server.deployment.module.DeploymentStructureDescriptorParser}</b>
+ * <b>Note: This deployer must run before the {@link org.jboss.as.server.deployment.module.descriptor.DeploymentStructureDescriptorParser}</b>
  *
- * @see {@link org.jboss.as.server.deployment.module.DeploymentStructureDescriptorParser}
+ * @see {@link org.jboss.as.server.deployment.module.descriptor.DeploymentStructureDescriptorParser}
  * <p/>
  * User: Jaikiran Pai
  */
 public class DefaultEarSubDeploymentsIsolationProcessor implements DeploymentUnitProcessor {
 
-    private static final Logger logger = Logger.getLogger(DefaultEarSubDeploymentsIsolationProcessor.class);
+    private volatile boolean earSubDeploymentsIsolated;
 
-    private final boolean earSubDeploymentsIsolated;
-
-    public DefaultEarSubDeploymentsIsolationProcessor(final boolean earSubDeploymentsIsolated) {
-        this.earSubDeploymentsIsolated = earSubDeploymentsIsolated;
+    public DefaultEarSubDeploymentsIsolationProcessor() {
     }
 
     @Override
@@ -70,4 +66,10 @@ public class DefaultEarSubDeploymentsIsolationProcessor implements DeploymentUni
     public void undeploy(DeploymentUnit context) {
 
     }
+
+    public void setEarSubDeploymentsIsolated(boolean earSubDeploymentsIsolated) {
+        this.earSubDeploymentsIsolated = earSubDeploymentsIsolated;
+    }
+
+
 }

@@ -35,6 +35,7 @@ public enum Element {
     UNKNOWN(null),
 
     // Domain 1.0 elements in alpha order
+    ADVANCED_FILTER("advanced-filter"),
     AGENT_LIB("agent-lib"),
     AGENT_PATH("agent-path"),
     ANY("any"),
@@ -62,6 +63,7 @@ public enum Element {
     HOST("host"),
     HTTP_INTERFACE("http-interface"),
 
+
     INCLUDE("include"),
     INET_ADDRESS("inet-address"),
     INTERFACE("interface"),
@@ -78,6 +80,7 @@ public enum Element {
     LDAP("ldap"),
     LINK_LOCAL_ADDRESS("link-local-address"),
     LOCAL("local"),
+    LOCAL_DESTINATION("local-destination"),
     LOOPBACK("loopback"),
     LOOPBACK_ADDRESS("loopback-address"),
 
@@ -87,12 +90,15 @@ public enum Element {
 
     NAME("name"),
     NATIVE_INTERFACE("native-interface"),
+    NATIVE_REMOTING_INTERFACE("native-remoting-interface"),
     NIC("nic"),
     NIC_MATCH("nic-match"),
     NOT("not"),
 
     OPTION("option"),
     OUTBOUND_CONNECTIONS("outbound-connections"),
+    OUTBOUND_SOCKET_BINDING("outbound-socket-binding"),
+
 
     PASSWORD("password"),
     PATH("path"),
@@ -107,6 +113,7 @@ public enum Element {
     PUBLIC_ADDRESS("public-address"),
 
     REMOTE("remote"),
+    REMOTE_DESTINATION("remote-destination"),
 
     SCANNING("scanning"),
     SECRET("secret"),
@@ -118,7 +125,9 @@ public enum Element {
     SERVER_GROUP("server-group"),
     SERVER_GROUPS("server-groups"),
     SITE_LOCAL_ADDRESS("site-local-address"),
+    SOCKET("socket"),
     SOCKET_BINDING("socket-binding"),
+    SOCKET_BINDINGS("socket-bindings"),
     SOCKET_BINDING_GROUP("socket-binding-group"),
     SOCKET_BINDING_GROUPS("socket-binding-groups"),
     SSL("ssl"),
@@ -130,10 +139,13 @@ public enum Element {
 
     UP("up"),
     USER("user"),
+    USERNAME_FILTER("username-filter"),
     USERS("users"),
 
     VARIABLE("variable"),
     VIRTUAL("virtual"),
+    VAULT("vault"),
+    VAULT_OPTION("vault-option")
     ;
 
     private final String name;

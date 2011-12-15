@@ -28,9 +28,10 @@ import static org.jboss.as.connector.pool.Constants.BLOCKING_TIMEOUT_WAIT_MILLIS
 import static org.jboss.as.connector.pool.Constants.IDLETIMEOUTMINUTES;
 import static org.jboss.as.connector.pool.Constants.MAX_POOL_SIZE;
 import static org.jboss.as.connector.pool.Constants.MIN_POOL_SIZE;
+import static org.jboss.as.connector.pool.Constants.POOL_FLUSH_STRATEGY;
 import static org.jboss.as.connector.pool.Constants.POOL_USE_STRICT_MIN;
 import static org.jboss.as.connector.pool.Constants.USE_FAST_FAIL;
-import static org.jboss.as.connector.subsystems.resourceadapters.Constants.ADMIN_OBJECTS;
+import static org.jboss.as.connector.subsystems.resourceadapters.Constants.ADMIN_OBJECTS_NAME;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.ALLOCATION_RETRY;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.ALLOCATION_RETRY_WAIT_MILLIS;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.APPLICATION;
@@ -39,13 +40,13 @@ import static org.jboss.as.connector.subsystems.resourceadapters.Constants.BEANV
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.BOOTSTRAPCONTEXT;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.CLASS_NAME;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.CONFIG_PROPERTIES;
-import static org.jboss.as.connector.subsystems.resourceadapters.Constants.CONNECTIONDEFINITIONS;
+import static org.jboss.as.connector.subsystems.resourceadapters.Constants.CONFIG_PROPERTY_VALUE;
+import static org.jboss.as.connector.subsystems.resourceadapters.Constants.CONNECTIONDEFINITIONS_NAME;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.ENABLED;
-import static org.jboss.as.connector.subsystems.resourceadapters.Constants.FLUSH_STRATEGY;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.JNDINAME;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.POOL_NAME;
-import static org.jboss.as.connector.subsystems.resourceadapters.Constants.RESOURCEADAPTER;
-import static org.jboss.as.connector.subsystems.resourceadapters.Constants.RESOURCEADAPTERS;
+import static org.jboss.as.connector.subsystems.resourceadapters.Constants.RESOURCEADAPTERS_NAME;
+import static org.jboss.as.connector.subsystems.resourceadapters.Constants.RESOURCEADAPTER_NAME;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.SECURITY_DOMAIN;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.SECURITY_DOMAIN_AND_APPLICATION;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.TRANSACTIONSUPPORT;
@@ -56,8 +57,10 @@ import static org.jboss.as.connector.subsystems.resourceadapters.Constants.XA_RE
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ATTRIBUTES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CHILDREN;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEFAULT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIPTION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HEAD_COMMENT_ALLOWED;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MODEL_DESCRIPTION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAMESPACE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATION_NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
@@ -70,10 +73,10 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYP
 import java.util.Locale;
 import java.util.ResourceBundle;
 
+import org.jboss.as.controller.SimpleAttributeDefinition;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
-import org.jboss.logging.Logger;
 
 /**
  * @author @author <a href="mailto:stefano.maestri@redhat.com">Stefano
@@ -81,33 +84,33 @@ import org.jboss.logging.Logger;
  */
 class ResourceAdaptersSubsystemProviders {
 
-    static final String[] RESOURCEADAPTER_ATTRIBUTE = new String[] { ARCHIVE, TRANSACTIONSUPPORT, BOOTSTRAPCONTEXT,
-            CONFIG_PROPERTIES, BEANVALIDATIONGROUPS, CONNECTIONDEFINITIONS, ADMIN_OBJECTS };
-    static final NodeAttribute[] CONNECTIONDEFINITIONS_NODEATTRIBUTE = new NodeAttribute[] {
-            new NodeAttribute(CLASS_NAME, ModelType.STRING, true), new NodeAttribute(JNDINAME, ModelType.STRING, true),
-            new NodeAttribute(POOL_NAME, ModelType.STRING, false),
-            new NodeAttribute(USE_JAVA_CONTEXT, ModelType.BOOLEAN, false),
-            new NodeAttribute(ENABLED, ModelType.BOOLEAN, false), new NodeAttribute(MAX_POOL_SIZE, ModelType.INT, false),
-            new NodeAttribute(MIN_POOL_SIZE, ModelType.INT, false),
-            new NodeAttribute(POOL_USE_STRICT_MIN, ModelType.BOOLEAN, false),
-            new NodeAttribute(FLUSH_STRATEGY, ModelType.STRING, false),
-            new NodeAttribute(SECURITY_DOMAIN_AND_APPLICATION, ModelType.STRING, false),
-            new NodeAttribute(APPLICATION, ModelType.STRING, false),
-            new NodeAttribute(SECURITY_DOMAIN, ModelType.STRING, false),
-            new NodeAttribute(ALLOCATION_RETRY, ModelType.BOOLEAN, false),
-            new NodeAttribute(ALLOCATION_RETRY_WAIT_MILLIS, ModelType.LONG, false),
-            new NodeAttribute(BLOCKING_TIMEOUT_WAIT_MILLIS, ModelType.LONG, false),
-            new NodeAttribute(IDLETIMEOUTMINUTES, ModelType.INT, false),
-            new NodeAttribute(XA_RESOURCE_TIMEOUT, ModelType.LONG, false),
-            new NodeAttribute(USETRYLOCK, ModelType.BOOLEAN, false),
-            new NodeAttribute(BACKGROUNDVALIDATIONMILLIS, ModelType.LONG, false),
-            new NodeAttribute(BACKGROUNDVALIDATION, ModelType.BOOLEAN, false),
-            new NodeAttribute(USE_FAST_FAIL, ModelType.BOOLEAN, false), new NodeAttribute(USE_CCM, ModelType.BOOLEAN, false) };
+    static final String[] RESOURCEADAPTER_ATTRIBUTE = new String[]{ARCHIVE.getName(), TRANSACTIONSUPPORT.getName(), BOOTSTRAPCONTEXT.getName(),
+            CONFIG_PROPERTIES.getName(), BEANVALIDATIONGROUPS.getName(), CONNECTIONDEFINITIONS_NAME, ADMIN_OBJECTS_NAME};
+    static final SimpleAttributeDefinition[] CONNECTIONDEFINITIONS_NODEATTRIBUTE = new SimpleAttributeDefinition[]{
+            CLASS_NAME, JNDINAME,
+            POOL_NAME,
+            USE_JAVA_CONTEXT,
+            ENABLED, MAX_POOL_SIZE,
+            MIN_POOL_SIZE,
+            POOL_USE_STRICT_MIN,
+            POOL_FLUSH_STRATEGY,
+            SECURITY_DOMAIN_AND_APPLICATION,
+            APPLICATION,
+            SECURITY_DOMAIN,
+            ALLOCATION_RETRY,
+            ALLOCATION_RETRY_WAIT_MILLIS,
+            BLOCKING_TIMEOUT_WAIT_MILLIS,
+            IDLETIMEOUTMINUTES,
+            XA_RESOURCE_TIMEOUT,
+            USETRYLOCK,
+            BACKGROUNDVALIDATIONMILLIS,
+            BACKGROUNDVALIDATION,
+            USE_FAST_FAIL, USE_CCM};
 
-    static final NodeAttribute[] ADMIN_OBJECTS_NODEATTRIBUTE = new NodeAttribute[] {
-            new NodeAttribute(CLASS_NAME, ModelType.STRING, true), new NodeAttribute(JNDINAME, ModelType.STRING, true),
-            new NodeAttribute(POOL_NAME, ModelType.STRING, false),
-            new NodeAttribute(USE_JAVA_CONTEXT, ModelType.BOOLEAN, false), new NodeAttribute(ENABLED, ModelType.BOOLEAN, false) };
+    static final SimpleAttributeDefinition[] ADMIN_OBJECTS_NODEATTRIBUTE = new SimpleAttributeDefinition[]{
+            CLASS_NAME, JNDINAME,
+            POOL_NAME,
+            USE_JAVA_CONTEXT, ENABLED};
 
     static final String RESOURCE_NAME = ResourceAdaptersSubsystemProviders.class.getPackage().getName() + ".LocalDescriptions";
 
@@ -123,8 +126,8 @@ class ResourceAdaptersSubsystemProviders {
             subsystem.get(NAMESPACE).set(Namespace.RESOURCEADAPTERS_1_0.getUriString());
             // Should this be an attribute instead
 
-            subsystem.get(CHILDREN, RESOURCEADAPTER, DESCRIPTION).set(bundle.getString(RESOURCEADAPTER));
-            subsystem.get(CHILDREN, RESOURCEADAPTER, REQUIRED).set(false);
+            subsystem.get(CHILDREN, Constants.RESOURCEADAPTER_NAME, DESCRIPTION).set(bundle.getString(Constants.RESOURCEADAPTER_NAME));
+            //subsystem.get(CHILDREN, Constants.RESOURCEADAPTER_NAME, MODEL_DESCRIPTION);
 
             return subsystem;
 
@@ -147,62 +150,95 @@ class ResourceAdaptersSubsystemProviders {
 
     };
 
-    static DescriptionProvider RESOURCEADAPTER_DESC = new DescriptionProvider() {
+
+    static DescriptionProvider CONFIG_PROPERTIES_DESC = new DescriptionProvider() {
 
         @Override
         public ModelNode getModelDescription(final Locale locale) {
             final ResourceBundle bundle = getResourceBundle(locale);
 
-            final ModelNode resourceAdaptersNode = new ModelNode();
-            resourceAdaptersNode.get(HEAD_COMMENT_ALLOWED).set(true);
-            resourceAdaptersNode.get(TAIL_COMMENT_ALLOWED).set(true);
-            resourceAdaptersNode.get(DESCRIPTION).set(RESOURCEADAPTERS);
+            final ModelNode configPropertiesNode = new ModelNode();
+            configPropertiesNode.get(HEAD_COMMENT_ALLOWED).set(true);
+            configPropertiesNode.get(TAIL_COMMENT_ALLOWED).set(true);
+            configPropertiesNode.get(DESCRIPTION).set(CONFIG_PROPERTIES.getName());
 
-            final ModelNode connectionDefinitionsNode = new ModelNode();
-            connectionDefinitionsNode.get(HEAD_COMMENT_ALLOWED).set(true);
-            connectionDefinitionsNode.get(TAIL_COMMENT_ALLOWED).set(true);
-            connectionDefinitionsNode.get(DESCRIPTION).set(CONNECTIONDEFINITIONS);
 
-            for (NodeAttribute attribute : CONNECTIONDEFINITIONS_NODEATTRIBUTE) {
-                Logger.getLogger(this.getClass()).debugf("##########################################%s", attribute.getName());
-                connectionDefinitionsNode.get(ATTRIBUTES, attribute.getName(), DESCRIPTION).set(
-                        bundle.getString(attribute.getName()));
-                connectionDefinitionsNode.get(ATTRIBUTES, attribute.getName(), TYPE).set(attribute.getModelType());
-                connectionDefinitionsNode.get(ATTRIBUTES, attribute.getName(), REQUIRED).set(attribute.isRequired());
+            CONFIG_PROPERTY_VALUE.addResourceAttributeDescription(bundle, "config-properties", configPropertiesNode);
 
+            return configPropertiesNode;
+        }
+    };
+
+    static DescriptionProvider CONNECTION_DEFINITION_DESC = new DescriptionProvider() {
+
+        @Override
+        public ModelNode getModelDescription(final Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+
+            final ModelNode connectionDefinitionNode = new ModelNode();
+            connectionDefinitionNode.get(HEAD_COMMENT_ALLOWED).set(true);
+            connectionDefinitionNode.get(TAIL_COMMENT_ALLOWED).set(true);
+            connectionDefinitionNode.get(DESCRIPTION).set(CONNECTIONDEFINITIONS_NAME);
+
+
+            for (SimpleAttributeDefinition attribute : CONNECTIONDEFINITIONS_NODEATTRIBUTE) {
+                attribute.addResourceAttributeDescription(bundle, null, connectionDefinitionNode);
             }
-            resourceAdaptersNode.get(CONNECTIONDEFINITIONS).set(connectionDefinitionsNode);
+
+            connectionDefinitionNode.get(CHILDREN, Constants.CONFIG_PROPERTIES.getName(), DESCRIPTION).set(bundle.getString(Constants.CONFIG_PROPERTIES.getName()));
+
+            return connectionDefinitionNode;
+        }
+    };
+
+    static DescriptionProvider ADMIN_OBJECT_DESC = new DescriptionProvider() {
+
+        @Override
+        public ModelNode getModelDescription(final Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
 
             final ModelNode adminObjectNode = new ModelNode();
             adminObjectNode.get(HEAD_COMMENT_ALLOWED).set(true);
             adminObjectNode.get(TAIL_COMMENT_ALLOWED).set(true);
-            resourceAdaptersNode.get(DESCRIPTION).set(ADMIN_OBJECTS);
+            adminObjectNode.get(DESCRIPTION).set(ADMIN_OBJECTS_NAME);
 
-            for (NodeAttribute attribute : ADMIN_OBJECTS_NODEATTRIBUTE) {
-                adminObjectNode.get(ATTRIBUTES, attribute.getName(), DESCRIPTION).set(bundle.getString(attribute.getName()));
-                adminObjectNode.get(ATTRIBUTES, attribute.getName(), TYPE).set(attribute.getModelType());
-                adminObjectNode.get(ATTRIBUTES, attribute.getName(), REQUIRED).set(attribute.isRequired());
 
+            for (SimpleAttributeDefinition attribute : ADMIN_OBJECTS_NODEATTRIBUTE) {
+                attribute.addResourceAttributeDescription(bundle, null, adminObjectNode);
             }
-            resourceAdaptersNode.get(ADMIN_OBJECTS).set(adminObjectNode);
 
-            resourceAdaptersNode.get(ATTRIBUTES, ARCHIVE, DESCRIPTION).set(bundle.getString(ARCHIVE));
-            resourceAdaptersNode.get(ATTRIBUTES, ARCHIVE, TYPE).set(ModelType.STRING);
-            resourceAdaptersNode.get(ATTRIBUTES, ARCHIVE, REQUIRED).set(true);
+            adminObjectNode.get(CHILDREN, Constants.CONFIG_PROPERTIES.getName(), DESCRIPTION).set(bundle.getString(Constants.CONFIG_PROPERTIES.getName()));
 
-            resourceAdaptersNode.get(ATTRIBUTES, TRANSACTIONSUPPORT, DESCRIPTION).set(bundle.getString(TRANSACTIONSUPPORT));
-            resourceAdaptersNode.get(ATTRIBUTES, TRANSACTIONSUPPORT, TYPE).set(ModelType.STRING);
-            resourceAdaptersNode.get(ATTRIBUTES, TRANSACTIONSUPPORT, REQUIRED).set(false);
-
-            resourceAdaptersNode.get(ATTRIBUTES, CONFIG_PROPERTIES, TYPE).set(ModelType.STRING);
-            resourceAdaptersNode.get(ATTRIBUTES, CONFIG_PROPERTIES, REQUIRED).set(false);
-
-            resourceAdaptersNode.get(ATTRIBUTES, BEANVALIDATIONGROUPS, DESCRIPTION).set(bundle.getString(BEANVALIDATIONGROUPS));
-            resourceAdaptersNode.get(ATTRIBUTES, BEANVALIDATIONGROUPS, TYPE).set(ModelType.STRING);
-            resourceAdaptersNode.get(ATTRIBUTES, BEANVALIDATIONGROUPS, REQUIRED).set(false);
-
-            return resourceAdaptersNode;
+            return adminObjectNode;
         }
+    };
+
+
+     static final DescriptionProvider RESOURCEADAPTER_DESC = new DescriptionProvider() {
+
+        @Override
+        public ModelNode getModelDescription(final Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+            final ModelNode raNode = new ModelNode();
+            raNode.get(HEAD_COMMENT_ALLOWED).set(true);
+            raNode.get(TAIL_COMMENT_ALLOWED).set(true);
+            raNode.get(DESCRIPTION).set(RESOURCEADAPTER_NAME);
+
+            raNode.get(ATTRIBUTES, ARCHIVE.getName(), DESCRIPTION).set(bundle.getString(ARCHIVE.getName()));
+            raNode.get(ATTRIBUTES, ARCHIVE.getName(), TYPE).set(ModelType.STRING);
+            raNode.get(ATTRIBUTES, ARCHIVE.getName(), REQUIRED).set(true);
+            raNode.get(ATTRIBUTES, TRANSACTIONSUPPORT.getName(), DESCRIPTION).set(bundle.getString(TRANSACTIONSUPPORT.getName()));
+            raNode.get(ATTRIBUTES, TRANSACTIONSUPPORT.getName(), TYPE).set(ModelType.STRING);
+            raNode.get(ATTRIBUTES, TRANSACTIONSUPPORT.getName(), REQUIRED).set(true);
+
+            raNode.get(CHILDREN, Constants.CONNECTIONDEFINITIONS_NAME, DESCRIPTION).set(bundle.getString(Constants.CONNECTIONDEFINITIONS_NAME));
+            raNode.get(CHILDREN, Constants.ADMIN_OBJECTS_NAME, DESCRIPTION).set(bundle.getString(Constants.ADMIN_OBJECTS_NAME));
+            raNode.get(CHILDREN, Constants.CONFIG_PROPERTIES.getName(), DESCRIPTION).set(bundle.getString(Constants.CONFIG_PROPERTIES.getName()));
+
+
+            return raNode;
+        }
+
     };
 
     static final DescriptionProvider ADD_RESOURCEADAPTER_DESC = new DescriptionProvider() {
@@ -214,43 +250,78 @@ class ResourceAdaptersSubsystemProviders {
             operation.get(OPERATION_NAME).set(ADD);
             operation.get(DESCRIPTION).set(bundle.getString("resource-adapter.add"));
 
-            final ModelNode connectionDefinitionsNode = new ModelNode();
-            connectionDefinitionsNode.get(DESCRIPTION).set(CONNECTIONDEFINITIONS);
-
-            for (NodeAttribute attribute : CONNECTIONDEFINITIONS_NODEATTRIBUTE) {
-                connectionDefinitionsNode.get(REQUEST_PROPERTIES, attribute.getName(), DESCRIPTION).set(
-                        bundle.getString(attribute.getName()));
-                connectionDefinitionsNode.get(REQUEST_PROPERTIES, attribute.getName(), TYPE).set(attribute.getModelType());
-                connectionDefinitionsNode.get(REQUEST_PROPERTIES, attribute.getName(), REQUIRED).set(attribute.isRequired());
-
-            }
-            operation.get(CONNECTIONDEFINITIONS).set(connectionDefinitionsNode);
 
             final ModelNode adminObjectNode = new ModelNode();
-            adminObjectNode.get(DESCRIPTION).set(ADMIN_OBJECTS);
+            adminObjectNode.get(DESCRIPTION).set(ADMIN_OBJECTS_NAME);
 
-            for (NodeAttribute attribute : ADMIN_OBJECTS_NODEATTRIBUTE) {
-                adminObjectNode.get(REQUEST_PROPERTIES, attribute.getName(), DESCRIPTION).set(
-                        bundle.getString(attribute.getName()));
-                adminObjectNode.get(REQUEST_PROPERTIES, attribute.getName(), TYPE).set(attribute.getModelType());
-                adminObjectNode.get(REQUEST_PROPERTIES, attribute.getName(), REQUIRED).set(attribute.isRequired());
 
-            }
-            operation.get(ADMIN_OBJECTS).set(adminObjectNode);
+            operation.get(REQUEST_PROPERTIES, ARCHIVE.getName(), DESCRIPTION).set(bundle.getString(ARCHIVE.getName()));
+            operation.get(REQUEST_PROPERTIES, ARCHIVE.getName(), TYPE).set(ModelType.STRING);
+            operation.get(REQUEST_PROPERTIES, ARCHIVE.getName(), REQUIRED).set(true);
+            operation.get(REQUEST_PROPERTIES, TRANSACTIONSUPPORT.getName(), DESCRIPTION).set(bundle.getString(TRANSACTIONSUPPORT.getName()));
+            operation.get(REQUEST_PROPERTIES, TRANSACTIONSUPPORT.getName(), TYPE).set(ModelType.STRING);
+            operation.get(REQUEST_PROPERTIES, TRANSACTIONSUPPORT.getName(), REQUIRED).set(true);
 
-            operation.get(REQUEST_PROPERTIES, ARCHIVE, DESCRIPTION).set(bundle.getString(ARCHIVE));
-            operation.get(REQUEST_PROPERTIES, ARCHIVE, TYPE).set(ModelType.STRING);
-            operation.get(REQUEST_PROPERTIES, ARCHIVE, REQUIRED).set(true);
-            operation.get(REQUEST_PROPERTIES, TRANSACTIONSUPPORT, DESCRIPTION).set(bundle.getString(TRANSACTIONSUPPORT));
-            operation.get(REQUEST_PROPERTIES, TRANSACTIONSUPPORT, TYPE).set(ModelType.STRING);
-            operation.get(REQUEST_PROPERTIES, TRANSACTIONSUPPORT, REQUIRED).set(true);
-
-            // operation.get(BOOTSTRAPCONTEXT).set(bootstrapSupportNode);
-            // operation.get(CONFIG_PROPERTIES).set(configPropertiesNode);
-            // operation.get(BEANVALIDATIONGROUPS).set(beanValidationNode);
             return operation;
         }
 
+    };
+
+    static DescriptionProvider ADD_CONFIG_PROPERTIES_DESC = new DescriptionProvider() {
+
+        @Override
+        public ModelNode getModelDescription(final Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+
+            final ModelNode op = new ModelNode();
+
+            op.get(DESCRIPTION).set(bundle.getString("config-properties.add"));
+            op.get(OPERATION_NAME).set(ADD);
+
+
+            CONFIG_PROPERTY_VALUE.addOperationParameterDescription(bundle, "config-properties", op);
+
+            return op;
+        }
+    };
+
+
+     static DescriptionProvider ADD_CONNECTION_DEFINITION_DESC = new DescriptionProvider() {
+
+        @Override
+        public ModelNode getModelDescription(final Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+
+            final ModelNode op = new ModelNode();
+
+            op.get(DESCRIPTION).set(bundle.getString("connection-definition.add"));
+            op.get(OPERATION_NAME).set(ADD);
+
+            for (SimpleAttributeDefinition attribute : CONNECTIONDEFINITIONS_NODEATTRIBUTE) {
+                attribute.addOperationParameterDescription(bundle, null, op);
+            }
+
+            return op;
+        }
+    };
+
+    static DescriptionProvider ADD_ADMIN_OBJECT_DESC = new DescriptionProvider() {
+
+        @Override
+        public ModelNode getModelDescription(final Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+
+            final ModelNode op = new ModelNode();
+
+            op.get(DESCRIPTION).set(bundle.getString("admin-object.add"));
+            op.get(OPERATION_NAME).set(ADD);
+
+            for (SimpleAttributeDefinition attribute : ADMIN_OBJECTS_NODEATTRIBUTE) {
+                attribute.addOperationParameterDescription(bundle, null, op);
+            }
+
+            return op;
+        }
     };
 
     static DescriptionProvider REMOVE_RESOURCEADAPTER_DESC = new DescriptionProvider() {
@@ -263,6 +334,40 @@ class ResourceAdaptersSubsystemProviders {
             return operation;
         }
     };
+
+    static DescriptionProvider REMOVE_CONFIG_PROPERTIES_DESC = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(final Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+            final ModelNode operation = new ModelNode();
+            operation.get(OPERATION_NAME).set(REMOVE);
+            operation.get(DESCRIPTION).set(bundle.getString("config-properties.remove"));
+            return operation;
+        }
+    };
+
+    static DescriptionProvider REMOVE_CONNECTION_DEFINITION_DESC = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(final Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+            final ModelNode operation = new ModelNode();
+            operation.get(OPERATION_NAME).set(REMOVE);
+            operation.get(DESCRIPTION).set(bundle.getString("connection-definition.remove"));
+            return operation;
+        }
+    };
+
+    static DescriptionProvider REMOVE_ADMIN_OBJECT_DESC = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(final Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+            final ModelNode operation = new ModelNode();
+            operation.get(OPERATION_NAME).set(REMOVE);
+            operation.get(DESCRIPTION).set(bundle.getString("admin-object.remove"));
+            return operation;
+        }
+    };
+
 
     static DescriptionProvider FLUSH_IDLE_CONNECTION_DESC = new DescriptionProvider() {
         @Override
@@ -304,35 +409,5 @@ class ResourceAdaptersSubsystemProviders {
         return ResourceBundle.getBundle(RESOURCE_NAME, locale);
     }
 
-    static class NodeAttribute {
-        private final String name;
-        private final ModelType modelType;
-        private final boolean required;
-
-        public NodeAttribute(String name, ModelType modelType, boolean required) {
-            super();
-            this.name = name;
-            this.modelType = modelType;
-            this.required = required;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public ModelType getModelType() {
-            return modelType;
-        }
-
-        public boolean isRequired() {
-            return required;
-        }
-
-        @Override
-        public String toString() {
-            return "NodeAttribute [name=" + name + ", modelType=" + modelType + ", required=" + required + "]";
-        }
-
-    }
 
 }

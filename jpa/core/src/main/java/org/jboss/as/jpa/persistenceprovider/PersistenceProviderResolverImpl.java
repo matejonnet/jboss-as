@@ -22,21 +22,24 @@
 
 package org.jboss.as.jpa.persistenceprovider;
 
-import javax.persistence.spi.PersistenceProvider;
-import javax.persistence.spi.PersistenceProviderResolver;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+
+import javax.persistence.spi.PersistenceProvider;
+import javax.persistence.spi.PersistenceProviderResolver;
+
+import org.jboss.as.jpa.JpaMessages;
 
 /**
  * Implementation of PersistenceProviderResolver
  * TODO:  look at forking/merging with Hibernate javax.persistence.spi.PersistenceProviderResolverHolder.PersistenceProviderResolverPerClassLoader
- * TODO:  add other persistence providers to the providers list
  *
  * @author Scott Marlow
  */
 public class PersistenceProviderResolverImpl implements PersistenceProviderResolver {
 
-    private List<PersistenceProvider> providers = new CopyOnWriteArrayList<PersistenceProvider>();
+    private List<Class> providers = new CopyOnWriteArrayList<Class>();
 
     private static final PersistenceProviderResolverImpl INSTANCE = new PersistenceProviderResolverImpl();
 
@@ -47,9 +50,23 @@ public class PersistenceProviderResolverImpl implements PersistenceProviderResol
     public PersistenceProviderResolverImpl() {
     }
 
+    /**
+     * Return a new instance of each persistence provider class
+     * @return
+     */
     @Override
     public List<PersistenceProvider> getPersistenceProviders() {
-        return providers;
+         List<PersistenceProvider> providersCopy = new ArrayList<PersistenceProvider>(providers.size());
+        for (Class providerClass: providers) {
+            try {
+                providersCopy.add((PersistenceProvider) providerClass.newInstance());
+            } catch (InstantiationException e) {
+                throw JpaMessages.MESSAGES.couldNotCreateInstanceProvider(e, providerClass.getName());
+            } catch (IllegalAccessException e) {
+                throw JpaMessages.MESSAGES.couldNotCreateInstanceProvider(e, providerClass.getName());
+            }
+        }
+        return providersCopy;
     }
 
     @Override
@@ -58,7 +75,7 @@ public class PersistenceProviderResolverImpl implements PersistenceProviderResol
     }
 
     public void addPersistenceProvider(PersistenceProvider persistenceProvider) {
-        providers.add(persistenceProvider);
+        providers.add(persistenceProvider.getClass());
     }
 
     public void removePersistenceProvider(PersistenceProvider persistenceProvider) {

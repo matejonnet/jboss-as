@@ -21,15 +21,16 @@
  */
 package org.jboss.as.jpa.puparser;
 
-import org.jboss.as.jpa.config.PersistenceUnitMetadataHolder;
-import org.jboss.as.jpa.spi.PersistenceUnitMetadata;
-import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+
+import java.io.StringReader;
 
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamReader;
-import java.io.StringReader;
 
-import static org.junit.Assert.assertEquals;
+import org.jboss.as.jpa.config.PersistenceUnitMetadataHolder;
+import org.jboss.as.jpa.spi.PersistenceUnitMetadata;
+import org.junit.Test;
 
 /**
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
@@ -47,7 +48,7 @@ public class PersistenceUnitXmlParserTestCase {
                 "    <description>Persistence Unit." +
                 "    </description>" +
                 "    <jta-data-source>java:/H2DS</jta-data-source>" +
-                "    <class>org.jboss.as.testsuite.integration.jpa.epcpropagation.MyEntity</class>" +
+                "    <class>org.jboss.as.test.integration.jpa.epcpropagation.MyEntity</class>" +
                 "    <properties> <property name=\"hibernate.hbm2ddl.auto\" value=\"create-drop\"/></properties>" +
                 "  </persistence-unit>" +
                 "</persistence>";

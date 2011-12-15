@@ -21,10 +21,11 @@
  */
 package org.jboss.as.ejb3.deployment.processors.dd;
 
+import javax.interceptor.InvocationContext;
+
 import org.jboss.as.ee.component.Attachments;
-import org.jboss.as.ee.component.EEApplicationClasses;
-import org.jboss.as.ee.component.EEModuleClassDescription;
 import org.jboss.as.ee.component.EEModuleDescription;
+import org.jboss.as.ee.component.interceptors.InterceptorClassDescription;
 import org.jboss.as.ejb3.deployment.EjbDeploymentAttachmentKeys;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
@@ -33,13 +34,10 @@ import org.jboss.as.server.deployment.DeploymentUnitProcessor;
 import org.jboss.invocation.proxy.MethodIdentifier;
 import org.jboss.metadata.ejb.spec.AroundInvokeMetaData;
 import org.jboss.metadata.ejb.spec.AroundInvokesMetaData;
-import org.jboss.metadata.ejb.spec.EjbJar3xMetaData;
 import org.jboss.metadata.ejb.spec.EjbJarMetaData;
 import org.jboss.metadata.ejb.spec.InterceptorMetaData;
 import org.jboss.metadata.javaee.spec.LifecycleCallbackMetaData;
 import org.jboss.metadata.javaee.spec.LifecycleCallbacksMetaData;
-
-import javax.interceptor.InvocationContext;
 
 /**
  * Processor that handles the &lt;interceptor\&gt; element of an ejb-jar.xml file.
@@ -51,32 +49,30 @@ public class InterceptorClassDeploymentDescriptorProcessor implements Deployment
     public void deploy(final DeploymentPhaseContext phaseContext) throws DeploymentUnitProcessingException {
 
         final DeploymentUnit deploymentUnit = phaseContext.getDeploymentUnit();
-        final EjbJarMetaData ejbJarMetaData = deploymentUnit.getAttachment(EjbDeploymentAttachmentKeys.EJB_JAR_METADATA);
+        final EjbJarMetaData metaData = deploymentUnit.getAttachment(EjbDeploymentAttachmentKeys.EJB_JAR_METADATA);
         final EEModuleDescription eeModuleDescription = deploymentUnit.getAttachment(Attachments.EE_MODULE_DESCRIPTION);
-        final EEApplicationClasses applicationClassesDescription = deploymentUnit.getAttachment(Attachments.EE_APPLICATION_CLASSES_DESCRIPTION);
-        if (ejbJarMetaData == null) {
-            return;
-        }
-        if (!(ejbJarMetaData instanceof EjbJar3xMetaData)) {
+        if (metaData == null) {
             return;
         }
 
-        final EjbJar3xMetaData metaData = (EjbJar3xMetaData)ejbJarMetaData;
-        if(metaData.getInterceptors() == null) {
+        if (metaData.getInterceptors() == null) {
             return;
         }
 
         for (InterceptorMetaData interceptor : metaData.getInterceptors()) {
             String interceptorClassName = interceptor.getInterceptorClass();
-            // get (or create the interceptor description)
-            EEModuleClassDescription interceptorModuleClassDescription = applicationClassesDescription.getOrAddClassByName(interceptorClassName);
-            // around-invoke(s) of the interceptor configured (if any) in the deployment descriptor
             AroundInvokesMetaData aroundInvokes = interceptor.getAroundInvokes();
             if (aroundInvokes != null) {
                 for (AroundInvokeMetaData aroundInvoke : aroundInvokes) {
+                    final InterceptorClassDescription.Builder builder = InterceptorClassDescription.builder();
                     String methodName = aroundInvoke.getMethodName();
                     MethodIdentifier methodIdentifier = MethodIdentifier.getIdentifier(Object.class, methodName, InvocationContext.class);
-                    interceptorModuleClassDescription.setAroundInvokeMethod(methodIdentifier);
+                    builder.setAroundInvoke(methodIdentifier);
+                    if (aroundInvoke.getClassName() == null || aroundInvoke.getClassName().isEmpty()) {
+                        eeModuleDescription.addInterceptorMethodOverride(interceptorClassName, builder.build());
+                    } else {
+                        eeModuleDescription.addInterceptorMethodOverride(aroundInvoke.getClassName(), builder.build());
+                    }
                 }
             }
 
@@ -84,10 +80,15 @@ public class InterceptorClassDeploymentDescriptorProcessor implements Deployment
             LifecycleCallbacksMetaData postConstructs = interceptor.getPostConstructs();
             if (postConstructs != null) {
                 for (LifecycleCallbackMetaData postConstruct : postConstructs) {
+                    final InterceptorClassDescription.Builder builder = InterceptorClassDescription.builder();
                     String methodName = postConstruct.getMethodName();
-                    MethodIdentifier methodIdentifier = MethodIdentifier.getIdentifier(Void.TYPE, methodName, InvocationContext.class);
-                    // add it to the interceptor description
-                    interceptorModuleClassDescription.setPostConstructMethod(methodIdentifier);
+                    MethodIdentifier methodIdentifier = MethodIdentifier.getIdentifier(void.class, methodName, InvocationContext.class);
+                    builder.setPostConstruct(methodIdentifier);
+                    if (postConstruct.getClassName() == null || postConstruct.getClassName().isEmpty()) {
+                        eeModuleDescription.addInterceptorMethodOverride(interceptorClassName, builder.build());
+                    } else {
+                        eeModuleDescription.addInterceptorMethodOverride(postConstruct.getClassName(), builder.build());
+                    }
                 }
             }
 
@@ -95,10 +96,15 @@ public class InterceptorClassDeploymentDescriptorProcessor implements Deployment
             LifecycleCallbacksMetaData preDestroys = interceptor.getPreDestroys();
             if (preDestroys != null) {
                 for (LifecycleCallbackMetaData preDestroy : preDestroys) {
+                    final InterceptorClassDescription.Builder builder = InterceptorClassDescription.builder();
                     String methodName = preDestroy.getMethodName();
-                    MethodIdentifier methodIdentifier = MethodIdentifier.getIdentifier(Void.TYPE, methodName, InvocationContext.class);
-                    // add it to the interceptor description
-                    interceptorModuleClassDescription.setPreDestroyMethod(methodIdentifier);
+                    MethodIdentifier methodIdentifier = MethodIdentifier.getIdentifier(void.class, methodName, InvocationContext.class);
+                    builder.setPreDestroy(methodIdentifier);
+                    if (preDestroy.getClassName() == null || preDestroy.getClassName().isEmpty()) {
+                        eeModuleDescription.addInterceptorMethodOverride(interceptorClassName, builder.build());
+                    } else {
+                        eeModuleDescription.addInterceptorMethodOverride(preDestroy.getClassName(), builder.build());
+                    }
                 }
             }
         }

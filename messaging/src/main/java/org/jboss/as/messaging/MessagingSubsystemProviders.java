@@ -54,13 +54,6 @@ class MessagingSubsystemProviders {
         }
     };
 
-    static final DescriptionProvider SUBSYSTEM = new DescriptionProvider() {
-
-        public ModelNode getModelDescription(final Locale locale) {
-            return MessagingDescriptions.getRootResource(locale);
-        }
-    };
-
     static final DescriptionProvider QUEUE_RESOURCE = new DescriptionProvider() {
 
         public ModelNode getModelDescription(final Locale locale) {

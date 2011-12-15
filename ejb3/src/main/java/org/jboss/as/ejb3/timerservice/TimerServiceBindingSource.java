@@ -22,17 +22,18 @@
 
 package org.jboss.as.ejb3.timerservice;
 
+import org.jboss.as.ee.component.Component;
 import org.jboss.as.ee.component.InjectionSource;
+import org.jboss.as.ejb3.component.EJBComponent;
+import org.jboss.as.ejb3.context.CurrentInvocationContext;
 import org.jboss.as.naming.ManagedReference;
 import org.jboss.as.naming.ManagedReferenceFactory;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
-import org.jboss.as.ejb3.context.CurrentInvocationContext;
-import org.jboss.as.ejb3.context.spi.EJBComponent;
-import org.jboss.as.ejb3.context.spi.InvocationContext;
+import org.jboss.invocation.InterceptorContext;
 import org.jboss.msc.inject.Injector;
 import org.jboss.msc.service.ServiceBuilder;
-
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * An {@link InjectionSource} which returns a {@link ManagedReference reference} to a {@link javax.ejb.TimerService}
  * <p/>
@@ -73,10 +74,10 @@ public class TimerServiceBindingSource extends InjectionSource {
         @Override
         public Object getInstance() {
             // get the current invocation context and the EJBComponent out of it
-            final InvocationContext currentInvocationContext = CurrentInvocationContext.get();
-            final EJBComponent ejbComponent = currentInvocationContext.getComponent();
+            final InterceptorContext currentInvocationContext = CurrentInvocationContext.get();
+            final EJBComponent ejbComponent = (EJBComponent) currentInvocationContext.getPrivateData(Component.class);
             if (ejbComponent == null) {
-                throw new IllegalStateException("EJBComponent has not been set in the current invocation context " + currentInvocationContext);
+                throw MESSAGES.failToGetEjbComponent(currentInvocationContext);
             }
             return ejbComponent.getTimerService();
         }

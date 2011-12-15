@@ -24,10 +24,9 @@ package org.jboss.as.jmx;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ATTRIBUTES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEFAULT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIPTION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HEAD_COMMENT_ALLOWED;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MAX_OCCURS;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MIN_OCCURS;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAMESPACE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATION_NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REPLY_PROPERTIES;
@@ -37,6 +36,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TAI
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
 import static org.jboss.as.jmx.CommonAttributes.REGISTRY_BINDING;
 import static org.jboss.as.jmx.CommonAttributes.SERVER_BINDING;
+import static org.jboss.as.jmx.CommonAttributes.SHOW_MODEL;
 
 import java.util.Locale;
 import java.util.ResourceBundle;
@@ -63,17 +63,19 @@ public class JMXSubsystemProviders {
             subsystem.get(TAIL_COMMENT_ALLOWED).set(true);
             subsystem.get(NAMESPACE).set(Namespace.JMX_1_0.getUriString());
 
+            subsystem.get(ATTRIBUTES, SHOW_MODEL, DESCRIPTION).set(bundle.getString("show.model"));
+            subsystem.get(ATTRIBUTES, SHOW_MODEL, TYPE).set(ModelType.BOOLEAN);
+            subsystem.get(ATTRIBUTES, SHOW_MODEL, REQUIRED).set(false);
+            subsystem.get(ATTRIBUTES, SHOW_MODEL, DEFAULT).set(false);
+
+
             subsystem.get(ATTRIBUTES, REGISTRY_BINDING, DESCRIPTION).set(bundle.getString("registry.binding"));
             subsystem.get(ATTRIBUTES, REGISTRY_BINDING, TYPE).set(ModelType.STRING);
             subsystem.get(ATTRIBUTES, REGISTRY_BINDING, REQUIRED).set(true);
-            subsystem.get(ATTRIBUTES, REGISTRY_BINDING, MIN_OCCURS).set(1);
-            subsystem.get(ATTRIBUTES, REGISTRY_BINDING, MAX_OCCURS).set(1);
 
             subsystem.get(ATTRIBUTES, SERVER_BINDING, DESCRIPTION).set(bundle.getString("server.binding"));
             subsystem.get(ATTRIBUTES, SERVER_BINDING, TYPE).set(ModelType.STRING);
             subsystem.get(ATTRIBUTES, SERVER_BINDING, REQUIRED).set(true);
-            subsystem.get(ATTRIBUTES, SERVER_BINDING, MIN_OCCURS).set(1);
-            subsystem.get(ATTRIBUTES, SERVER_BINDING, MAX_OCCURS).set(1);
 
             return subsystem;
         }
@@ -87,6 +89,11 @@ public class JMXSubsystemProviders {
             final ModelNode subsystem = new ModelNode();
             subsystem.get(OPERATION_NAME).set(ADD);
             subsystem.get(DESCRIPTION).set(bundle.getString("jmx.add"));
+
+            subsystem.get(REQUEST_PROPERTIES, SHOW_MODEL, DESCRIPTION).set(bundle.getString("show.model"));
+            subsystem.get(REQUEST_PROPERTIES, SHOW_MODEL, TYPE).set(ModelType.BOOLEAN);
+            subsystem.get(REQUEST_PROPERTIES, SHOW_MODEL, REQUIRED).set(false);
+            subsystem.get(REQUEST_PROPERTIES, SHOW_MODEL, DEFAULT).set(false);
 
             return subsystem;
         }
@@ -105,19 +112,45 @@ public class JMXSubsystemProviders {
             op.get(REQUEST_PROPERTIES, REGISTRY_BINDING, DESCRIPTION).set(bundle.getString("registry.binding"));
             op.get(REQUEST_PROPERTIES, REGISTRY_BINDING, TYPE).set(ModelType.STRING);
             op.get(REQUEST_PROPERTIES, REGISTRY_BINDING, REQUIRED).set(true);
-            op.get(REQUEST_PROPERTIES, REGISTRY_BINDING, MIN_OCCURS).set(1);
-            op.get(REQUEST_PROPERTIES, REGISTRY_BINDING, MAX_OCCURS).set(1);
 
             op.get(REQUEST_PROPERTIES, SERVER_BINDING, DESCRIPTION).set(bundle.getString("server.binding"));
             op.get(REQUEST_PROPERTIES, SERVER_BINDING, TYPE).set(ModelType.STRING);
             op.get(REQUEST_PROPERTIES, SERVER_BINDING, REQUIRED).set(true);
-            op.get(REQUEST_PROPERTIES, SERVER_BINDING, MIN_OCCURS).set(1);
-            op.get(REQUEST_PROPERTIES, SERVER_BINDING, MAX_OCCURS).set(1);
 
             op.get(REPLY_PROPERTIES).setEmptyObject();
 
             return op;
         }
+    };
+
+    static final DescriptionProvider INVOKE_MBEAN_RAW = new DescriptionProvider() {
+
+        public ModelNode getModelDescription(Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+
+            final ModelNode subsystem = new ModelNode();
+            subsystem.get(OPERATION_NAME).set("invoke-mbean-raw");
+            subsystem.get(DESCRIPTION).set("This is an internal method not fit for public consumption. " +
+                    "It will be removed shortly. Therefore its use is not documented");
+
+            return subsystem;
+        }
+
+    };
+
+    static final DescriptionProvider GET_MBEAN_INFO_RAW = new DescriptionProvider() {
+
+        public ModelNode getModelDescription(Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+
+            final ModelNode subsystem = new ModelNode();
+            subsystem.get(OPERATION_NAME).set("get-mbean-info-raw");
+            subsystem.get(DESCRIPTION).set("This is an internal method not fit for public consumption. " +
+                    "It will be removed shortly. Therefore its use is not documented");
+
+            return subsystem;
+        }
+
     };
 
     static final DescriptionProvider JMX_CONNECTOR_REMOVE = new DescriptionProvider() {

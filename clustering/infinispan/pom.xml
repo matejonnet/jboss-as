@@ -29,7 +29,7 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-clustering</artifactId>
-        <version>7.1.0.Alpha1-SNAPSHOT</version>
+        <version>7.1.0.Beta1</version>
     </parent>
 
     <artifactId>jboss-as-clustering-infinispan</artifactId>
@@ -38,6 +38,18 @@
     <name>JBoss Application Server: Infinispan Subsystem</name>
 
     <dependencies>
+        <dependency>
+            <groupId>org.jboss</groupId>
+            <artifactId>jboss-dmr</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss</groupId>
+            <artifactId>jboss-transaction-spi</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss</groupId>
+            <artifactId>staxmapper</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.jboss.as</groupId>
             <artifactId>jboss-as-clustering-jgroups</artifactId>
@@ -55,6 +67,10 @@
             <artifactId>jboss-as-transactions</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.jboss.msc</groupId>
+            <artifactId>jboss-msc</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.jgroups</groupId>
             <artifactId>jgroups</artifactId>
             <optional>true</optional>
@@ -64,15 +80,66 @@
             <artifactId>infinispan-core</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.infinispan</groupId>
+            <artifactId>infinispan-cachestore-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.infinispan</groupId>
+            <artifactId>infinispan-cachestore-remote</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.infinispan</groupId>
+            <artifactId>infinispan-client-hotrod</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.jboss.spec.javax.transaction</groupId>
             <artifactId>jboss-transaction-api_1.1_spec</artifactId>
         </dependency>
         <dependency>
             <groupId>org.jboss.as</groupId>
             <artifactId>jboss-as-clustering-common</artifactId>
-            <version>${project.version}</version>
+            <version>${project.version}</version><!--$NO-MVN-MAN-VER$-->
             <scope>test</scope>
             <classifier>tests</classifier>
         </dependency>
+        <dependency>
+            <groupId>org.jboss.as</groupId>
+            <artifactId>jboss-as-subsystem-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging-processor</artifactId>
+            <!-- This is a compile-time dependency of this project, but is not needed at compile or runtime by other
+                  projects that depend on this project.-->
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+        <!-- Unfortunately we have to include this because of http://bugs.sun.com/view_bug.do?bug_id=6550655 -->
+        <dependency>
+            <groupId>org.rhq.helpers</groupId>
+            <artifactId>rhq-pluginAnnotations</artifactId>
+            <scope>provided</scope>
+         </dependency>
     </dependencies>
+
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <compilerArgument>
+                        -AgeneratedTranslationFilesPath=${project.basedir}/target/generated-translation-files
+                    </compilerArgument>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

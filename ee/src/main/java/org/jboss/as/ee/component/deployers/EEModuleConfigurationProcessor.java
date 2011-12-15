@@ -22,21 +22,27 @@
 
 package org.jboss.as.ee.component.deployers;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Set;
+
 import org.jboss.as.ee.component.Attachments;
 import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ee.component.ComponentConfigurator;
 import org.jboss.as.ee.component.ComponentDescription;
-import org.jboss.as.ee.component.EEApplicationDescription;
 import org.jboss.as.ee.component.EEModuleConfiguration;
 import org.jboss.as.ee.component.EEModuleDescription;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.DeploymentUnitProcessor;
-import org.jboss.logging.Logger;
+import org.jboss.as.server.deployment.reflect.DeploymentClassIndex;
 import org.jboss.modules.Module;
+import org.jboss.msc.service.ServiceName;
 
-import java.util.Collection;
+import static org.jboss.as.ee.EeLogger.ROOT_LOGGER;
+import static org.jboss.as.ee.EeMessages.MESSAGES;
 
 /**
  * Deployment processor responsible for creating a {@link org.jboss.as.ee.component.EEModuleConfiguration} from a {@link org.jboss.as.ee.component.EEModuleDescription} and
@@ -46,13 +52,11 @@ import java.util.Collection;
  */
 public class EEModuleConfigurationProcessor implements DeploymentUnitProcessor {
 
-    private static final Logger logger = Logger.getLogger(EEModuleConfigurationProcessor.class);
-
     public void deploy(DeploymentPhaseContext phaseContext) throws DeploymentUnitProcessingException {
         final DeploymentUnit deploymentUnit = phaseContext.getDeploymentUnit();
         final EEModuleDescription moduleDescription = deploymentUnit.getAttachment(Attachments.EE_MODULE_DESCRIPTION);
-        final EEApplicationDescription applicationDescription = deploymentUnit.getAttachment(Attachments.EE_APPLICATION_DESCRIPTION);
         final Module module = deploymentUnit.getAttachment(org.jboss.as.server.deployment.Attachments.MODULE);
+        final DeploymentClassIndex classIndex = deploymentUnit.getAttachment(org.jboss.as.server.deployment.Attachments.CLASS_INDEX);
         if (moduleDescription == null) {
             return;
         }
@@ -60,20 +64,37 @@ public class EEModuleConfigurationProcessor implements DeploymentUnitProcessor {
             return;
         }
 
-        final EEModuleConfiguration moduleConfiguration = new EEModuleConfiguration(moduleDescription, phaseContext, module);
+        final Set<ServiceName> failed = new HashSet<ServiceName>();
+
+        final EEModuleConfiguration moduleConfiguration = new EEModuleConfiguration(moduleDescription);
         deploymentUnit.putAttachment(Attachments.EE_MODULE_CONFIGURATION, moduleConfiguration);
 
-        final Collection<ComponentDescription> componentDescriptions = moduleDescription.getComponentDescriptions();
-        if (componentDescriptions != null) {
-            for (ComponentDescription componentDescription : componentDescriptions) {
-                logger.debug("Configuring component class: " + componentDescription.getComponentClassName() + " named " + componentDescription.getComponentName());
-                final ComponentConfiguration componentConfiguration = componentDescription.createConfiguration(applicationDescription);
-                for (ComponentConfigurator componentConfigurator : componentDescription.getConfigurators()) {
-                    componentConfigurator.configure(phaseContext, componentDescription, componentConfiguration);
+        final Iterator<ComponentDescription> iterator = moduleDescription.getComponentDescriptions().iterator();
+            while (iterator.hasNext()) {
+                final ComponentDescription componentDescription = iterator.next();
+                ROOT_LOGGER.debugf("Configuring component class: %s named %s", componentDescription.getComponentClassName(),
+                        componentDescription.getComponentName());
+                final ComponentConfiguration componentConfiguration;
+                try {
+                    componentConfiguration = componentDescription.createConfiguration(classIndex.classIndex(componentDescription.getComponentClassName()), module.getClassLoader());
+                    for (final ComponentConfigurator componentConfigurator : componentDescription.getConfigurators()) {
+                        componentConfigurator.configure(phaseContext, componentDescription, componentConfiguration);
+                    }
+                    moduleConfiguration.addComponentConfiguration(componentConfiguration);
+                } catch (Exception e) {
+                    if (componentDescription.isOptional()) {
+                        ROOT_LOGGER.componentInstallationFailure(e, componentDescription.getComponentName());
+                        failed.add(componentDescription.getStartServiceName());
+                        failed.add(componentDescription.getCreateServiceName());
+                        failed.add(componentDescription.getServiceName());
+                        iterator.remove();
+                    } else {
+                        throw MESSAGES.cannotConfigureComponent(e, componentDescription.getComponentName());
+                    }
                 }
-                moduleConfiguration.addComponentConfiguration(componentConfiguration);
             }
-        }
+
+        deploymentUnit.putAttachment(Attachments.FAILED_COMPONENTS, Collections.synchronizedSet(failed));
 
     }
 

@@ -22,34 +22,33 @@
 
 package org.jboss.as.ejb3.component.stateful;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 import org.jboss.as.ee.component.Component;
+import org.jboss.ejb.client.SessionID;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
 import org.jboss.invocation.Interceptors;
-
-import java.io.Serializable;
-import java.util.concurrent.atomic.AtomicReference;
-
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * User: jpai
  */
 public class StatefulComponentSessionIdGeneratingInterceptorFactory implements InterceptorFactory {
 
-    private final Object sessionIdContextKey;
+    public static final StatefulComponentSessionIdGeneratingInterceptorFactory INSTANCE = new StatefulComponentSessionIdGeneratingInterceptorFactory();
 
-    public StatefulComponentSessionIdGeneratingInterceptorFactory(Object sessionIdContextKey) {
-        this.sessionIdContextKey = sessionIdContextKey;
+    private StatefulComponentSessionIdGeneratingInterceptorFactory() {
     }
 
     @Override
     public Interceptor create(InterceptorFactoryContext context) {
-        AtomicReference<Serializable> sessionIdReference = new AtomicReference<Serializable>();
-        context.getContextData().put(this.sessionIdContextKey, sessionIdReference);
+        final AtomicReference<SessionID> sessionIdReference = new AtomicReference<SessionID>();
+        context.getContextData().put(StatefulSessionComponent.SESSION_ID_REFERENCE_KEY, sessionIdReference);
 
         //if we are attaching to an existing instance this will not be null
-        final Serializable id = (Serializable) context.getContextData().get(StatefulSessionComponent.SESSION_ATTACH_KEY);
+        final SessionID id = (SessionID) context.getContextData().get(SessionID.SESSION_ID_KEY);
         if(id == null) {
             return new StatefulComponentSessionIdGeneratingInterceptor(sessionIdReference);
         } else {
@@ -60,9 +59,9 @@ public class StatefulComponentSessionIdGeneratingInterceptorFactory implements I
 
     private class StatefulComponentSessionIdGeneratingInterceptor implements Interceptor {
 
-        private final AtomicReference<Serializable> sessionIdReference;
+        private final AtomicReference<SessionID> sessionIdReference;
 
-        StatefulComponentSessionIdGeneratingInterceptor(AtomicReference<Serializable> sessionIdReference) {
+        StatefulComponentSessionIdGeneratingInterceptor(AtomicReference<SessionID> sessionIdReference) {
             this.sessionIdReference = sessionIdReference;
         }
 
@@ -70,7 +69,7 @@ public class StatefulComponentSessionIdGeneratingInterceptorFactory implements I
         public Object processInvocation(InterceptorContext context) throws Exception {
             final Component component = context.getPrivateData(Component.class);
             if (component instanceof StatefulSessionComponent == false) {
-                throw new IllegalStateException("Unexpected component: " + component + " Expected " + StatefulSessionComponent.class);
+                throw MESSAGES.unexpectedComponent(component,StatefulSessionComponent.class);
             }
             StatefulSessionComponent statefulComponent = (StatefulSessionComponent) component;
             StatefulSessionComponentInstance statefulSessionComponentInstance = statefulComponent.getCache().create();

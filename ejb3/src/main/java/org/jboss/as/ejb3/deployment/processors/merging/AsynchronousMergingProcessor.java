@@ -21,23 +21,29 @@
  */
 package org.jboss.as.ejb3.deployment.processors.merging;
 
+import java.lang.reflect.Method;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+
+import javax.ejb.Asynchronous;
+
 import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ee.component.ComponentConfigurator;
 import org.jboss.as.ee.component.ComponentDescription;
 import org.jboss.as.ee.component.DependencyConfigurator;
 import org.jboss.as.ee.component.EEApplicationClasses;
-import org.jboss.as.ee.component.EEModuleClassDescription;
 import org.jboss.as.ee.component.ViewConfiguration;
 import org.jboss.as.ee.component.ViewConfigurator;
 import org.jboss.as.ee.component.ViewDescription;
 import org.jboss.as.ee.component.interceptors.InterceptorOrder;
-import org.jboss.as.ee.metadata.ClassAnnotationInformation;
 import org.jboss.as.ee.metadata.MethodAnnotationAggregator;
 import org.jboss.as.ee.metadata.RuntimeAnnotationInformation;
-import org.jboss.as.ejb3.component.AsyncFutureInterceptorFactory;
-import org.jboss.as.ejb3.component.AsyncVoidInterceptorFactory;
+import org.jboss.as.ejb3.component.interceptors.AsyncFutureInterceptorFactory;
+import org.jboss.as.ejb3.component.interceptors.AsyncVoidInterceptorFactory;
 import org.jboss.as.ejb3.component.EJBViewDescription;
-import org.jboss.as.ejb3.component.session.SessionBeanComponent;
 import org.jboss.as.ejb3.component.session.SessionBeanComponentCreateService;
 import org.jboss.as.ejb3.component.session.SessionBeanComponentDescription;
 import org.jboss.as.ejb3.deployment.processors.dd.MethodResolutionUtils;
@@ -52,14 +58,8 @@ import org.jboss.metadata.ejb.spec.AsyncMethodsMetaData;
 import org.jboss.metadata.ejb.spec.SessionBean31MetaData;
 import org.jboss.metadata.ejb.spec.SessionBeanMetaData;
 import org.jboss.msc.service.ServiceBuilder;
-
-import javax.ejb.Asynchronous;
-import java.lang.reflect.Method;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-
+import org.jboss.msc.service.ServiceName;
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * Merging processor that handles EJB asyn methods, and adds a configurator to configure any that are found.
  *
@@ -67,34 +67,25 @@ import java.util.concurrent.Future;
  */
 public class AsynchronousMergingProcessor extends AbstractMergingProcessor<SessionBeanComponentDescription> {
 
-    public AsynchronousMergingProcessor() {
+    final ServiceName asynchronousThreadPoolService;
+
+    public AsynchronousMergingProcessor(final ServiceName asynchronousThreadPoolService) {
         super(SessionBeanComponentDescription.class);
+        this.asynchronousThreadPoolService = asynchronousThreadPoolService;
     }
 
     @Override
     protected void handleAnnotations(final DeploymentUnit deploymentUnit, final EEApplicationClasses applicationClasses, final DeploymentReflectionIndex deploymentReflectionIndex, final Class<?> componentClass, final SessionBeanComponentDescription description) throws DeploymentUnitProcessingException {
         final RuntimeAnnotationInformation<Boolean> data = MethodAnnotationAggregator.runtimeAnnotationInformation(componentClass, applicationClasses, deploymentReflectionIndex, Asynchronous.class);
-        for (Map.Entry<String, List<Boolean>> entry : data.getClassAnnotations().entrySet()) {
+        for (final Map.Entry<String, List<Boolean>> entry : data.getClassAnnotations().entrySet()) {
             if (!entry.getValue().isEmpty()) {
                 description.addAsynchronousClass(entry.getKey());
             }
         }
 
-        for (Map.Entry<Method, List<Boolean>> entry : data.getMethodAnnotations().entrySet()) {
+        for (final Map.Entry<Method, List<Boolean>> entry : data.getMethodAnnotations().entrySet()) {
             if (!entry.getValue().isEmpty()) {
                 description.addAsynchronousMethod(MethodIdentifier.getIdentifierForMethod(entry.getKey()));
-            }
-        }
-
-        for (ViewDescription view : description.getViews()) {
-            final EEModuleClassDescription viewClass = applicationClasses.getClassByName(view.getViewClassName());
-            if (viewClass != null) {
-                final ClassAnnotationInformation<Asynchronous, Boolean> annotations = viewClass.getAnnotationInformation(Asynchronous.class);
-                if (annotations != null) {
-                    if (!annotations.getClassLevelAnnotations().isEmpty()) {
-                        description.addAsynchronousView(view.getViewClassName());
-                    }
-                }
             }
         }
 
@@ -109,15 +100,16 @@ public class AsynchronousMergingProcessor extends AbstractMergingProcessor<Sessi
                 final AsyncMethodsMetaData asyn = sessionBeanData.getAsyncMethods();
                 if (asyn != null) {
                     for (AsyncMethodMetaData method : asyn) {
-                        final Method m = MethodResolutionUtils.resolveMethod(method.getMethodName(), method.getMethodParams(), componentClass, deploymentReflectionIndex);
-                        description.addAsynchronousMethod(MethodIdentifier.getIdentifierForMethod(m));
+                        final Collection<Method> methods = MethodResolutionUtils.resolveMethods(method.getMethodName(), method.getMethodParams(), componentClass, deploymentReflectionIndex);
+                        for(final Method m : methods ) {
+                            description.addAsynchronousMethod(MethodIdentifier.getIdentifierForMethod(m));
+                        }
                     }
                 }
             }
         }
         if (!description.getAsynchronousClasses().isEmpty() ||
-                !description.getAsynchronousMethods().isEmpty() ||
-                !description.getAsynchronousViews().isEmpty()) {
+                !description.getAsynchronousMethods().isEmpty()) {
 
             //setup a dependency on the executor service
             description.getConfigurators().add(new ComponentConfigurator() {
@@ -126,7 +118,7 @@ public class AsynchronousMergingProcessor extends AbstractMergingProcessor<Sessi
                     configuration.getCreateDependencies().add(new DependencyConfigurator<SessionBeanComponentCreateService>() {
                         @Override
                         public void configureDependency(final ServiceBuilder<?> serviceBuilder, final SessionBeanComponentCreateService service) throws DeploymentUnitProcessingException {
-                            serviceBuilder.addDependency(SessionBeanComponent.ASYNC_EXECUTOR_SERVICE_NAME, ExecutorService.class, service.getAsyncExecutorService());
+                            serviceBuilder.addDependency(asynchronousThreadPoolService, ExecutorService.class, service.getAsyncExecutorService());
                         }
                     });
                 }
@@ -134,26 +126,24 @@ public class AsynchronousMergingProcessor extends AbstractMergingProcessor<Sessi
             for (final ViewDescription view : description.getViews()) {
                 final EJBViewDescription ejbView = (EJBViewDescription) view;
 
-                //TODO: This is not the way to handle remove async invocations
-                //this will need to be looked at once we have remote in place
                 ejbView.getConfigurators().add(new ViewConfigurator() {
                     @Override
                     public void configure(final DeploymentPhaseContext context, final ComponentConfiguration componentConfiguration, final ViewDescription description, final ViewConfiguration configuration) throws DeploymentUnitProcessingException {
                         final SessionBeanComponentDescription componentDescription = (SessionBeanComponentDescription) componentConfiguration.getComponentDescription();
-                        final boolean asyncView = componentDescription.getAsynchronousViews().contains(view.getViewClassName());
                         for (final Method method : configuration.getProxyFactory().getCachedMethods()) {
 
                             //we need the component method to get the correct declaring class
-                            final Method componentMethod = ClassReflectionIndexUtil.findRequiredMethod(deploymentReflectionIndex, deploymentReflectionIndex.getClassIndex(componentClass), method);
+                            final Method componentMethod = ClassReflectionIndexUtil.findMethod(deploymentReflectionIndex, componentClass, method);
 
                             if (componentMethod != null) {
-                                boolean methodFromAsyncView = asyncView && method.getDeclaringClass() != Object.class;
-                                if (methodFromAsyncView || componentDescription.getAsynchronousClasses().contains(componentMethod.getDeclaringClass().getName())) {
+                                if (componentDescription.getAsynchronousClasses().contains(componentMethod.getDeclaringClass().getName())) {
                                     addAsyncInterceptor(configuration, method);
+                                    configuration.addAsyncMethod(method);
                                 } else {
                                     MethodIdentifier id = MethodIdentifier.getIdentifierForMethod(method);
                                     if (componentDescription.getAsynchronousMethods().contains(id)) {
                                         addAsyncInterceptor(configuration, method);
+                                        configuration.addAsyncMethod(method);
                                     }
                                 }
                             }
@@ -173,7 +163,7 @@ public class AsynchronousMergingProcessor extends AbstractMergingProcessor<Sessi
         } else if (method.getReturnType().equals(Future.class)) {
             configuration.addClientInterceptor(method, AsyncFutureInterceptorFactory.INSTANCE, InterceptorOrder.Client.LOCAL_ASYNC_INVOCATION);
         } else {
-            throw new DeploymentUnitProcessingException("Async method " + method + " does not return void or Future");
+            throw MESSAGES.wrongReturnTypeForAsyncMethod(method);
         }
     }
 }

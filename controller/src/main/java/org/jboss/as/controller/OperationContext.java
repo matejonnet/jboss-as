@@ -29,6 +29,7 @@ import org.jboss.as.controller.registry.ImmutableManagementResourceRegistration;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.Resource;
 import org.jboss.dmr.ModelNode;
+import org.jboss.dmr.ModelType;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceRegistry;
@@ -111,10 +112,26 @@ public interface OperationContext {
      * Complete a step, returning the overall operation result.  The step handler calling this operation should append
      * its result status to the operation result before calling this method.  The return value should be checked
      * to determine whether the operation step should be rolled back.
+     * <p>
+     * <strong>Note:</strong>This {@code completeStep} variant results in a recursive invocation of the next
+     * {@link OperationStepHandler} that has been added (if any). When operations involve a great number of steps that
+     * use this variant (e.g. during server or  Host Controller boot), deep call stacks can result and
+     * {@link StackOverflowError}s are a possibility. For this reason, handlers that are likely to be executed during
+     * boot are encouraged to use the non-recursive {@link #completeStep(RollbackHandler)} variant.
+     * </p>
      *
      * @return the operation result action to take
      */
     ResultAction completeStep();
+
+    /**
+     * Complete a step, while registering for
+     * {@link RollbackHandler#handleRollback(OperationContext, ModelNode)} a notification if the work done by the
+     * caller needs to be rolled back}.
+     *
+     * @param rollbackHandler the handler for any rollback notification. Cannot be {@code null}.
+     */
+    void completeStep(RollbackHandler rollbackHandler);
 
     /**
      * Get the failure description result node, creating it if necessary.
@@ -156,6 +173,23 @@ public interface OperationContext {
      * Indicate that the operation should be rolled back, regardless of outcome.
      */
     void setRollbackOnly();
+
+    /**
+     * Gets whether any changes made by the operation should be rolled back if an error is introduced
+     * by a {@link Stage#RUNTIME} or {@link Stage#VERIFY} handler.
+     *
+     * @return {@code true} if the operation should rollback if there is a runtime stage failure
+     */
+    boolean isRollbackOnRuntimeFailure();
+
+    /**
+     * Gets whether {@link Stage#RUNTIME} handlers can restart (or remove) runtime services in order to
+     * make the operation take effect. If {@code false} and the operation cannot be effected without restarting
+     * or removing services, the handler should invoke {@link #reloadRequired()} or {@link #restartRequired()}.
+     *
+     * @return {@code true} if a service restart or removal is allowed
+     */
+    boolean isResourceServiceRestartAllowed();
 
     /**
      * Notify the context that the process requires a stop and re-start of its root service (but not a full process
@@ -346,6 +380,14 @@ public interface OperationContext {
      */
     Resource getRootResource();
 
+     /**
+     * Get a read-only reference of the entire management model BEFORE any changes were made by this context.
+     * The structure of the returned model may depend on the context type (domain vs. server).
+     *
+     * @return the read-only original resource
+     */
+    Resource getOriginalRootResource();
+
     /**
      * Determine whether the model has thus far been affected by this operation.
      *
@@ -382,6 +424,55 @@ public interface OperationContext {
      */
     void report(MessageSeverity severity, String message);
 
+
+    /**
+     * Marks a resource to indicate that it's backing service(s) will be restarted.
+     * This is to ensure that a restart only occurs once, even if there are multiple updates.
+     * When true is returned the caller has "aquired" the mark and should proceed with the
+     * restart, when false, the caller should take no additional action.
+     *
+     * The passed owner is compared by instance when a call to {@link #revertReloadRequired()}.
+     * This is to ensure that only the "owner" will be successful in reverting the mark.
+     *
+     * @param resource the resource that will be restarted
+     * @param owner the instance representing ownership of the mark
+     * @return true if the mark was required and the service should be restarted,
+     *         false if no action should be taken.
+     */
+    boolean markResourceRestarted(PathAddress resource, Object owner);
+
+
+    /**
+     * Removes the restarted marking on the specified resource, provided the passed owner is the one
+     * originally used to obtain the mark. The purpose of this method is to facilitate rollback processing.
+     * Only the "owner" of the mark should be the one to revert the service to a previous state (once again
+     * restarting it).When true is returned, the caller must take the required corrective
+     * action by restarting the resource, when false is returned the caller should take no additional action.
+     *
+     * The passed owner is compared by instance to the one provided in {@link #markResourceRestarted(PathAddress, Object)}
+     *
+     * @param resource the resource being reverted
+     * @param owner the owner of the mark for the resource
+     * @return true if the caller owns the mark and the service should be restored by restarting
+     *         false if no action should be taken.
+     */
+    boolean revertResourceRestarted(PathAddress resource, Object owner);
+
+    /**
+     * Resolves any expressions in the passed in ModelNode.
+     * Expressions may either represent system properties or vaulted date. For vaulted data the format is
+     * ${VAULT::vault_block::attribute_name::sharedKey}
+     *
+     * @param node the ModelNode containing expressions.
+     * @return a copy of the node with expressions resolved
+     *
+     * @throws OperationFailedException if there is a value of type {@link ModelType#EXPRESSION} in the node tree and
+     *            there is no system property or environment variable that matches the expression, or if a security
+     *            manager exists and its {@link SecurityManager#checkPermission checkPermission} method doesn't allow
+     *            access to the relevant system property or environment variable
+     */
+    ModelNode resolveExpressions(ModelNode node) throws OperationFailedException;
+
     /**
      * The stage at which a step should apply.
      */
@@ -417,10 +508,7 @@ public interface OperationContext {
         }
 
         boolean hasNext() {
-            if (this == DONE) {
-                return false;
-            }
-            return true;
+            return this != DONE;
         }
 
         Stage next() {
@@ -465,5 +553,42 @@ public interface OperationContext {
          * The operation will be reverted.
          */
         ROLLBACK,
+    }
+
+    interface RollbackHandler {
+
+        /**
+         * A {@link RollbackHandler} that does nothing in the callback. Intended for use by operation step
+         * handlers that do not need to do any clean up work -- e.g. those that only perform reads or those
+         * that only perform persistent configuration changes. (Persistent configuration changes need not be
+         * explicitly rolled back as the {@link OperationContext} will handle that automatically.)
+         */
+        RollbackHandler NOOP_ROLLBACK_HANDLER = new RollbackHandler() {
+            /**
+             * Does nothing.
+             *
+             * @param context  ignored
+             * @param operation ignored
+             */
+            @Override
+            public void handleRollback(OperationContext context, ModelNode operation) {
+                // no-op
+            }
+        };
+
+        /**
+         * Callback to an {@link OperationStepHandler} indicating that the overall operation is being
+         * rolled back and the handler should revert any change it has made. A handler executing in
+         * {@link Stage#MODEL} need not revert any changes it has made to the configuration model; this
+         * will be done automatically.
+         *
+         * @param context  the operation execution context; will be the same as what was passed to the
+         *                 {@link OperationStepHandler#execute(OperationContext, ModelNode)} method invocation
+         *                 that registered this rollback handler.
+         * @param operation the operation being rolled back; will be the same as what was passed to the
+         *                 {@link OperationStepHandler#execute(OperationContext, ModelNode)} method invocation
+         *                 that registered this rollback handler.
+         */
+        void handleRollback(OperationContext context, ModelNode operation);
     }
 }

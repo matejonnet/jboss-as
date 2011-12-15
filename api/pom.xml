@@ -28,7 +28,7 @@
   <parent>
     <groupId>org.jboss.as</groupId>
     <artifactId>jboss-as-parent</artifactId>
-    <version>7.1.0.Alpha1-SNAPSHOT</version>
+    <version>7.1.0.Beta1</version>
   </parent>
 
   <groupId>org.jboss.as</groupId>
@@ -171,13 +171,7 @@
     </dependency>
     <dependency>
       <groupId>org.jboss.osgi.http</groupId>
-      <artifactId>jboss-osgi-http</artifactId>
-      <exclusions>
-        <exclusion>
-          <groupId>org.jboss.osgi.spi</groupId>
-          <artifactId>jbosgi-spi</artifactId>
-        </exclusion>
-      </exclusions>
+      <artifactId>jbosgi-http</artifactId>
     </dependency>
     <dependency>
       <groupId>org.osgi</groupId>

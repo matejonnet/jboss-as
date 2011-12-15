@@ -22,15 +22,15 @@
 
 package org.jboss.as.controller.client;
 
-import javax.security.auth.callback.CallbackHandler;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.net.URISyntaxException;
 import java.net.UnknownHostException;
+import java.util.Map;
 
-import org.jboss.as.controller.client.impl.AbstractModelControllerClient;
-import org.jboss.as.protocol.mgmt.ManagementClientChannelStrategy;
+import javax.security.auth.callback.CallbackHandler;
+
+import org.jboss.as.controller.client.impl.RemotingModelControllerClient;
 import org.jboss.dmr.ModelNode;
 import org.jboss.threads.AsyncFuture;
 
@@ -87,7 +87,6 @@ public interface ModelControllerClient extends Closeable {
      * @param messageHandler the message handler to use for operation progress reporting, or {@code null} for none
      * @return the future result of the operation
      */
-    // TODO consider copying AsyncFuture and AsyncFutureTask into controller-client to eliminate the jboss-threads dependency
     AsyncFuture<ModelNode> executeAsync(ModelNode operation, OperationMessageHandler messageHandler);
 
     /**
@@ -107,15 +106,9 @@ public interface ModelControllerClient extends Closeable {
          * @param address the address of the remote host
          * @param port the port
          * @return A model controller client
-         * @throws UnknownHostException if the host cannot be found
          */
         public static ModelControllerClient create(final InetAddress address, final int port){
-            return new AbstractModelControllerClient() {
-                @Override
-                protected ManagementClientChannelStrategy getClientChannelStrategy() throws URISyntaxException, IOException {
-                    return ManagementClientChannelStrategy.create(address.getHostName(), port, executor, this, null);
-                }
-            };
+            return new RemotingModelControllerClient(address.getHostName(), port, null, null);
         }
 
         /**
@@ -125,15 +118,22 @@ public interface ModelControllerClient extends Closeable {
          * @param port the port
          * @param handler  CallbackHandler to obtain authentication information for the call.
          * @return A model controller client
-         * @throws UnknownHostException if the host cannot be found
          */
         public static ModelControllerClient create(final InetAddress address, final int port, final CallbackHandler handler){
-            return new AbstractModelControllerClient() {
-                @Override
-                protected ManagementClientChannelStrategy getClientChannelStrategy() throws URISyntaxException, IOException {
-                    return ManagementClientChannelStrategy.create(address.getHostName(), port, executor, this, handler);
-                }
-            };
+            return new RemotingModelControllerClient(address.getHostName(), port, handler, null);
+        }
+
+        /**
+         * Create a client instance for a remote address and port.
+         *
+         * @param address the address of the remote host
+         * @param port the port
+         * @param handler  CallbackHandler to obtain authentication information for the call.
+         * @param saslOptions Additional options to be passed to the SASL mechanism.
+         * @return A model controller client
+         */
+        public static ModelControllerClient create(final InetAddress address, final int port, final CallbackHandler handler, final Map<String, String> saslOptions){
+            return new RemotingModelControllerClient(address.getHostName(), port, handler, saslOptions);
         }
 
         /**
@@ -145,12 +145,7 @@ public interface ModelControllerClient extends Closeable {
          * @throws UnknownHostException if the host cannot be found
          */
         public static ModelControllerClient create(final String hostName, final int port) throws UnknownHostException {
-            return new AbstractModelControllerClient() {
-                @Override
-                protected ManagementClientChannelStrategy getClientChannelStrategy() throws URISyntaxException, IOException {
-                    return ManagementClientChannelStrategy.create(hostName, port, executor, this, null);
-                }
-            };
+            return new RemotingModelControllerClient(hostName, port, null, null);
         }
 
         /**
@@ -163,12 +158,21 @@ public interface ModelControllerClient extends Closeable {
          * @throws UnknownHostException if the host cannot be found
          */
         public static ModelControllerClient create(final String hostName, final int port, final CallbackHandler handler) throws UnknownHostException {
-            return new AbstractModelControllerClient() {
-                @Override
-                protected ManagementClientChannelStrategy getClientChannelStrategy() throws URISyntaxException, IOException {
-                    return ManagementClientChannelStrategy.create(hostName, port, executor, this, handler);
-                }
-            };
+            return new RemotingModelControllerClient(hostName, port, handler, null);
+        }
+
+        /**
+         * Create a client instance for a remote address and port and CallbackHandler.
+         *
+         * @param hostName the remote host
+         * @param port     the port
+         * @param handler  CallbackHandler to obtain authentication information for the call.
+         * @param saslOptions Additional options to be passed to the SASL mechanism.
+         * @return A model controller client
+         * @throws UnknownHostException if the host cannot be found
+         */
+        public static ModelControllerClient create(final String hostName, final int port, final CallbackHandler handler, final Map<String, String> saslOptions) throws UnknownHostException {
+            return new RemotingModelControllerClient(hostName, port, handler, saslOptions);
         }
     }
 

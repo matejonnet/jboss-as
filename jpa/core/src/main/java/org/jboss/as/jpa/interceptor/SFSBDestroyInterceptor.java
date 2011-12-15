@@ -22,6 +22,12 @@
 
 package org.jboss.as.jpa.interceptor;
 
+import static org.jboss.as.jpa.JpaMessages.MESSAGES;
+
+import java.util.List;
+
+import javax.persistence.EntityManager;
+
 import org.jboss.as.ee.component.ComponentInstance;
 import org.jboss.as.ejb3.component.stateful.StatefulSessionComponentInstance;
 import org.jboss.as.jpa.container.ExtendedEntityManager;
@@ -31,9 +37,6 @@ import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
-
-import javax.persistence.EntityManager;
-import java.util.List;
 
 /**
  * For SFSB life cycle management.
@@ -64,7 +67,7 @@ public class SFSBDestroyInterceptor implements Interceptor {
                         // TODO:  continue iterating through remaining entity managers and chain any exceptions
                         ((ExtendedEntityManager) entityManager).containerClose();
                     } else {
-                        throw new RuntimeException("can only close SFSB XPC entity manager that are instances of ExtendedEntityManager" + entityManager.getClass().getName());
+                        throw MESSAGES.cannotCloseNonExtendedEntityManager(entityManager.getClass().getName());
                     }
                 }
             }

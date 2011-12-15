@@ -21,16 +21,24 @@
  */
 package org.jboss.as.ejb3.cache;
 
-import org.jboss.logging.Logger;
-
-import javax.ejb.NoSuchEJBException;
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+
+import javax.transaction.RollbackException;
+import javax.transaction.Synchronization;
+import javax.transaction.SystemException;
+import javax.transaction.Transaction;
+import javax.transaction.TransactionManager;
+
+import static org.jboss.as.ejb3.EjbLogger.ROOT_LOGGER;
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
+
+import org.jboss.ejb.client.SessionID;
+import org.jboss.tm.TxUtils;
 
 /**
  * Cache that handles EJB expiration. This cache can be wrapped around an existing cache to
@@ -44,12 +52,10 @@ public class ExpiringCache<T extends Identifiable> implements Cache<T> {
 
     private final long millisecondTimeout;
     private final String beanName;
-    private final Map<Object, Entry> cache;
+    private final Map<SessionID, Entry> cache;
 
     private volatile StatefulObjectFactory<T> factory;
     private volatile ExpirationTask expiryThread;
-
-    private static final Logger logger = Logger.getLogger(ExpiringCache.class);
 
     private class ExpirationTask extends Thread {
 
@@ -62,9 +68,9 @@ public class ExpiringCache<T extends Identifiable> implements Cache<T> {
                 final List<Entry> queue = new ArrayList<Entry>();
                 final long time = System.currentTimeMillis();
                 synchronized (cache) {
-                    Iterator<Map.Entry<Object, Entry>> iterator = cache.entrySet().iterator();
+                    Iterator<Map.Entry<SessionID, Entry>> iterator = cache.entrySet().iterator();
                     while (iterator.hasNext()) {
-                        final Map.Entry<Object, Entry> entry = iterator.next();
+                        final Map.Entry<SessionID, Entry> entry = iterator.next();
                         if (entry.getValue().isExpired(time)) {
                             queue.add(entry.getValue());
                             iterator.remove();
@@ -73,10 +79,10 @@ public class ExpiringCache<T extends Identifiable> implements Cache<T> {
                 }
                 for (Entry value : queue) {
                     try {
-                        logger.debugf("Removing stateful bean %s - %s as it has been inactive for %d milliseconds", beanName, value.getKey(), millisecondTimeout);
+                        ROOT_LOGGER.debugf("Removing stateful bean %s - %s as it has been inactive for %d milliseconds", beanName, value.getKey(), millisecondTimeout);
                         factory.destroyInstance(value.getValue());
                     } catch (Exception e) {
-                        logger.error("Exception removing stateful bean " + value.getKey(), e);
+                        ROOT_LOGGER.errorRemovingStatefulBean(value.getKey(), e);
                     }
                 }
 
@@ -112,7 +118,7 @@ public class ExpiringCache<T extends Identifiable> implements Cache<T> {
             this.lastUsed = lastUsed;
         }
 
-        public Serializable getKey() {
+        public SessionID getKey() {
             return value.getId();
         }
 
@@ -132,7 +138,7 @@ public class ExpiringCache<T extends Identifiable> implements Cache<T> {
     public ExpiringCache(long value, TimeUnit timeUnit, final String beanName) {
         this.beanName = beanName;
         millisecondTimeout = TimeUnit.MILLISECONDS.convert(value, timeUnit);
-        cache = new HashMap<Object, Entry>();
+        cache = new HashMap<SessionID, Entry>();
     }
 
     @Override
@@ -146,18 +152,18 @@ public class ExpiringCache<T extends Identifiable> implements Cache<T> {
     }
 
     @Override
-    public void discard(final Serializable key) {
+    public void discard(final SessionID key) {
         synchronized (cache) {
             cache.remove(key);
         }
     }
 
     @Override
-    public T get(final Serializable key) throws NoSuchEJBException {
+    public T get(final SessionID key) {
         synchronized (cache) {
             Entry val = cache.get(key);
             if (val == null) {
-                throw new NoSuchEJBException("Could not find EJB with id " + key);
+                return null;
             }
             val.lastUsed = System.currentTimeMillis();
             val.state = State.IN_USE;
@@ -171,7 +177,7 @@ public class ExpiringCache<T extends Identifiable> implements Cache<T> {
             Entry entry = cache.get(obj.getId());
 
             if (entry == null) {
-                logger.warn("Could not find stateful bean to release " + obj.getId());
+                ROOT_LOGGER.couldNotFindStatefulBean(obj.getId());
                 return;
             }
             //this must stay within the synchronized block so the changes are visible to other threads
@@ -181,16 +187,36 @@ public class ExpiringCache<T extends Identifiable> implements Cache<T> {
     }
 
     @Override
-    public void remove(final Serializable key) {
-        Entry object;
+    public void remove(final TransactionManager transactionManager, final SessionID key) {
+
+        final Transaction currentTx;
+        try {
+            currentTx = transactionManager.getTransaction();
+        } catch (SystemException e) {
+            throw new RuntimeException(e);
+        }
+
+
+        final Entry object;
         synchronized (cache) {
             object = cache.remove(key);
         }
-        // EJBTHREE-1218: throw NoSuchEJBException if the bean can not be found
-        if (object == null)
-            throw new NoSuchEJBException(String.valueOf(key));
 
-        factory.destroyInstance(object.value);
+        if (currentTx != null && TxUtils.isActive(currentTx)) {
+            try {
+                // A transaction is in progress, so register a Synchronization so that the session can be removed on tx
+                // completion.
+                currentTx.registerSynchronization(new RemoveSynchronization(object));
+            } catch (RollbackException e) {
+                throw new RuntimeException(e);
+            } catch (SystemException e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            // no tx currently in progress, so just remove the session
+            factory.destroyInstance(object.value);
+        }
+
     }
 
     @Override
@@ -210,11 +236,31 @@ public class ExpiringCache<T extends Identifiable> implements Cache<T> {
 
     @Override
     public synchronized void stop() {
-        if(expiryThread != null) {
+        if (expiryThread != null) {
             expiryThread.stopTask();
         }
         synchronized (cache) {
             cache.clear();
         }
+    }
+
+    /**
+     * A {@link javax.transaction.Synchronization} which removes a stateful session in it's {@link javax.transaction.Synchronization#afterCompletion(int)}
+     * callback.
+     */
+    private class RemoveSynchronization implements Synchronization {
+        private final Entry object;
+
+        public RemoveSynchronization(final Entry object) {
+            this.object = object;
+        }
+
+        public void beforeCompletion() {
+        }
+
+        public void afterCompletion(int status) {
+            factory.destroyInstance(object.value);
+        }
+
     }
 }

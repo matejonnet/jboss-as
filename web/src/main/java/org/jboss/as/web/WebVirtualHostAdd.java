@@ -22,20 +22,22 @@
 
 package org.jboss.as.web;
 
-import java.util.List;
-import java.util.Locale;
-import org.jboss.as.controller.AbstractAddStepHandler;
-import org.jboss.as.controller.OperationContext;
-import org.jboss.as.controller.OperationFailedException;
-import org.jboss.as.controller.PathAddress;
-import org.jboss.as.controller.ServiceVerificationHandler;
-import org.jboss.as.controller.descriptions.DescriptionProvider;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELATIVE_TO;
 
+import java.util.List;
+import java.util.Locale;
+
+import org.jboss.as.controller.AbstractAddStepHandler;
+import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.PathAddress;
+import org.jboss.as.controller.ServiceVerificationHandler;
+import org.jboss.as.controller.descriptions.DescriptionProvider;
+import org.jboss.as.controller.registry.Resource;
 import org.jboss.as.server.mgmt.HttpManagementService;
 import org.jboss.as.server.mgmt.domain.HttpManagement;
 import org.jboss.as.server.services.path.AbstractPathService;
@@ -63,17 +65,28 @@ class WebVirtualHostAdd extends AbstractAddStepHandler implements DescriptionPro
         //
     }
 
+
+    @Override
+    protected void populateModel(final ModelNode operation, final Resource resource) {
+        final ModelNode model = resource.getModel();
+
+        populateModel(operation, model);
+        WebConfigurationHandlerUtils.initializeHost(resource, operation);
+    }
+
+    @Override
     protected void populateModel(ModelNode operation, ModelNode model) {
         model.get(Constants.ALIAS).set(operation.get(Constants.ALIAS));
-        model.get(Constants.ACCESS_LOG).set(operation.get(Constants.ACCESS_LOG));
-        model.get(Constants.REWRITE).set(operation.get(Constants.REWRITE));
-        model.get(Constants.SSO).set(operation.get(Constants.SSO));
+//        model.get(Constants.ACCESS_LOG).set(operation.get(Constants.ACCESS_LOG));
+//        model.get(Constants.REWRITE).set(operation.get(Constants.REWRITE));
+//        model.get(Constants.SSO).set(operation.get(Constants.SSO));
         model.get(Constants.DEFAULT_WEB_MODULE).set(operation.get(Constants.DEFAULT_WEB_MODULE));
 
         final boolean welcome = operation.hasDefined(Constants.ENABLE_WELCOME_ROOT) && operation.get(Constants.ENABLE_WELCOME_ROOT).asBoolean();
         model.get(Constants.ENABLE_WELCOME_ROOT).set(welcome);
     }
 
+    @Override
     protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) throws OperationFailedException {
         final PathAddress address = PathAddress.pathAddress(operation.require(OP_ADDR));
         final String name = address.getLastElement().getValue();
@@ -87,7 +100,7 @@ class WebVirtualHostAdd extends AbstractAddStepHandler implements DescriptionPro
             final ModelNode accessLog = operation.get(Constants.ACCESS_LOG);
             service.setAccessLog(accessLog.clone());
             // Create the access log service
-            accessLogService(name, accessLog, serviceTarget);
+            accessLogService(name, accessLog, serviceTarget, newControllers, verificationHandler);
             serviceBuilder.addDependency(WebSubsystemServices.JBOSS_WEB_HOST.append(name, Constants.ACCESS_LOG), String.class, service.getAccessLogPathInjector());
         }
         if (operation.hasDefined(Constants.REWRITE)) {
@@ -130,16 +143,16 @@ class WebVirtualHostAdd extends AbstractAddStepHandler implements DescriptionPro
         return NO_ALIASES;
     }
 
-    static void accessLogService(final String hostName, final ModelNode element, final ServiceTarget target) {
-        if (element.has(Constants.ACCESS_LOG)) {
-            final ModelNode accessLog = element.get(Constants.ACCESS_LOG);
-            final String relativeTo = accessLog.has(RELATIVE_TO) ? accessLog.get(RELATIVE_TO).asString() : DEFAULT_RELATIVE_TO;
-            final String path = accessLog.has(PATH) ? accessLog.get(PATH).asString() : hostName;
+    static void accessLogService(final String hostName, final ModelNode node, final ServiceTarget target, List<ServiceController<?>> newControllers, ServiceVerificationHandler verificationHandler) {
+        if (node.has(Constants.DIRECTORY)) {
+            final ModelNode directory = node.get(Constants.DIRECTORY);
+            final String relativeTo = directory.hasDefined(RELATIVE_TO) ? directory.get(RELATIVE_TO).asString() : DEFAULT_RELATIVE_TO;
+            final String path = directory.hasDefined(PATH) ? directory.get(PATH).asString() : hostName;
             RelativePathService.addService(WebSubsystemServices.JBOSS_WEB_HOST.append(hostName, Constants.ACCESS_LOG),
-                    path, relativeTo, target);
+                    path, false, relativeTo, target, newControllers, verificationHandler);
         } else {
             RelativePathService.addService(WebSubsystemServices.JBOSS_WEB_HOST.append(hostName, Constants.ACCESS_LOG),
-                    hostName, DEFAULT_RELATIVE_TO, target);
+                    hostName, false, DEFAULT_RELATIVE_TO, target, newControllers, verificationHandler);
         }
     }
 

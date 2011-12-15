@@ -27,13 +27,16 @@ import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.PathAddress;
 
+import static org.jboss.as.connector.ConnectorLogger.SUBSYSTEM_DATASOURCES_LOGGER;
+import static org.jboss.as.connector.ConnectorMessages.MESSAGES;
 import static org.jboss.as.connector.subsystems.datasources.Constants.JNDINAME;
-import static org.jboss.as.connector.subsystems.datasources.Constants.USE_JAVA_CONTEXT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ENABLED;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
+
+import java.util.List;
 
 import org.jboss.as.naming.deployment.ContextNames;
 import org.jboss.dmr.ModelNode;
-import org.jboss.logging.Logger;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceRegistry;
@@ -46,8 +49,6 @@ import org.jboss.msc.service.ServiceRegistry;
 public class DataSourceDisable implements OperationStepHandler {
     static final DataSourceDisable INSTANCE = new DataSourceDisable();
 
-    public static final Logger log = Logger.getLogger("org.jboss.as.connector.subsystems.datasources");
-
     public void execute(OperationContext context, ModelNode operation) {
 
         final ModelNode model = context.readResourceForUpdate(PathAddress.EMPTY_ADDRESS).getModel();
@@ -57,33 +58,86 @@ public class DataSourceDisable implements OperationStepHandler {
             context.addStep(new OperationStepHandler() {
                 public void execute(final OperationContext context, ModelNode operation) throws OperationFailedException {
 
-                    final String jndiName = Util.getJndiName(model);
+                    final ModelNode address = operation.require(OP_ADDR);
+                    final String dsName = PathAddress.pathAddress(address).getLastElement().getValue();
+                    final String jndiName = model.get(JNDINAME.getName()).asString();
 
                     final ServiceRegistry registry = context.getServiceRegistry(true);
 
-                    final ServiceName dataSourceServiceName = AbstractDataSourceService.SERVICE_NAME_BASE.append(jndiName);
+                    final ServiceName dataSourceServiceName = AbstractDataSourceService.SERVICE_NAME_BASE.append(dsName);
                     final ServiceController<?> dataSourceController = registry.getService(dataSourceServiceName);
                     if (dataSourceController != null) {
                         if (ServiceController.State.UP.equals(dataSourceController.getState())) {
                             dataSourceController.setMode(ServiceController.Mode.NEVER);
                         } else {
-                            throw new OperationFailedException(new ModelNode().set("Data-source service [" + jndiName + "] is not enabled"));
+                            throw new OperationFailedException(new ModelNode().set(MESSAGES.serviceNotEnabled("Data-source", dsName)));
                         }
                     } else {
-                        throw new OperationFailedException(new ModelNode().set("Data-source service [" + jndiName + "] is not available"));
+                        throw new OperationFailedException(new ModelNode().set(MESSAGES.serviceNotAvailable("Data-source", dsName)));
                     }
 
-                    final ServiceName referenceServiceName = DataSourceReferenceFactoryService.SERVICE_NAME_BASE.append(jndiName);
+                    final ServiceName referenceServiceName = DataSourceReferenceFactoryService.SERVICE_NAME_BASE.append(dsName);
                     final ServiceController<?> referenceController = registry.getService(referenceServiceName);
-                    if (referenceController != null && ServiceController.State.UP.equals(referenceController.getState())) {
-                        referenceController.setMode(ServiceController.Mode.NEVER);
+                    if (referenceController != null ) {
+                        referenceController.setMode(ServiceController.Mode.REMOVE);
                     }
 
                     final ServiceName binderServiceName = ContextNames.bindInfoFor(jndiName).getBinderServiceName();
+
                     final ServiceController<?> binderController = registry.getService(binderServiceName);
-                    if (binderController != null && ServiceController.State.UP.equals(binderController.getState())) {
-                        binderController.setMode(ServiceController.Mode.NEVER);
+                    if (binderController != null ) {
+                        binderController.setMode(ServiceController.Mode.REMOVE);
                     }
+
+                    final ServiceName dataSourceConfigServiceName = DataSourceConfigService.SERVICE_NAME_BASE.append(dsName);
+                    final ServiceController<?> dataSourceConfigController = registry.getService(dataSourceConfigServiceName);
+
+
+                    final List<ServiceName> serviceNames = registry.getServiceNames();
+
+
+                    final ServiceName xaDataSourceConfigServiceName = XADataSourceConfigService.SERVICE_NAME_BASE.append(dsName);
+                    final ServiceController<?> xaDataSourceConfigController = registry.getService(xaDataSourceConfigServiceName);
+
+
+                    for (ServiceName name : serviceNames) {
+                        if (dataSourceConfigServiceName.append("connetion-properties").isParentOf(name)) {
+                            final ServiceController<?> connProperyController = registry.getService(name);
+
+                            if (connProperyController != null) {
+                                if (ServiceController.State.UP.equals(connProperyController.getState())) {
+                                    connProperyController.setMode(ServiceController.Mode.NEVER);
+                                } else {
+                                    throw new OperationFailedException(new ModelNode().set(MESSAGES.serviceAlreadyStarted("Data-source.connectionProperty", name)));
+                                }
+                            } else {
+                                throw new OperationFailedException(new ModelNode().set(MESSAGES.serviceNotAvailable("Data-source.connectionProperty", name)));
+                            }
+                        }
+                        if (xaDataSourceConfigServiceName.append("xa-datasource-properties").isParentOf(name)) {
+                            final ServiceController<?> xaConfigProperyController = registry.getService(name);
+
+                            if (xaConfigProperyController != null) {
+                                if (ServiceController.State.UP.equals(xaConfigProperyController.getState())) {
+                                    xaConfigProperyController.setMode(ServiceController.Mode.NEVER);
+                                } else {
+                                    throw new OperationFailedException(new ModelNode().set(MESSAGES.serviceAlreadyStarted("Data-source.xa-config-property", name)));
+                                }
+                            } else {
+                                throw new OperationFailedException(new ModelNode().set(MESSAGES.serviceNotAvailable("Data-source.xa-config-property", name)));
+                            }
+                        }
+                    }
+
+
+                    if (xaDataSourceConfigController != null) {
+                        xaDataSourceConfigController.setMode(ServiceController.Mode.REMOVE);
+                    }
+
+                    if (dataSourceConfigController != null) {
+                        dataSourceConfigController.setMode(ServiceController.Mode.REMOVE);
+                    }
+
                     context.completeStep();
                 }
             }, OperationContext.Stage.RUNTIME);

@@ -50,6 +50,7 @@ import org.infinispan.manager.EmbeddedCacheManager;
 import org.infinispan.remoting.transport.Address;
 import org.junit.After;
 import org.junit.Test;
+
 /**
  * @author Paul Ferraro
  */
@@ -381,5 +382,14 @@ public class DefaultEmbeddedCacheManagerTest {
         boolean result = this.subject.isDefaultRunning();
 
         assertTrue(result);
+    }
+    
+    @Test
+    public void startCaches() {
+        when(this.manager.startCaches("other", "default")).thenReturn(this.manager);
+        
+        EmbeddedCacheManager result = this.subject.startCaches("other", CacheContainer.DEFAULT_CACHE_NAME);
+        
+        assertSame(this.subject, result);
     }
 }

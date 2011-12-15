@@ -22,36 +22,33 @@
 package org.jboss.as.ejb3.component.session;
 
 
-import org.jboss.as.ejb3.component.EJBComponent;
-import org.jboss.as.ejb3.concurrency.AccessTimeoutDetails;
-import org.jboss.as.ejb3.context.spi.SessionContext;
-import org.jboss.as.threads.ThreadsServices;
-import org.jboss.invocation.InterceptorFactory;
-import org.jboss.logging.Logger;
-import org.jboss.msc.service.ServiceName;
+import static java.util.Collections.emptyMap;
 
-import javax.ejb.EJBLocalObject;
-import javax.ejb.EJBObject;
-import javax.ejb.TransactionAttributeType;
-import java.io.Serializable;
-import java.lang.reflect.Method;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 
-import static java.util.Collections.emptyMap;
+import javax.ejb.EJBLocalObject;
+import javax.ejb.EJBObject;
+import javax.ejb.TransactionAttributeType;
 
+import org.jboss.as.ejb3.component.EJBComponent;
+import org.jboss.as.ejb3.concurrency.AccessTimeoutDetails;
+import org.jboss.invocation.InterceptorContext;
+import org.jboss.logging.Logger;
+import org.jboss.msc.service.ServiceName;
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
  */
-public abstract class SessionBeanComponent extends EJBComponent implements org.jboss.as.ejb3.context.spi.SessionBeanComponent {
-
-    private static final Logger logger = Logger.getLogger(SessionBeanComponent.class);
-
-    public static final ServiceName ASYNC_EXECUTOR_SERVICE_NAME = ThreadsServices.EXECUTOR.append("ejb3-async");
+public abstract class SessionBeanComponent extends EJBComponent {
 
     protected final Map<String, AccessTimeoutDetails> beanLevelAccessTimeout;
     private final ExecutorService asyncExecutor;
+
+    private final ServiceName ejbObjectView;
+    private final ServiceName ejbLocalObjectView;
 
     /**
      * Construct a new instance.
@@ -67,28 +64,29 @@ public abstract class SessionBeanComponent extends EJBComponent implements org.j
 
         //if this bean has no async methods, then this will not be injected
         this.asyncExecutor = ejbComponentCreateService.getAsyncExecutorService().getOptionalValue();
+        this.ejbLocalObjectView = ejbComponentCreateService.getEjbLocalObjectView();
+        this.ejbObjectView = ejbComponentCreateService.getEjbObjectview();
     }
 
-    @Override
-    public <T> T getBusinessObject(SessionContext ctx, Class<T> businessInterface) throws IllegalStateException {
-        if(businessInterface == null) {
-            throw new IllegalStateException("Business interface type cannot be null");
+    public <T> T getBusinessObject(Class<T> businessInterface, final InterceptorContext context) throws IllegalStateException {
+        if (businessInterface == null) {
+            throw MESSAGES.businessInterfaceIsNull();
         }
         return createViewInstanceProxy(businessInterface, emptyMap());
     }
 
-    protected Serializable getSessionIdOf(final SessionContext ctx) {
-        return ((SessionBeanComponentInstance.SessionBeanComponentInstanceContext) ctx).getId();
+    public EJBLocalObject getEJBLocalObject(final InterceptorContext ctx) throws IllegalStateException {
+        if (ejbLocalObjectView == null) {
+            throw MESSAGES.beanComponentMissingEjbObject(getComponentName(),"EJBLocalObject");
+        }
+        return createViewInstanceProxy(EJBLocalObject.class, Collections.<Object, Object>emptyMap(), ejbLocalObjectView);
     }
 
-    @Override
-    public EJBLocalObject getEJBLocalObject(SessionContext ctx) throws IllegalStateException {
-        throw new RuntimeException("NYI: org.jboss.as.ejb3.component.session.SessionBeanComponent.getEJBLocalObject");
-    }
-
-    @Override
-    public EJBObject getEJBObject(SessionContext ctx) throws IllegalStateException {
-        throw new RuntimeException("NYI: org.jboss.as.ejb3.component.session.SessionBeanComponent.getEJBObject");
+    public EJBObject getEJBObject(final InterceptorContext ctx) throws IllegalStateException {
+        if (ejbObjectView == null) {
+            throw MESSAGES.beanComponentMissingEjbObject(getComponentName(),"EJBObject");
+        }
+        return createViewInstanceProxy(EJBObject.class, Collections.<Object, Object>emptyMap(), ejbObjectView);
     }
 
     /**
@@ -104,7 +102,7 @@ public abstract class SessionBeanComponent extends EJBComponent implements org.j
     public boolean getRollbackOnly() throws IllegalStateException {
         // NOT_SUPPORTED and NEVER will not have a transaction context, so we can ignore those
         if (getCurrentTransactionAttribute() == TransactionAttributeType.SUPPORTS) {
-            throw new IllegalStateException("EJB 3.1 FR 13.6.2.9 getRollbackOnly is not allowed with SUPPORTS attribute");
+            throw MESSAGES.getRollBackOnlyIsNotAllowWithSupportsAttribute();
         }
         return super.getRollbackOnly();
     }
@@ -116,5 +114,13 @@ public abstract class SessionBeanComponent extends EJBComponent implements org.j
             throw new IllegalStateException("EJB 3.1 FR 13.6.2.8 setRollbackOnly is not allowed with SUPPORTS attribute");
         }
         super.setRollbackOnly();
+    }
+
+    protected ServiceName getEjbObjectView() {
+        return ejbObjectView;
+    }
+
+    protected ServiceName getEjbLocalObjectView() {
+        return ejbLocalObjectView;
     }
 }

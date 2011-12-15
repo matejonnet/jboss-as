@@ -22,7 +22,7 @@
 
 package org.jboss.as.host.controller;
 
-import static org.jboss.as.protocol.old.ProtocolUtils.expectHeader;
+import static org.jboss.as.process.protocol.ProtocolUtils.expectHeader;
 
 import java.io.BufferedOutputStream;
 import java.io.DataInput;
@@ -51,11 +51,13 @@ import org.jboss.as.controller.client.OperationMessageHandler;
 import org.jboss.as.controller.remote.ExistingChannelModelControllerClient;
 import org.jboss.as.controller.remote.TransactionalModelControllerOperationHandler;
 import org.jboss.as.domain.controller.FileRepository;
-import org.jboss.as.domain.controller.MasterDomainControllerClient;
+import org.jboss.as.domain.controller.operations.SlaveRegistrationError;
+import org.jboss.as.domain.controller.operations.SlaveRegistrationError.ErrorCode;
 import org.jboss.as.domain.management.CallbackHandlerFactory;
 import org.jboss.as.domain.management.security.SecretIdentityService;
 import org.jboss.as.domain.management.security.SecurityRealmService;
 import org.jboss.as.host.controller.mgmt.DomainControllerProtocol;
+import org.jboss.as.process.protocol.Connection.ClosedCallback;
 import org.jboss.as.protocol.ProtocolChannelClient;
 import org.jboss.as.protocol.mgmt.FlushableDataOutput;
 import org.jboss.as.protocol.mgmt.ManagementChannel;
@@ -63,8 +65,7 @@ import org.jboss.as.protocol.mgmt.ManagementChannelFactory;
 import org.jboss.as.protocol.mgmt.ManagementClientChannelStrategy;
 import org.jboss.as.protocol.mgmt.ManagementRequest;
 import org.jboss.as.protocol.mgmt.ManagementResponseHandler;
-import org.jboss.as.protocol.old.Connection.ClosedCallback;
-import org.jboss.as.remoting.RemotingServices;
+import org.jboss.as.remoting.management.ManagementRemotingServices;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 import org.jboss.msc.service.Service;
@@ -108,6 +109,7 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
     private volatile ManagementChannel channel;
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final AtomicBoolean connected = new AtomicBoolean(false);
+    private final AtomicBoolean registered = new AtomicBoolean(false);
     private final FutureClient futureClient = new FutureClient();
     private final InjectedValue<Endpoint> endpointInjector = new InjectedValue<Endpoint>();
     private final InjectedValue<CallbackHandlerFactory> callbackFactoryInjector = new InjectedValue<CallbackHandlerFactory>();
@@ -136,7 +138,7 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
             throw new RuntimeException(e);
         }
         ServiceBuilder builder = serviceTarget.addService(MasterDomainControllerClient.SERVICE_NAME, service)
-                .addDependency(RemotingServices.ENDPOINT, Endpoint.class, service.endpointInjector)
+                .addDependency(ManagementRemotingServices.MANAGEMENT_ENDPOINT, Endpoint.class, service.endpointInjector)
                 .setInitialMode(ServiceController.Mode.ACTIVE);
 
         if (securityRealm != null) {
@@ -150,31 +152,35 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
 
     /** {@inheritDoc} */
     public void register() {
-        // TODO egregious hack. Fix properly as part of AS7-794
         IllegalStateException ise = null;
         boolean connected = false;
-        long timeout = System.currentTimeMillis() + 5000;
-        while (!connected && System.currentTimeMillis() < timeout) {
+        //This takes about 30 seconds should be enough to start up master if booted at the same time
+        final long timeout = 30000;
+        final long endTime = System.currentTimeMillis() + timeout;
+        int retries = 0;
+        while (!connected) {
             try {
                connect();
                connected = true;
+               break;
             }
             catch (IllegalStateException e) {
+                if (System.currentTimeMillis() > endTime) {
+                    throw new IllegalStateException("Could not connect to master in " + retries + "attempts within  " + timeout + " ms", e);
+                }
                 ise = e;
                 try {
-                    Thread.sleep(100);
-                } catch (InterruptedException inter) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("Interrupted while trying to connect to master", inter);
+                    ReconnectPolicy.CONNECT.wait(retries);
+                } catch (InterruptedException ie) {
+                    throw new IllegalStateException("Interrupted while trying to connect to master");
                 }
+            } catch (HostAlreadyExistsException e) {
+                throw new IllegalStateException(e.getMessage());
             }
-        }
-
-        if (!connected) {
-            throw (ise != null) ? ise : new IllegalStateException("Could not connect to master within 5000 ms");
         }
 
         this.connected.set(true);
+        registered.set(true);
     }
 
     private synchronized void connect() {
@@ -184,15 +190,15 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
             }
         });
 
-        if (this.channelClient != null) {
-            try {
-                new UnregisterModelControllerRequest().executeForResult(executor, ManagementClientChannelStrategy.create(channel));
-            } catch (Exception e) {
-            }
-
-            this.channelClient.close();
-            this.channelClient = null;
-        }
+//        if (this.channelClient != null) {
+//            try {
+//                new UnregisterModelControllerRequest().executeForResult(executor, ManagementClientChannelStrategy.create(channel));
+//            } catch (Exception e) {
+//            }
+//
+//            this.channelClient.close();
+//            this.channelClient = null;
+//        }
 
         txOperationHandler = new TransactionalModelControllerOperationHandler(executor, controller);
         ProtocolChannelClient<ManagementChannel> client;
@@ -200,7 +206,6 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
         //Reusing the endpoint here after a disconnect does not seem to work once something has gone down, so try our own
         //configuration.setEndpoint(endpointInjector.getValue());
         configuration.setEndpointName("endpoint");
-        configuration.setExecutor(RemotingServices.createExecutor());
         configuration.setUriScheme("remote");
 
         try {
@@ -221,7 +226,7 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
             client.connect(handler);
             this.channelClient = client;
 
-            ManagementChannel channel = client.openChannel(RemotingServices.DOMAIN_CHANNEL);
+            ManagementChannel channel = client.openChannel(ManagementRemotingServices.DOMAIN_CHANNEL);
             this.channel = channel;
 
             channel.addCloseHandler(new CloseHandler<Channel>() {
@@ -238,21 +243,31 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
             throw new IllegalStateException(e);
         }
 
+        SlaveRegistrationError error = null;
         try {
-            final String error = new RegisterModelControllerRequest().executeForResult(executor, ManagementClientChannelStrategy.create(channel));
-            if (error != null) {
-                throw new Exception(error);
-            }
+            error = new RegisterModelControllerRequest().executeForResult(executor, ManagementClientChannelStrategy.create(channel));
         } catch (Exception e) {
             log.warnf("Error retrieving domain model from remote domain controller %s:%d: %s", host.getHostAddress(), port, e.getMessage());
             throw new IllegalStateException(e);
         }
+
+        if (error != null) {
+            if (error.getErrorCode() == ErrorCode.HOST_ALREADY_EXISTS) {
+                throw new HostAlreadyExistsException(error.getErrorMessage());
+            }
+            throw new IllegalStateException(error.getErrorMessage());
+        }
+
     }
 
     /** {@inheritDoc} */
     public synchronized void unregister() {
+        if (!registered.get()) {
+            return;
+        }
         try {
             new UnregisterModelControllerRequest().executeForResult(executor, ManagementClientChannelStrategy.create(channel));
+            registered.set(false);
         } catch (Exception e) {
             log.debugf(e, "Error unregistering from master");
         }
@@ -335,6 +350,7 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
                     } catch (InterruptedException e) {
                     }
 
+                    int count = 0;
                     while (!shutdown.get()) {
                         log.debug("Attempting reconnection to master...");
                         try {
@@ -344,8 +360,10 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
                         } catch (Exception e) {
                         }
                         try {
-                            Thread.sleep(3000);
+                            ReconnectPolicy.RECONNECT.wait(++count);
                         } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
                         }
                     }
                 }
@@ -363,7 +381,7 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
 
     }
 
-    private class RegisterModelControllerRequest extends RegistryRequest<String> {
+    private class RegisterModelControllerRequest extends RegistryRequest<SlaveRegistrationError> {
 
         RegisterModelControllerRequest() {
         }
@@ -380,15 +398,16 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
             output.writeUTF(name);
         }
 
-        protected ManagementResponseHandler<String> getResponseHandler() {
-            return new ManagementResponseHandler<String>() {
+        protected ManagementResponseHandler<SlaveRegistrationError> getResponseHandler() {
+            return new ManagementResponseHandler<SlaveRegistrationError>() {
                 @Override
-                protected String readResponse(DataInput input) throws IOException {
+                protected SlaveRegistrationError readResponse(DataInput input) throws IOException {
                     byte status = input.readByte();
                     if (status == DomainControllerProtocol.PARAM_OK) {
                         return null;
                     } else {
-                        return input.readUTF();
+                        //return input.readUTF();
+                        return SlaveRegistrationError.parse(input.readUTF());
                     }
                 }
             };
@@ -581,4 +600,11 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
         }
     }
 
+    private static class HostAlreadyExistsException extends RuntimeException {
+
+        public HostAlreadyExistsException(String msg) {
+            super(msg);
+        }
+
+    }
 }

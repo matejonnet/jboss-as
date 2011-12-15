@@ -29,6 +29,7 @@ import java.util.HashSet;
 import java.util.concurrent.Executor;
 
 import org.apache.catalina.connector.Connector;
+import org.apache.coyote.ajp.AjpAprProtocol;
 import org.apache.coyote.http11.Http11AprProtocol;
 import org.apache.coyote.http11.Http11Protocol;
 import org.jboss.as.network.ManagedBinding;
@@ -47,8 +48,9 @@ import org.jboss.msc.value.InjectedValue;
  */
 class WebConnectorService implements Service<Connector> {
 
-    private String protocol = "HTTP/1.1";
-    private String scheme = "http";
+    private volatile String protocol = "HTTP/1.1";
+    private volatile String scheme = "http";
+    private final String unmaskedPassword;
 
     private Boolean enableLookups = null;
     private String proxyName = null;
@@ -67,9 +69,10 @@ class WebConnectorService implements Service<Connector> {
     private final InjectedValue<SocketBinding> binding = new InjectedValue<SocketBinding>();
     private final InjectedValue<WebServer> server = new InjectedValue<WebServer>();
 
-    public WebConnectorService(String protocol, String scheme) {
+    public WebConnectorService(String protocol, String scheme, String unmaskedPassword) {
         if(protocol != null) this.protocol = protocol;
         if(scheme != null) this.scheme = scheme;
+        this.unmaskedPassword = unmaskedPassword;
     }
 
     /**
@@ -94,6 +97,11 @@ class WebConnectorService implements Service<Connector> {
             if(proxyPort != null) connector.setProxyPort(proxyPort);
             if(redirectPort != null) connector.setRedirectPort(redirectPort);
             if(secure != null) connector.setSecure(secure);
+            boolean nativeProtocolHandler = false;
+            if (connector.getProtocolHandler() instanceof Http11AprProtocol
+                    || connector.getProtocolHandler() instanceof AjpAprProtocol) {
+                nativeProtocolHandler = true;
+            }
             if (executor != null) {
                 Method m = connector.getProtocolHandler().getClass().getMethod("setExecutor", Executor.class);
                 m.invoke(connector.getProtocolHandler(), executor);
@@ -109,11 +117,16 @@ class WebConnectorService implements Service<Connector> {
                 } catch (NoSuchMethodException e) {
                  // Not all connectors will have this
                 }
-                try {
-                    Method m = connector.getProtocolHandler().getClass().getMethod("setSendfileSize", Integer.TYPE);
+                if (nativeProtocolHandler) {
+                    try {
+                        Method m = connector.getProtocolHandler().getClass().getMethod("setSendfileSize", Integer.TYPE);
+                        m.invoke(connector.getProtocolHandler(), maxConnections);
+                    } catch (NoSuchMethodException e) {
+                     // Not all connectors will have this
+                    }
+                } else {
+                    Method m = connector.getProtocolHandler().getClass().getMethod("setMaxThreads", Integer.TYPE);
                     m.invoke(connector.getProtocolHandler(), maxConnections);
-                } catch (NoSuchMethodException e) {
-                 // Not all connectors will have this
                 }
             }
             if (virtualServers != null) {
@@ -143,7 +156,7 @@ class WebConnectorService implements Service<Connector> {
                     try {
                         if (ssl.hasDefined(Constants.PASSWORD)) {
                             Method m = connector.getProtocolHandler().getClass().getMethod("setSSLPassword", String.class);
-                            m.invoke(connector.getProtocolHandler(), ssl.get(Constants.PASSWORD).asString());
+                            m.invoke(connector.getProtocolHandler(), unmaskedPassword);
                         }
                         if (ssl.hasDefined(Constants.CERTIFICATE_KEY_FILE)) {
                             Method m = connector.getProtocolHandler().getClass().getMethod("setSSLCertificateKeyFile", String.class);
@@ -189,7 +202,7 @@ class WebConnectorService implements Service<Connector> {
                         }
                         if (ssl.hasDefined(Constants.PASSWORD)) {
                             Method m = connector.getProtocolHandler().getClass().getMethod("setKeypass", String.class);
-                            m.invoke(connector.getProtocolHandler(), ssl.get(Constants.PASSWORD).asString());
+                            m.invoke(connector.getProtocolHandler(), unmaskedPassword);
                         }
                         if (ssl.hasDefined(Constants.CERTIFICATE_KEY_FILE)) {
                             Method m = connector.getProtocolHandler().getClass().getMethod("setKeystore", String.class);
@@ -215,12 +228,40 @@ class WebConnectorService implements Service<Connector> {
                             Method m = connector.getProtocolHandler().getClass().getMethod("setAttribute", String.class, Object.class);
                             m.invoke(connector.getProtocolHandler(), "sessionCacheTimeout", ssl.get(Constants.SESSION_TIMEOUT).asString());
                         }
+                        /* possible attributes that apply to ssl socket factory
+                            keystoreType -> PKCS12
+                            keystore -> path/to/keystore.p12
+                            keypass -> key password
+                            truststorePass -> trustPassword
+                            truststoreFile -> path/to/truststore.jks
+                            truststoreType -> JKS
+                         */
+                        if (ssl.hasDefined(Constants.CA_CERTIFICATE_FILE)) {
+                            Method m = connector.getProtocolHandler().getClass().getMethod("setAttribute", String.class, Object.class);
+                            m.invoke(connector.getProtocolHandler(), "truststoreFile", ssl.get(Constants.CA_CERTIFICATE_FILE).asString());
+
+                        }
+                        if (ssl.hasDefined(Constants.CA_CERTIFICATE_PASSWORD)) {
+                            Method m = connector.getProtocolHandler().getClass().getMethod("setAttribute", String.class, Object.class);
+                            m.invoke(connector.getProtocolHandler(), "truststorePass",ssl.get(Constants.CA_CERTIFICATE_PASSWORD).asString());
+                        }
+                        if (ssl.hasDefined(Constants.TRUSTSTORE_TYPE)) {
+                            Method m = connector.getProtocolHandler().getClass().getMethod("setAttribute", String.class, Object.class);
+                            m.invoke(connector.getProtocolHandler(), "truststoreType",ssl.get(Constants.TRUSTSTORE_TYPE).asString());
+                        }
+                        if (ssl.hasDefined(Constants.KEYSTORE_TYPE)) {
+                            Method m = connector.getProtocolHandler().getClass().getMethod("setKeytype", String.class);
+                            m.invoke(connector.getProtocolHandler(), ssl.get(Constants.KEYSTORE_TYPE).asString());
+                        }
+
                     } catch (NoSuchMethodException e) {
                         throw new StartException(e);
                     }
                 }
             }
             getWebServer().addConnector(connector);
+            connector.init();
+            connector.start();
             this.connector = connector;
         } catch (Exception e) {
             throw new StartException(e);
@@ -234,6 +275,14 @@ class WebConnectorService implements Service<Connector> {
         final SocketBinding binding = this.binding.getValue();
         binding.getSocketBindings().getNamedRegistry().unregisterBinding(binding.getName());
         final Connector connector = this.connector;
+        try {
+            connector.pause();
+        } catch (Exception e) {
+        }
+        try {
+            connector.stop();
+        } catch (Exception e) {
+        }
         getWebServer().removeConnector(connector);
         this.connector = null;
     }

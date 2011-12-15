@@ -65,6 +65,9 @@ if [ "x$JBOSS_HOME" = "x" ]; then
 fi
 export JBOSS_HOME
 
+# Security precaution, make sure the auth directory is only visible to the owner
+# This is used by transparent SASL authentication to validate user security
+chmod 700 $JBOSS_HOME/auth
 # Setup the JVM
 if [ "x$JAVA" = "x" ]; then
     if [ "x$JAVA_HOME" != "x" ]; then
@@ -143,7 +146,7 @@ while true; do
          -jar \"$JBOSS_HOME/jboss-modules.jar\" \
          -mp \"${MODULEPATH}\" \
          -logmodule "org.jboss.logmanager" \
-         -jaxpmodule javax.xml.jaxp-provider \
+         -jaxpmodule "javax.xml.jaxp-provider" \
          org.jboss.as.standalone \
          -Djboss.home.dir=\"$JBOSS_HOME\" \
          "$@"
@@ -156,7 +159,7 @@ while true; do
          -jar \"$JBOSS_HOME/jboss-modules.jar\" \
          -mp \"${MODULEPATH}\" \
          -logmodule "org.jboss.logmanager" \
-         -jaxpmodule javax.xml.jaxp-provider \
+         -jaxpmodule "javax.xml.jaxp-provider" \
          org.jboss.as.standalone \
          -Djboss.home.dir=\"$JBOSS_HOME\" \
          "$@" "&"
@@ -190,6 +193,9 @@ while true; do
             # Wait for a complete shudown
             wait $JBOSS_PID 2>/dev/null
       fi
+      if [ "x$JBOSS_PIDFILE" != "x" ]; then
+            grep "$JBOSS_PID" $JBOSS_PIDFILE && rm $JBOSS_PIDFILE
+      fi 
    fi
    if [ "$JBOSS_STATUS" -eq 10 ]; then
       echo "Restarting JBoss..."

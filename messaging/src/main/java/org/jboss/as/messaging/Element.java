@@ -22,6 +22,8 @@
 
 package org.jboss.as.messaging;
 
+import static org.jboss.as.messaging.MessagingMessages.MESSAGES;
+
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -79,6 +81,7 @@ public enum Element {
    GROUP_ADDRESS(CommonAttributes.GROUP_ADDRESS),
    GROUP_PORT(CommonAttributes.GROUP_PORT),
    GROUPING_HANDLER(CommonAttributes.GROUPING_HANDLER),
+   HORNETQ_SERVER(CommonAttributes.HORNETQ_SERVER),
    ID_CACHE_SIZE(CommonAttributes.ID_CACHE_SIZE),
    INITIAL_WAIT_TIMEOUT(CommonAttributes.INITIAL_WAIT_TIMEOUT),
    IN_VM_ACCEPTOR(CommonAttributes.IN_VM_ACCEPTOR),
@@ -239,10 +242,10 @@ public enum Element {
             if (ourName == null) {
                 ourName = def.getXmlName();
             } else if (!ourName.equals(def.getXmlName())) {
-                throw new IllegalArgumentException(String.format("All attribute definitions must have the same xml name -- found %s but already had %s", def.getXmlName(), ourName));
+                throw MESSAGES.attributeDefinitionsMustMatch(def.getXmlName(), ourName);
             }
             if (this.definitions.put(def.getName(), def) != null) {
-                throw new IllegalArgumentException(String.format("All attribute definitions must have unique names -- already found", def.getName()));
+                throw MESSAGES.attributeDefinitionsNotUnique(def.getName());
             }
         }
        this.name = ourName;
@@ -257,7 +260,7 @@ public enum Element {
             if (ourName == null) {
                 ourName = xmlName;
             } else if (!ourName.equals(xmlName)) {
-                throw new IllegalArgumentException(String.format("All attribute definitions must have the same xml name -- found %s but already had %s", xmlName, ourName));
+                throw MESSAGES.attributeDefinitionsMustMatch(xmlName, ourName);
             }
             this.definitions.put(def.getKey(), def.getValue());
         }

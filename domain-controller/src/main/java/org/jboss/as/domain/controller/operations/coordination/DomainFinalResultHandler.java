@@ -174,7 +174,7 @@ public class DomainFinalResultHandler implements OperationStepHandler {
             final String serverGroup = entry.getKey().getServerGroupName();
             groupNames.add(serverGroup);
             final String hostName = entry.getKey().getHostName();
-            final String serverName = entry.getKey().getHostName();
+            final String serverName = entry.getKey().getServerName();
             if (!groupToServerMap.containsKey(serverGroup)) {
                 groupToServerMap.put(serverGroup, new TreeSet<HostServer>());
             }
@@ -196,7 +196,7 @@ public class DomainFinalResultHandler implements OperationStepHandler {
                 serverNode.get(RESPONSE).set(hostServer.result);
                 groupNode.get(hostServer.serverName).set(serverNode);
             }
-            result.get(SERVER_GROUPS).add(groupName, groupNode);
+            result.get(SERVER_GROUPS, groupName).set(groupNode);
         }
         if(!serverGroupSuccess) {
             context.getFailureDescription().set("Operation failed or was rolled back on all servers.");

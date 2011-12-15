@@ -36,6 +36,8 @@ import org.infinispan.config.Configuration;
 import org.infinispan.context.Flag;
 import org.infinispan.distribution.DataLocality;
 import org.infinispan.distribution.DistributionManager;
+import org.infinispan.loaders.CacheLoaderConfig;
+import org.infinispan.loaders.CacheStoreConfig;
 import org.infinispan.manager.EmbeddedCacheManager;
 import org.infinispan.notifications.Listener;
 import org.infinispan.notifications.cachelistener.annotation.CacheEntryActivated;
@@ -47,6 +49,7 @@ import org.infinispan.notifications.cachelistener.event.CacheEntryRemovedEvent;
 import org.infinispan.notifications.cachemanagerlistener.annotation.ViewChanged;
 import org.infinispan.notifications.cachemanagerlistener.event.ViewChangedEvent;
 import org.infinispan.remoting.transport.Address;
+import org.jboss.as.clustering.infinispan.invoker.BatchOperation;
 import org.jboss.as.clustering.infinispan.invoker.CacheInvoker;
 import org.jboss.as.clustering.lock.SharedLocalYieldingClusterLockManager;
 import org.jboss.as.clustering.web.BatchingManager;
@@ -56,8 +59,10 @@ import org.jboss.as.clustering.web.LocalDistributableSessionManager;
 import org.jboss.as.clustering.web.OutgoingDistributableSessionData;
 import org.jboss.as.clustering.web.SessionOwnershipSupport;
 import org.jboss.as.clustering.web.impl.IncomingDistributableSessionDataImpl;
-import org.jboss.logging.Logger;
 import org.jboss.msc.service.ServiceRegistry;
+
+import static org.jboss.as.clustering.web.infinispan.InfinispanWebLogger.ROOT_LOGGER;
+import static org.jboss.as.clustering.web.infinispan.InfinispanWebMessages.MESSAGES;
 
 /**
  * Distributed cache manager implementation using Infinispan.
@@ -75,14 +80,6 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
         return sessionId.substring(0, 2) + "****" + sessionId.substring(length - 6, length);
     }
 
-    static RuntimeException getRuntimeException(String message, Exception e) {
-        if (e instanceof RuntimeException) {
-            return (RuntimeException) e;
-        }
-        return new RuntimeException(message != null ? message : e.getMessage(), e);
-    }
-
-    static final Logger log = Logger.getLogger(DistributedCacheManager.class);
     private static final Random random = new Random();
 
     private static Map<SharedLocalYieldingClusterLockManager.LockResult, LockResult> results = lockResultMap();
@@ -99,7 +96,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
     private final LocalDistributableSessionManager manager;
     private final SharedLocalYieldingClusterLockManager lockManager;
     private final Cache<K, Map<Object, Object>> sessionCache;
-    private final CacheInvoker invoker;
+    private final ForceSynchronousCacheInvoker invoker;
     private final BatchingManager batchingManager;
     private final boolean passivationEnabled;
     private final boolean requiresPurge;
@@ -116,17 +113,14 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
         this.attributeStorage = attributeStorage;
         this.batchingManager = batchingManager;
         this.keyFactory = keyFactory;
-        this.invoker = invoker;
+        this.invoker = new ForceSynchronousCacheInvoker(invoker);
 
         Configuration configuration = this.sessionCache.getConfiguration();
 
         this.passivationEnabled = configuration.isCacheLoaderPassivation() && !configuration.isCacheLoaderShared();
-//        List<CacheLoaderConfig> loaders = configuration.getCacheLoaders();
-//        CacheLoaderConfig loaderConfig = !loaders.isEmpty() ? loaders.get(0) : null;
-        // ISPN-1161 workaround
-//        @SuppressWarnings("deprecation")
-//        CacheLoaderConfig loader = configuration.getCacheLoaderManagerConfig().getFirstCacheLoaderConfig();
-        this.requiresPurge = false; // (loader != null) && (loader instanceof CacheStoreConfig) ? ((CacheStoreConfig) loader).isPurgeOnStartup() : false;
+        List<CacheLoaderConfig> loaders = configuration.getCacheLoaders();
+        CacheLoaderConfig loader = !loaders.isEmpty() ? loaders.get(0) : null;
+        this.requiresPurge = (loader != null) && (loader instanceof CacheStoreConfig) ? ((CacheStoreConfig) loader).isPurgeOnStartup() : false;
 
         this.jvmRouteHandler = configuration.getCacheMode().isDistributed() ? new JvmRouteHandler(registry, jvmRouteCacheSource, this.manager) : null;
     }
@@ -175,7 +169,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
                 public Void invoke(Cache<K, Map<Object, Object>> cache) {
                     for (K key: cache.getAdvancedCache().withFlags(Flag.CACHE_MODE_LOCAL).keySet()) {
                         if (DistributedCacheManager.this.keyFactory.ours(key)) {
-                            cache.remove(key);
+                            cache.getAdvancedCache().withFlags(Flag.CACHE_MODE_LOCAL).remove(key);
                         }
                     }
                     return null;
@@ -203,7 +197,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
      */
     @Override
     public void sessionCreated(String sessionId) {
-        trace("sessionCreated(%s)", sessionId);
+        ROOT_LOGGER.tracef("sessionCreated(%s)", sessionId);
     }
 
     /**
@@ -215,7 +209,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
     public void storeSessionData(final T sessionData) {
         final K key = this.keyFactory.createKey(sessionData.getRealId());
 
-        trace("storeSessionData(%s)", key.getSessionId());
+        ROOT_LOGGER.tracef("storeSessionData(%s)", key.getSessionId());
 
         Operation<Void> operation = new Operation<Void>() {
             @Override
@@ -228,7 +222,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
                 try {
                     DistributedCacheManager.this.attributeStorage.store(map, sessionData);
                 } catch (IOException e) {
-                    throw getRuntimeException("Failed to store session attributes for session: " + mask(key.getSessionId()), e);
+                    throw MESSAGES.failedToStoreSessionAttributes(e, mask(key.getSessionId()));
                 }
                 return null;
             }
@@ -245,7 +239,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
      */
     @Override
     public IncomingDistributableSessionData getSessionData(String sessionId, boolean initialLoad) {
-        trace("getSessionData(%s, %s)", sessionId, initialLoad);
+        ROOT_LOGGER.tracef("getSessionData(%s, %s)", sessionId, initialLoad);
 
         return this.getData(sessionId, true);
     }
@@ -258,7 +252,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
      */
     @Override
     public IncomingDistributableSessionData getSessionData(final String sessionId, String dataOwner, boolean includeAttributes) {
-        trace("getSessionData(%s, %s, %s)", sessionId, dataOwner, includeAttributes);
+        ROOT_LOGGER.tracef("getSessionData(%s, %s, %s)", sessionId, dataOwner, includeAttributes);
 
         return (dataOwner == null) ? this.getData(sessionId, includeAttributes) : null;
     }
@@ -282,7 +276,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
                     try {
                         result.setSessionAttributes(DistributedCacheManager.this.attributeStorage.load(map));
                     } catch (Exception e) {
-                        throw getRuntimeException("Failed to load session attributes for session: " + mask(key.getSessionId()), e);
+                        throw MESSAGES.failedToStoreSessionAttributes(e, mask(key.getSessionId()));
                     }
                 }
 
@@ -293,9 +287,8 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
         try {
             return this.invoker.invoke(this.sessionCache, operation);
         } catch (Exception e) {
-            String message = String.format("Problem accessing session [%s]: %s", mask(sessionId), e.toString());
-            log.warn(message);
-            log.debug(message, e);
+            ROOT_LOGGER.errorAccessingSession(e, mask(sessionId), e.getLocalizedMessage());
+            ROOT_LOGGER.errorAccessingSession(mask(sessionId), e.getLocalizedMessage());
 
             // Clean up
             this.removeSessionLocal(sessionId);
@@ -311,7 +304,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
      */
     @Override
     public void removeSession(final String sessionId) {
-        trace("removeSession(%s)", sessionId);
+        ROOT_LOGGER.tracef("removeSession(%s)", sessionId);
 
         this.removeSession(sessionId, false);
     }
@@ -323,7 +316,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
      */
     @Override
     public void removeSessionLocal(final String sessionId) {
-        trace("removeSessionLocal(%s)", sessionId);
+        ROOT_LOGGER.tracef("removeSessionLocal(%s)", sessionId);
 
         this.removeSession(sessionId, true);
     }
@@ -333,11 +326,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
         Operation<Map<Object, Object>> operation = new Operation<Map<Object, Object>>() {
             @Override
             public Map<Object, Object> invoke(Cache<K, Map<Object, Object>> cache) {
-                if (local) {
-                    cache.getAdvancedCache().withFlags(Flag.CACHE_MODE_LOCAL);
-                }
-
-                return cache.remove(key);
+                return cache.getAdvancedCache().withFlags(local ? Flag.CACHE_MODE_LOCAL : Flag.SKIP_REMOTE_LOOKUP).remove(key);
             }
         };
 
@@ -352,7 +341,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
      */
     @Override
     public void removeSessionLocal(String sessionId, String dataOwner) {
-        trace("removeSessionLocal(%s, dataOwner)", sessionId, dataOwner);
+        ROOT_LOGGER.tracef("removeSessionLocal(%s, dataOwner)", sessionId, dataOwner);
 
         if (dataOwner == null) {
             this.removeSession(sessionId, true);
@@ -366,7 +355,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
      */
     @Override
     public void evictSession(String sessionId) {
-        trace("evictSession(%s)", sessionId);
+        ROOT_LOGGER.tracef("evictSession(%s)", sessionId);
         final K key = this.keyFactory.createKey(sessionId);
         Operation<Void> operation = new Operation<Void>() {
             @Override
@@ -387,7 +376,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
      */
     @Override
     public void evictSession(String sessionId, String dataOwner) {
-        trace("evictSession(%s, %s)", sessionId, dataOwner);
+        ROOT_LOGGER.tracef("evictSession(%s, %s)", sessionId, dataOwner);
 
         if (dataOwner == null) {
             this.evictSession(sessionId);
@@ -442,20 +431,20 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
 
     @Override
     public LockResult acquireSessionOwnership(String sessionId, boolean newLock) throws TimeoutException, InterruptedException {
-        trace("acquireSessionOwnership(%s, %s)", sessionId, newLock);
+        ROOT_LOGGER.tracef("acquireSessionOwnership(%s, %s)", sessionId, newLock);
 
         EmbeddedCacheManager container = (EmbeddedCacheManager) this.sessionCache.getCacheManager();
 
         LockResult result = results.get(this.lockManager.lock(this.keyFactory.createKey(sessionId).toString(), container.getGlobalConfiguration().getDistributedSyncTimeout(), newLock));
 
-        trace("acquireSessionOwnership(%s, %s) = %s", sessionId, newLock, result);
+        ROOT_LOGGER.tracef("acquireSessionOwnership(%s, %s) = %s", sessionId, newLock, result);
 
         return (result != null) ? result : LockResult.UNSUPPORTED;
     }
 
     @Override
     public void relinquishSessionOwnership(String sessionId, boolean remove) {
-        trace("relinquishSessionOwnership(%s, %s)", sessionId, remove);
+        ROOT_LOGGER.tracef("relinquishSessionOwnership(%s, %s)", sessionId, remove);
 
         this.lockManager.unlock(this.keyFactory.createKey(sessionId).toString(), remove);
     }
@@ -501,11 +490,11 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
                     String jvmRoute = this.jvmRouteHandler.getCache().get(address);
 
                     if (jvmRoute != null) {
-                        trace("%s hashes to %s - next request will route to %s (%s)", sessionId, addresses, address, jvmRoute);
+                        ROOT_LOGGER.tracef("%s hashes to %s - next request will route to %s (%s)", sessionId, addresses, address, jvmRoute);
 
                         // We need to force synchronous invocations to guarantee
                         // session replicates before subsequent request.
-                        cache.withFlags(Flag.FORCE_SYNCHRONOUS);
+                        this.invoker.forceThreadSynchronous();
                         return jvmRoute;
                     }
                 }
@@ -525,7 +514,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
             try {
                 this.manager.notifyRemoteInvalidation(key.getSessionId());
             } catch (Throwable e) {
-                log.warn(e.getMessage(), e);
+                ROOT_LOGGER.warn(e.getLocalizedMessage(), e);
             }
         }
     }
@@ -551,12 +540,12 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
                         boolean updated = this.manager.sessionChangedInDistributedCache(sessionId, null, version.intValue(), timestamp.longValue(), metadata);
 
                         if (!updated) {
-                            log.warnf("Possible concurrency problem: Replicated version id %d is less than or equal to in-memory version for session %s", version, mask(sessionId));
+                            ROOT_LOGGER.versionIdMismatch(version, mask(sessionId));
                         }
                     }
                 }
             } catch (Throwable e) {
-                log.warn(e.getMessage(), e);
+                ROOT_LOGGER.warn(e.getLocalizedMessage(), e);
             }
         }
     }
@@ -571,26 +560,13 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
             try {
                 this.manager.sessionActivated();
             } catch (Throwable e) {
-                log.warn(e.getMessage(), e);
+                ROOT_LOGGER.warn(e.getLocalizedMessage(), e);
             }
         }
     }
 
     private <R> R batch(Operation<R> operation) {
-        boolean started = this.sessionCache.startBatch();
-        boolean success = false;
-
-        try {
-            R result = this.invoker.invoke(this.sessionCache, operation);
-
-            success = true;
-
-            return result;
-        } finally {
-            if (started) {
-                this.sessionCache.endBatch(success);
-            }
-        }
+        return this.invoker.invoke(this.sessionCache, new BatchOperation<K, Map<Object, Object>, R>(operation));
     }
 
     @Listener(sync = false)
@@ -641,7 +617,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
                     for (Address member: oldMembers) {
                         if (!newMembers.contains(member)) {
                             if (cache.remove(member) != null) {
-                                log.infof("Removed stale jvm route entry from web session cache on behalf of member %s", member);
+                                ROOT_LOGGER.removedJvmRouteEntry(member);
                             }
                         }
                     }
@@ -652,9 +628,9 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
                         if (!oldMembers.contains(localAddress) && newMembers.contains(localAddress)) {
                             String oldJvmRoute = cache.put(localAddress, jvmRoute);
                             if (oldJvmRoute == null) {
-                                log.info("Adding missing jvm route entry to web session cache");
+                                ROOT_LOGGER.addingJvmRouteEntry();
                             } else if (!oldJvmRoute.equals(jvmRoute)) {
-                                log.infof("Updating jvm route entry in web session cache.  old = %s, new = %s", oldJvmRoute, jvmRoute);
+                                ROOT_LOGGER.updatingJvmRouteEntry(oldJvmRoute, jvmRoute);
                             }
                         }
                     }
@@ -665,16 +641,41 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
             try {
                 this.batch(operation);
             } catch (Throwable e) {
-                log.warn(e.getMessage(), e);
+                ROOT_LOGGER.warn(e.getLocalizedMessage(), e);
             }
         }
     }
 
-    private static void trace(String message, Object... args) {
-        log.tracef(message, args);
-    }
-
     // Simplified CacheInvoker.Operation using assigned key/value types
     abstract class Operation<R> implements CacheInvoker.Operation<K, Map<Object, Object>, R> {
+    }
+
+    static class ForceSynchronousCacheInvoker implements CacheInvoker {
+        private static final ThreadLocal<Boolean> forceThreadSynchronous = new ThreadLocal<Boolean>() {
+            @Override
+            protected Boolean initialValue() {
+                return Boolean.FALSE;
+            }
+        };
+
+        private final CacheInvoker invoker;
+        private volatile boolean forceSynchronous = false;
+
+        ForceSynchronousCacheInvoker(CacheInvoker invoker) {
+            this.invoker = invoker;
+        }
+
+        void setForceSynchronous(boolean forceSynchronous) {
+            this.forceSynchronous = forceSynchronous;
+        }
+
+        void forceThreadSynchronous() {
+            forceThreadSynchronous.set(Boolean.TRUE);
+        }
+
+        @Override
+        public <K, V, R> R invoke(Cache<K, V> cache, Operation<K, V, R> operation) {
+            return this.invoker.invoke(this.forceSynchronous || forceThreadSynchronous.get().booleanValue() ? cache.getAdvancedCache().withFlags(Flag.FORCE_SYNCHRONOUS) : cache, operation);
+        }
     }
 }

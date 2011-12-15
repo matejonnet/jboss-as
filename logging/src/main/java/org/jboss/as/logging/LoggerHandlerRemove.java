@@ -22,12 +22,17 @@
 
 package org.jboss.as.logging;
 
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
+
 import org.jboss.as.controller.AbstractRemoveStepHandler;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.PathAddress;
-
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import org.jboss.dmr.ModelNode;
+import org.jboss.msc.service.ServiceController;
+import org.jboss.msc.service.ServiceName;
+import org.jboss.msc.service.ServiceRegistry;
+
+import java.util.logging.Handler;
 
 /**
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
@@ -37,14 +42,32 @@ class LoggerHandlerRemove extends AbstractRemoveStepHandler {
 
     static final LoggerHandlerRemove INSTANCE = new LoggerHandlerRemove();
 
-    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model) {
+    @Override
+    protected final void performRuntime(OperationContext context, ModelNode operation, ModelNode model) {
         final PathAddress address = PathAddress.pathAddress(operation.require(OP_ADDR));
         final String name = address.getLastElement().getValue();
-        context.removeService(LogServices.handlerName(name));
+        final ServiceName serviceName = LogServices.handlerName(name);
+        final ServiceRegistry serviceRegistry = context.getServiceRegistry(true);
+        @SuppressWarnings("unchecked")
+        final ServiceController<Handler> controller = (ServiceController<Handler>) serviceRegistry.getService(serviceName);
+        controller.getValue().close();
+        context.removeService(serviceName);
+        removeAdditionalServices(context, name);
     }
 
+    @Override
     protected void recoverServices(OperationContext context, ModelNode operation, ModelNode model) {
         // TODO:  RE-ADD SERVICES
+    }
+
+    /**
+     * Removes any additional services.
+     *
+     * @param context the operation context.
+     * @param name    the handler name
+     */
+    protected void removeAdditionalServices(final OperationContext context, final String name) {
+
     }
 
 }

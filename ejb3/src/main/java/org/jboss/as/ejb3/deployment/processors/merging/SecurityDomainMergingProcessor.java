@@ -21,22 +21,27 @@
  */
 package org.jboss.as.ejb3.deployment.processors.merging;
 
+import java.util.List;
+
 import org.jboss.as.ee.component.EEApplicationClasses;
 import org.jboss.as.ee.component.EEModuleClassDescription;
 import org.jboss.as.ee.metadata.ClassAnnotationInformation;
 import org.jboss.as.ejb3.component.EJBComponentDescription;
+import org.jboss.as.ejb3.deployment.EjbDeploymentAttachmentKeys;
+import org.jboss.as.ejb3.security.metadata.EJBBoundSecurityMetaData;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.reflect.DeploymentReflectionIndex;
 import org.jboss.ejb3.annotation.SecurityDomain;
-import org.jboss.logging.Logger;
+import org.jboss.metadata.ejb.spec.AssemblyDescriptorMetaData;
+import org.jboss.metadata.ejb.spec.EjbJarMetaData;
+import static org.jboss.as.ejb3.EjbLogger.ROOT_LOGGER;
 
 /**
  * @author Stuart Douglas
  */
 public class SecurityDomainMergingProcessor extends AbstractMergingProcessor<EJBComponentDescription> {
 
-    private static final Logger logger = Logger.getLogger(SecurityDomainMergingProcessor.class);
 
     public SecurityDomainMergingProcessor() {
         super(EJBComponentDescription.class);
@@ -54,8 +59,8 @@ public class SecurityDomainMergingProcessor extends AbstractMergingProcessor<EJB
             return;
         }
         if (!securityDomain.getClassLevelAnnotations().isEmpty()) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("EJB " + description.getEJBName() + " is part of security domain " + securityDomain.getClassLevelAnnotations().get(0));
+            if (ROOT_LOGGER.isDebugEnabled()) {
+                ROOT_LOGGER.debug("EJB " + description.getEJBName() + " is part of security domain " + securityDomain.getClassLevelAnnotations().get(0));
             }
             description.setSecurityDomain(securityDomain.getClassLevelAnnotations().get(0));
         }
@@ -63,6 +68,31 @@ public class SecurityDomainMergingProcessor extends AbstractMergingProcessor<EJB
 
     @Override
     protected void handleDeploymentDescriptor(final DeploymentUnit deploymentUnit, final DeploymentReflectionIndex deploymentReflectionIndex, final Class<?> componentClass, final EJBComponentDescription description) throws DeploymentUnitProcessingException {
-
+        String securityDomain = null;
+        String globalSecurityDomain = null;
+        final EjbJarMetaData ejbJarMetaData = deploymentUnit.getAttachment(EjbDeploymentAttachmentKeys.EJB_JAR_METADATA);
+        if (ejbJarMetaData != null) {
+            final AssemblyDescriptorMetaData assemblyMetadata = ejbJarMetaData.getAssemblyDescriptor();
+            if (assemblyMetadata != null) {
+                final List<EJBBoundSecurityMetaData> securityMetaDatas = assemblyMetadata.getAny(EJBBoundSecurityMetaData.class);
+                if (securityMetaDatas != null) {
+                    for (final EJBBoundSecurityMetaData securityMetaData : securityMetaDatas) {
+                        if (securityMetaData.getEjbName().equals(description.getComponentName())) {
+                            securityDomain = securityMetaData.getSecurityDomain();
+                            break;
+                        }
+                        // check global security domain
+                        if (securityMetaData.getEjbName().equals("*")) {
+                            globalSecurityDomain = securityMetaData.getSecurityDomain();
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        if (securityDomain != null)
+            description.setSecurityDomain(securityDomain);
+        else if (globalSecurityDomain != null)
+            description.setSecurityDomain(globalSecurityDomain);
     }
 }

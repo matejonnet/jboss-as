@@ -22,25 +22,6 @@
 
 package org.jboss.as.server.moduleservice;
 
-import org.jboss.as.server.deployment.module.ExtensionInfo;
-import org.jboss.as.server.deployment.module.ModuleDependency;
-import org.jboss.as.server.deployment.module.ModuleSpecification;
-import org.jboss.logging.Logger;
-import org.jboss.modules.ModuleIdentifier;
-import org.jboss.modules.ModuleSpec;
-import org.jboss.modules.ResourceLoaderSpec;
-import org.jboss.modules.ResourceLoaders;
-import org.jboss.msc.service.Service;
-import org.jboss.msc.service.ServiceContainer;
-import org.jboss.msc.service.ServiceController;
-import org.jboss.msc.service.ServiceController.Mode;
-import org.jboss.msc.service.StartContext;
-import org.jboss.msc.service.StartException;
-import org.jboss.msc.service.StopContext;
-import org.jboss.msc.service.ValueService;
-import org.jboss.msc.value.ImmediateValue;
-import org.jboss.vfs.VFSUtils;
-
 import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
@@ -55,6 +36,22 @@ import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
+import org.jboss.as.server.deployment.module.ExtensionInfo;
+import org.jboss.as.server.deployment.module.ModuleDependency;
+import org.jboss.logging.Logger;
+import org.jboss.modules.ModuleIdentifier;
+import org.jboss.modules.ModuleSpec;
+import org.jboss.modules.ResourceLoaderSpec;
+import org.jboss.modules.ResourceLoaders;
+import org.jboss.msc.service.Service;
+import org.jboss.msc.service.ServiceContainer;
+import org.jboss.msc.service.ServiceController;
+import org.jboss.msc.service.ServiceController.Mode;
+import org.jboss.msc.service.StartContext;
+import org.jboss.msc.service.StartException;
+import org.jboss.msc.service.StopContext;
+import org.jboss.vfs.VFSUtils;
+
 /**
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  * @author Stuart Douglas
@@ -63,6 +60,7 @@ import java.util.jar.Manifest;
  */
 public final class ExtensionIndexService implements Service<ExtensionIndex>, ExtensionIndex {
     private static final Logger log = Logger.getLogger("org.jboss.as.server.deployment.module.extension-index");
+    public static final String MODULE_PREFIX = ServiceModuleLoader.MODULE_PREFIX + "extension.";
 
     private final File[] extensionRoots;
     private final Map<String, Set<ExtensionJar>> extensions = new HashMap<String, Set<ExtensionJar>>();
@@ -121,11 +119,6 @@ public final class ExtensionIndexService implements Service<ExtensionIndex>, Ext
 
                             ModuleLoadService.install(serviceContainer, moduleIdentifier, Collections
                                     .<ModuleDependency> emptyList());
-
-
-                            //we also need to install an empty module information service
-                            serviceContainer.addService(ServiceModuleLoader.moduleInformationServiceName(moduleIdentifier), new ValueService<Object>(new ImmediateValue<Object>(new ModuleSpecification())))
-                                    .install();
 
                             extensionJarSet.add(extensionJar);
 
@@ -231,8 +224,7 @@ public final class ExtensionIndexService implements Service<ExtensionIndex>, Ext
     public static ModuleIdentifier moduleIdentifier(final String name, final String minSpecVersion,
             final String minImplVersion, final String requiredVendorId) {
         StringBuilder nameBuilder = new StringBuilder();
-        nameBuilder.append(ServiceModuleLoader.MODULE_PREFIX);
-        nameBuilder.append("extension.");
+        nameBuilder.append(MODULE_PREFIX);
         nameBuilder.append(name);
         if (minSpecVersion != null) {
             nameBuilder.append(".spec-");

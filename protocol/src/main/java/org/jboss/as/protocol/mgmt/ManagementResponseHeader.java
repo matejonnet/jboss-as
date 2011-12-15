@@ -26,7 +26,7 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-import org.jboss.as.protocol.old.ProtocolUtils;
+import static org.jboss.as.protocol.ProtocolMessages.MESSAGES;
 
 /**
  * DomainClientProtocol header used for management operation responses. Provides the default header fields from
@@ -64,7 +64,7 @@ class ManagementResponseHeader extends ManagementProtocolHeader {
         if (type == ManagementProtocol.RESPONSE_ERROR) {
             error = input.readUTF();
         } else if (type != ManagementProtocol.RESPONSE_BODY) {
-            throw new IllegalArgumentException("Type is neither RESPONSE_ERROR not RESPONSE_BODY: " + type);
+            throw MESSAGES.invalidType("RESPONSE_ERROR", "RESPONSE_BODY", type);
         }
     }
 

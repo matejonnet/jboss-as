@@ -22,12 +22,14 @@
 
 package org.jboss.as.ejb3.security;
 
-import org.jboss.as.ee.component.ComponentConfiguration;
-import org.jboss.as.ejb3.component.EJBComponentDescription;
-
 import java.util.Collections;
 import java.util.Set;
 
+import org.jboss.as.ee.component.ComponentConfiguration;
+import org.jboss.as.ejb3.component.EJBComponentDescription;
+import org.jboss.metadata.javaee.spec.SecurityRolesMetaData;
+
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * Holds the EJB component level security metadata.
  * <p/>
@@ -57,17 +59,29 @@ public class EJBSecurityMetaData {
     private final Set<String> declaredRoles;
 
     /**
+     * The run-as principal (if any) for this EJB component
+     */
+    private final String runAsPrincipal;
+
+    /**
+     * Roles mapped with security-role
+     */
+    private final SecurityRolesMetaData securityRoles;
+
+    /**
      * @param componentConfiguration Component configuration of the EJB component
      */
     public EJBSecurityMetaData(final ComponentConfiguration componentConfiguration) {
         if (componentConfiguration.getComponentDescription() instanceof EJBComponentDescription == false) {
-            throw new IllegalArgumentException(componentConfiguration.getComponentName() + " is not an EJB component");
+            throw MESSAGES.invalidComponentConfiguration(componentConfiguration.getComponentName());
         }
         final EJBComponentDescription ejbComponentDescription = (EJBComponentDescription) componentConfiguration.getComponentDescription();
         this.ejbClassName = ejbComponentDescription.getEJBClassName();
         this.ejbName = ejbComponentDescription.getEJBName();
         this.runAsRole = ejbComponentDescription.getRunAs();
         this.securityDomain = ejbComponentDescription.getSecurityDomain();
+        this.runAsPrincipal = ejbComponentDescription.getRunAsPrincipal();
+        this.securityRoles = ejbComponentDescription.getSecurityRoles();
         // @DeclareRoles
         final Set<String> roles = ejbComponentDescription.getDeclaredRoles();
         this.declaredRoles = roles == null ? Collections.<String>emptySet() : Collections.unmodifiableSet(roles);
@@ -99,6 +113,24 @@ public class EJBSecurityMetaData {
      */
     public String getSecurityDomain() {
         return this.securityDomain;
+    }
+
+    /**
+     * Returns the run-as principal associated with this bean. Returns 'anonymous' if no principal was set.
+     *
+     * @return
+     */
+    public String getRunAsPrincipal() {
+        return runAsPrincipal;
+    }
+
+    /**
+     * Returns the security-role mapping.
+     *
+     * @return
+     */
+    public SecurityRolesMetaData getSecurityRoles() {
+        return securityRoles;
     }
 
 }

@@ -22,11 +22,12 @@
 
 package org.jboss.as.jpa.container;
 
-import org.jboss.logging.Logger;
+import static org.jboss.as.jpa.JpaLogger.ROOT_LOGGER;
 
-import javax.persistence.EntityManager;
 import java.util.HashMap;
 import java.util.Map;
+
+import javax.persistence.EntityManager;
 
 /**
  * Close the non tx invocations on transaction scoped entity manager
@@ -34,9 +35,6 @@ import java.util.Map;
  * @author Scott Marlow
  */
 public class NonTxEmCloser {
-
-    private static final Logger log = Logger.getLogger("org.jboss.jpa");
-
     /**
      * Each thread will have its own list of SB invocations in progress.
      * Key = scoped persistence unit name
@@ -63,8 +61,8 @@ public class NonTxEmCloser {
                 try {
                     entityManager.close();
                 } catch (RuntimeException safeToIgnore) {
-                    if (log.isTraceEnabled()) {
-                        log.trace("Could not close (non-transactional) container managed entity manager." +
+                    if (ROOT_LOGGER.isTraceEnabled()) {
+                        ROOT_LOGGER.trace("Could not close (non-transactional) container managed entity manager." +
                             "  This shouldn't impact application functionality (only read " +
                             "operations occur in non-transactional mode)", safeToIgnore);
                     }

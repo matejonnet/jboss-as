@@ -22,6 +22,9 @@
 
 package org.jboss.as.connector.services;
 
+import static org.jboss.as.connector.ConnectorLogger.DEPLOYMENT_CONNECTOR_LOGGER;
+import static org.jboss.as.connector.ConnectorMessages.MESSAGES;
+
 import java.io.File;
 import java.net.URL;
 import java.util.HashSet;
@@ -43,14 +46,12 @@ import org.jboss.jca.deployers.DeployersLogger;
 import org.jboss.jca.deployers.common.CommonDeployment;
 import org.jboss.logging.Logger;
 import org.jboss.msc.service.Service;
-import org.jboss.msc.service.ServiceContainer;
 import org.jboss.msc.service.ServiceController.Mode;
 import org.jboss.msc.service.ServiceName;
+import org.jboss.msc.service.ServiceTarget;
 import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
-
-import javax.swing.plaf.basic.BasicTreeUI;
 
 /**
  * A ResourceAdapterDeploymentService.
@@ -60,7 +61,7 @@ import javax.swing.plaf.basic.BasicTreeUI;
 public final class ResourceAdapterActivatorService extends AbstractResourceAdapterDeploymentService implements
         Service<ResourceAdapterDeployment> {
 
-    private static final Logger log = Logger.getLogger("org.jboss.as.deployment.connector");
+    private static final DeployersLogger DEPLOYERS_LOGGER = Logger.getMessageLogger(DeployersLogger.class, ResourceAdapterActivator.class.getName());
 
     private final ClassLoader cl;
     private final Connector cmd;
@@ -80,10 +81,9 @@ public final class ResourceAdapterActivatorService extends AbstractResourceAdapt
 
         String pathname = "file://RaActivator" + deploymentName;
 
-        final ServiceContainer container = context.getController().getServiceContainer();
         CommonDeployment deploymentMD;
         try {
-            ResourceAdapterActivator activator = new ResourceAdapterActivator(container, new URL(pathname), deploymentName,
+            ResourceAdapterActivator activator = new ResourceAdapterActivator(context.getChildTarget(), new URL(pathname), deploymentName,
                     new File(pathname), cl, cmd, ijmd);
             activator.setConfiguration(getConfig().getValue());
             // FIXME!!, this should probably be done by IJ and not the service
@@ -95,20 +95,22 @@ public final class ResourceAdapterActivatorService extends AbstractResourceAdapt
                Thread.currentThread().setContextClassLoader(old);
             }
         } catch (Throwable e) {
-            throw new StartException("Failed to activate resource adapter " + deploymentName, e);
+            throw MESSAGES.failedToStartRaDeployment(e, deploymentName);
         }
 
         value = new ResourceAdapterDeployment(deploymentMD);
         registry.getValue().registerResourceAdapterDeployment(value);
         managementRepository.getValue().getConnectors().add(value.getDeployment().getConnector());
-        log.debugf("Starting sevice %s",
-                ConnectorServices.RESOURCE_ADAPTER_SERVICE_PREFIX.append(this.value.getDeployment().getDeploymentName()));
+
+        String raName = value.getDeployment().getDeploymentName();
+        ServiceName raServiceName = ConnectorServices.registerResourceAdapter(raName);
 
         context.getChildTarget()
-                .addService(ServiceName.of(value.getDeployment().getDeploymentName()),
-                        new ResourceAdapterService(value.getDeployment().getResourceAdapter())).setInitialMode(Mode.ACTIVE)
+                .addService(raServiceName,
+                    new ResourceAdapterService(raName, raServiceName,
+                                               value.getDeployment().getResourceAdapter())).setInitialMode(Mode.ACTIVE)
                 .install();
-        log.debugf("Starting sevice %s", ConnectorServices.RESOURCE_ADAPTER_ACTIVATOR_SERVICE);
+        DEPLOYMENT_CONNECTOR_LOGGER.debugf("Started service %s", ConnectorServices.RESOURCE_ADAPTER_ACTIVATOR_SERVICE);
     }
 
     /**
@@ -116,17 +118,16 @@ public final class ResourceAdapterActivatorService extends AbstractResourceAdapt
      */
     @Override
     public void stop(StopContext context) {
-        log.debugf("Stopping sevice %s", ConnectorServices.RESOURCE_ADAPTER_ACTIVATOR_SERVICE);
-
+        DEPLOYMENT_CONNECTOR_LOGGER.debugf("Stopping service %s", ConnectorServices.RESOURCE_ADAPTER_ACTIVATOR_SERVICE);
     }
 
     private class ResourceAdapterActivator extends AbstractAS7RaDeployer {
 
         private final IronJacamar ijmd;
 
-        public ResourceAdapterActivator(ServiceContainer serviceContainer, URL url, String deploymentName, File root,
+        public ResourceAdapterActivator(ServiceTarget serviceTarget, URL url, String deploymentName, File root,
                 ClassLoader cl, Connector cmd, IronJacamar ijmd) {
-            super(serviceContainer, url, deploymentName, root, cl, cmd);
+            super(serviceTarget, url, deploymentName, root, cl, cmd);
             this.ijmd = ijmd;
         }
 
@@ -134,6 +135,8 @@ public final class ResourceAdapterActivatorService extends AbstractResourceAdapt
         public CommonDeployment doDeploy() throws Throwable {
 
             this.setConfiguration(getConfig().getValue());
+            //never validate bean for services activated in this way (JMS)
+            this.getConfiguration().setBeanValidation(false);
 
             this.start();
 
@@ -241,8 +244,7 @@ public final class ResourceAdapterActivatorService extends AbstractResourceAdapt
 
         @Override
         protected DeployersLogger getLogger() {
-
-            return Logger.getMessageLogger(DeployersLogger.class, ResourceAdapterActivator.class.getName());
+            return DEPLOYERS_LOGGER;
         }
     }
 

@@ -22,14 +22,8 @@
 
 package org.jboss.as.connector.subsystems.datasources;
 
-import java.lang.reflect.Constructor;
-import java.sql.Driver;
-import java.util.List;
-import java.util.ServiceLoader;
-import org.jboss.as.connector.ConnectorServices;
-import org.jboss.as.connector.registry.DriverRegistry;
-import org.jboss.as.connector.registry.DriverService;
-import org.jboss.as.connector.registry.InstalledDriver;
+import static org.jboss.as.connector.ConnectorLogger.SUBSYSTEM_DATASOURCES_LOGGER;
+import static org.jboss.as.connector.ConnectorMessages.MESSAGES;
 import static org.jboss.as.connector.subsystems.datasources.Constants.DRIVER_CLASS_NAME;
 import static org.jboss.as.connector.subsystems.datasources.Constants.DRIVER_DATASOURCE_CLASS_NAME;
 import static org.jboss.as.connector.subsystems.datasources.Constants.DRIVER_MAJOR_VERSION;
@@ -37,11 +31,22 @@ import static org.jboss.as.connector.subsystems.datasources.Constants.DRIVER_MIN
 import static org.jboss.as.connector.subsystems.datasources.Constants.DRIVER_MODULE_NAME;
 import static org.jboss.as.connector.subsystems.datasources.Constants.DRIVER_NAME;
 import static org.jboss.as.connector.subsystems.datasources.Constants.DRIVER_XA_DATASOURCE_CLASS_NAME;
+import static org.jboss.as.connector.subsystems.datasources.Constants.JDBC_DRIVER_NAME;
+
+import java.lang.reflect.Constructor;
+import java.sql.Driver;
+import java.util.List;
+import java.util.ServiceLoader;
+
+import org.jboss.as.connector.ConnectorServices;
+import org.jboss.as.connector.registry.DriverRegistry;
+import org.jboss.as.connector.registry.DriverService;
+import org.jboss.as.connector.registry.InstalledDriver;
 import org.jboss.as.controller.AbstractAddStepHandler;
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.ServiceVerificationHandler;
 import org.jboss.dmr.ModelNode;
-import org.jboss.logging.Logger;
 import org.jboss.modules.Module;
 import org.jboss.modules.ModuleIdentifier;
 import org.jboss.modules.ModuleLoadException;
@@ -57,42 +62,40 @@ import org.jboss.msc.service.ServiceTarget;
 public class JdbcDriverAdd extends AbstractAddStepHandler {
     static final JdbcDriverAdd INSTANCE = new JdbcDriverAdd();
 
-    public static final Logger log = Logger.getLogger("org.jboss.as.connector.subsystems.datasources");
-
     protected void populateModel(ModelNode operation, ModelNode model) {
-        final String driverName = operation.require(DRIVER_NAME).asString();
-        final String moduleName = operation.require(DRIVER_MODULE_NAME).asString();
+        final String driverName = operation.require(DRIVER_NAME.getName()).asString();
+        final String moduleName = operation.require(DRIVER_MODULE_NAME.getName()).asString();
 
-        final Integer majorVersion = operation.hasDefined(DRIVER_MAJOR_VERSION) ? operation.get(DRIVER_MAJOR_VERSION).asInt() : null;
-        final Integer minorVersion = operation.hasDefined(DRIVER_MINOR_VERSION) ? operation.get(DRIVER_MINOR_VERSION).asInt() : null;
-        final String driverClassName = operation.hasDefined(DRIVER_CLASS_NAME) ? operation.get(DRIVER_CLASS_NAME).asString() : null;
-        final String dataSourceClassName = operation.hasDefined(DRIVER_DATASOURCE_CLASS_NAME) ? operation.get(DRIVER_DATASOURCE_CLASS_NAME).asString() : null;
-        final String xaDataSourceClassName = operation.hasDefined(DRIVER_XA_DATASOURCE_CLASS_NAME) ? operation.get(DRIVER_XA_DATASOURCE_CLASS_NAME).asString() : null;
+        final Integer majorVersion = operation.hasDefined(DRIVER_MAJOR_VERSION.getName()) ? operation.get(DRIVER_MAJOR_VERSION.getName()).asInt() : null;
+        final Integer minorVersion = operation.hasDefined(DRIVER_MINOR_VERSION.getName()) ? operation.get(DRIVER_MINOR_VERSION.getName()).asInt() : null;
+        final String driverClassName = operation.hasDefined(DRIVER_CLASS_NAME.getName()) ? operation.get(DRIVER_CLASS_NAME.getName()).asString() : null;
+        final String dataSourceClassName = operation.hasDefined(DRIVER_DATASOURCE_CLASS_NAME.getName()) ? operation.get(DRIVER_DATASOURCE_CLASS_NAME.getName()).asString() : null;
+        final String xaDataSourceClassName = operation.hasDefined(DRIVER_XA_DATASOURCE_CLASS_NAME.getName()) ? operation.get(DRIVER_XA_DATASOURCE_CLASS_NAME.getName()).asString() : null;
 
         //Apply to the model
-        model.get(DRIVER_NAME).set(driverName);
-        model.get(DRIVER_MODULE_NAME).set(moduleName);
+        model.get(DRIVER_NAME.getName()).set(driverName);
+        model.get(DRIVER_MODULE_NAME.getName()).set(moduleName);
         if (majorVersion != null)
-            model.get(DRIVER_MAJOR_VERSION).set(majorVersion);
+            model.get(DRIVER_MAJOR_VERSION.getName()).set(majorVersion);
         if (minorVersion != null)
-            model.get(DRIVER_MINOR_VERSION).set(minorVersion);
+            model.get(DRIVER_MINOR_VERSION.getName()).set(minorVersion);
         if (driverClassName != null)
-            model.get(DRIVER_CLASS_NAME).set(driverClassName);
+            model.get(DRIVER_CLASS_NAME.getName()).set(driverClassName);
         if (dataSourceClassName != null)
-            model.get(DRIVER_DATASOURCE_CLASS_NAME).set(dataSourceClassName);
+            model.get(DRIVER_DATASOURCE_CLASS_NAME.getName()).set(dataSourceClassName);
         if (xaDataSourceClassName != null)
-            model.get(DRIVER_XA_DATASOURCE_CLASS_NAME).set(xaDataSourceClassName);
+            model.get(DRIVER_XA_DATASOURCE_CLASS_NAME.getName()).set(xaDataSourceClassName);
     }
 
-    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) {
-        final String driverName = operation.require(DRIVER_NAME).asString();
-        final String moduleName = operation.require(DRIVER_MODULE_NAME).asString();
-        final Integer majorVersion = operation.hasDefined(DRIVER_MAJOR_VERSION) ? operation.get(DRIVER_MAJOR_VERSION).asInt() : null;
-        final Integer minorVersion = operation.hasDefined(DRIVER_MINOR_VERSION) ? operation.get(DRIVER_MINOR_VERSION).asInt() : null;
-        final String driverClassName = operation.hasDefined(DRIVER_CLASS_NAME) ? operation.get(DRIVER_CLASS_NAME).asString() : null;
-        final String dataSourceClassName = operation.hasDefined(DRIVER_DATASOURCE_CLASS_NAME) ? operation.get(DRIVER_DATASOURCE_CLASS_NAME).asString() : null;
-        final String xaDataSourceClassName = operation.hasDefined(DRIVER_XA_DATASOURCE_CLASS_NAME) ? operation.get(
-                DRIVER_XA_DATASOURCE_CLASS_NAME).asString() : null;
+    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) throws OperationFailedException {
+        final String driverName = operation.require(DRIVER_NAME.getName()).asString();
+        final String moduleName = operation.require(DRIVER_MODULE_NAME.getName()).asString();
+        final Integer majorVersion = operation.hasDefined(DRIVER_MAJOR_VERSION.getName()) ? operation.get(DRIVER_MAJOR_VERSION.getName()).asInt() : null;
+        final Integer minorVersion = operation.hasDefined(DRIVER_MINOR_VERSION.getName()) ? operation.get(DRIVER_MINOR_VERSION.getName()).asInt() : null;
+        final String driverClassName = operation.hasDefined(DRIVER_CLASS_NAME.getName()) ? operation.get(DRIVER_CLASS_NAME.getName()).asString() : null;
+        final String dataSourceClassName = operation.hasDefined(DRIVER_DATASOURCE_CLASS_NAME.getName()) ? operation.get(DRIVER_DATASOURCE_CLASS_NAME.getName()).asString() : null;
+        final String xaDataSourceClassName = operation.hasDefined(DRIVER_XA_DATASOURCE_CLASS_NAME.getName()) ? operation.get(
+                DRIVER_XA_DATASOURCE_CLASS_NAME.getName()).asString() : null;
 
         final ServiceTarget target = context.getServiceTarget();
 
@@ -102,7 +105,7 @@ public class JdbcDriverAdd extends AbstractAddStepHandler {
             moduleId = ModuleIdentifier.create(moduleName);
             module = Module.getCallerModuleLoader().loadModule(moduleId);
         } catch (ModuleLoadException e) {
-            context.getFailureDescription().set("Failed to load module for driver [" + moduleName + "]");
+            context.getFailureDescription().set(MESSAGES.failedToLoadModuleDriver(moduleName));
             return;
         }
 
@@ -120,27 +123,28 @@ public class JdbcDriverAdd extends AbstractAddStepHandler {
                 final Driver driver = constructor.newInstance();
                 startDriverServices(target, moduleId, driver, driverName, majorVersion, minorVersion, dataSourceClassName, xaDataSourceClassName);
             } catch (Exception e) {
-                log.warnf("Unable to instantiate driver class \"%s\": %s", driverClassName, e);
+                SUBSYSTEM_DATASOURCES_LOGGER.cannotInstantiateDriverClass(driverClassName, e);
+                throw new OperationFailedException(new ModelNode().set(MESSAGES.cannotInstantiateDriverClass(driverClassName)));
             }
         }
     }
 
-    private void startDriverServices(final ServiceTarget target, final ModuleIdentifier moduleId, Driver driver, final String driverName, final Integer majorVersion, final Integer minorVersion, final String dataSourceClassName, final String xaDataSourceClassName)
+    public static void startDriverServices(final ServiceTarget target, final ModuleIdentifier moduleId, Driver driver, final String driverName, final Integer majorVersion, final Integer minorVersion, final String dataSourceClassName, final String xaDataSourceClassName)
             throws IllegalStateException {
         final int majorVer = driver.getMajorVersion();
         final int minorVer = driver.getMinorVersion();
         if ((majorVersion != null && majorVersion.intValue() != majorVer)
                 || (minorVersion != null && minorVersion.intValue() != minorVer)) {
-            throw new IllegalStateException("Specified driver version doesn't match with actual driver version");
+            throw MESSAGES.driverVersionMismatch();
         }
 
         final boolean compliant = driver.jdbcCompliant();
         if (compliant) {
-            log.infof("Deploying JDBC-compliant driver %s (version %d.%d)", driver.getClass(),
-                    Integer.valueOf(majorVer), Integer.valueOf(minorVer));
+            SUBSYSTEM_DATASOURCES_LOGGER.deployingCompliantJdbcDriver(driver.getClass(), Integer.valueOf(majorVer),
+                    Integer.valueOf(minorVer));
         } else {
-            log.infof("Deploying non-JDBC-compliant driver %s (version %d.%d)", driver.getClass(),
-                    Integer.valueOf(majorVer), Integer.valueOf(minorVer));
+            SUBSYSTEM_DATASOURCES_LOGGER.deployingNonCompliantJdbcDriver(driver.getClass(), Integer.valueOf(majorVer),
+                    Integer.valueOf(minorVer));
         }
         InstalledDriver driverMetadata = new InstalledDriver(driverName, moduleId, driver.getClass().getName(),
             dataSourceClassName, xaDataSourceClassName, majorVer, minorVer, compliant);

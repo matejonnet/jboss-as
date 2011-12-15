@@ -44,7 +44,7 @@ public final class LogServices {
 
     public static final ServiceName LOGGER = JBOSS_LOGGING.append("logger");
 
-    public static final ServiceName ROOT_LOGGER = JBOSS_LOGGING.append("root-logger");
+    public static final ServiceName ROOT_LOGGER = JBOSS_LOGGING.append("root-logger", CommonAttributes.ROOT_LOGGER_NAME);
 
     public static final ServiceName LOGGER_HANDLER = JBOSS_LOGGING.append("logger-handler");
 
@@ -54,19 +54,17 @@ public final class LogServices {
 
     public static final ServiceName HANDLER_FILE = JBOSS_LOGGING.append("handler-file");
 
-    public static final ServiceName HANDLER_CLASS = JBOSS_LOGGING.append("handler-class");
-
-    public static final ServiceName HANDLER_MODULE = JBOSS_LOGGING.append("handler-module");
-
     private LogServices() {
     }
 
     public static ServiceName loggerName(final String name) {
-        return "".equals(name) ? ROOT_LOGGER : LOGGER.append(name);
+        return CommonAttributes.ROOT_LOGGER_NAME.equals(name) ? ROOT_LOGGER : LOGGER.append(name);
     }
 
     public static ServiceName loggerHandlerName(final String loggerName, final String handlerName) {
-        return loggerName.length() == 0 ? ROOT_LOGGER_HANDLER.append(handlerName) : LOGGER_HANDLER.append(loggerName, handlerName);
+        return CommonAttributes.ROOT_LOGGER_NAME.equals(loggerName) ?
+                ROOT_LOGGER_HANDLER.append(CommonAttributes.ROOT_LOGGER_NAME, handlerName) :
+                LOGGER_HANDLER.append(loggerName, handlerName);
     }
 
     public static ServiceName handlerName(final String name) {
@@ -77,14 +75,6 @@ public final class LogServices {
         return HANDLER_FILE.append(handlerName);
     }
 
-    public static ServiceName handlerClassName(final String name) {
-        return HANDLER_CLASS.append(name);
-    }
-
-    public static ServiceName handlerModuleName(final String name) {
-        return HANDLER_MODULE.append(name);
-    }
-
     static Collection<ServiceController<?>> installLoggerHandlers(final ServiceTarget serviceTarget, final String loggerName, final ModelNode handlers, final ServiceVerificationHandler verificationHandler) {
         final List<ServiceController<?>> controllers = new ArrayList<ServiceController<?>>();
         // Install logger handler services
@@ -92,9 +82,13 @@ public final class LogServices {
             final String handlerName = handler.asString();
             final LoggerHandlerService service = new LoggerHandlerService(loggerName);
             final Injector<Handler> injector = service.getHandlerInjector();
-            controllers.add(serviceTarget.addService(LogServices.loggerHandlerName(loggerName, handlerName), service)
-                    .addDependency(LogServices.loggerName(loggerName))
-                    .addDependency(LogServices.handlerName(handlerName), Handler.class, injector)
+            final ServiceName serviceName = LogServices.loggerHandlerName(loggerName, handlerName);
+            final ServiceName dep1 = LogServices.loggerName(loggerName);
+            final ServiceName dep2 = LogServices.handlerName(handlerName);
+            LoggingLogger.ROOT_LOGGER.debugf("Installing: %s - %s - %s", serviceName, dep1, dep2);
+            controllers.add(serviceTarget.addService(serviceName, service)
+                    .addDependency(dep1)
+                    .addDependency(dep2, Handler.class, injector)
                     .addListener(verificationHandler)
                     .install());
         }

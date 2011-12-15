@@ -22,10 +22,12 @@
 
 package org.jboss.as.jpa.hibernate4;
 
-import org.hibernate.ejb.packaging.NamedInputStream;
+import static org.jboss.as.jpa.JpaMessages.MESSAGES;
 
 import java.io.IOException;
 import java.io.InputStream;
+
+import org.hibernate.ejb.packaging.NamedInputStream;
 
 /**
  * Lazy named input stream.
@@ -57,6 +59,6 @@ public abstract class HibernateLazyNamedInputStream extends NamedInputStream {
 
     @Override
     public void setStream(InputStream stream) {
-        throw new IllegalArgumentException("Cannot change input stream reference.");
+        throw MESSAGES.cannotChangeInputStream();
     }
 }

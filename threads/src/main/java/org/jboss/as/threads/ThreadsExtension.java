@@ -26,13 +26,10 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DES
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
 import static org.jboss.as.threads.CommonAttributes.BOUNDED_QUEUE_THREAD_POOL;
-import static org.jboss.as.threads.CommonAttributes.GROUP_NAME;
-import static org.jboss.as.threads.CommonAttributes.PRIORITY;
 import static org.jboss.as.threads.CommonAttributes.QUEUELESS_THREAD_POOL;
 import static org.jboss.as.threads.CommonAttributes.SCHEDULED_THREAD_POOL;
 import static org.jboss.as.threads.CommonAttributes.THREADS;
 import static org.jboss.as.threads.CommonAttributes.THREAD_FACTORY;
-import static org.jboss.as.threads.CommonAttributes.THREAD_NAME_PATTERN;
 import static org.jboss.as.threads.CommonAttributes.UNBOUNDED_QUEUE_THREAD_POOL;
 import static org.jboss.as.threads.ThreadsDescriptionUtil.addBoundedQueueThreadPool;
 import static org.jboss.as.threads.ThreadsDescriptionUtil.addQueuelessThreadPool;
@@ -52,8 +49,8 @@ import java.util.Locale;
 import org.jboss.as.controller.Extension;
 import org.jboss.as.controller.ExtensionContext;
 import org.jboss.as.controller.OperationContext;
-import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.SubsystemRegistration;
@@ -61,7 +58,6 @@ import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.descriptions.common.CommonDescriptions;
 import org.jboss.as.controller.operations.common.Util;
 import org.jboss.as.controller.parsing.ExtensionParsingContext;
-import org.jboss.as.controller.registry.AttributeAccess;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.OperationEntry;
 import org.jboss.dmr.ModelNode;
@@ -76,7 +72,7 @@ import org.jboss.logging.Logger;
 public class ThreadsExtension implements Extension {
     private static final Logger log = Logger.getLogger("org.jboss.as.threads");
 
-    private static String SUBSYSTEM_NAME = "threads";
+    public static String SUBSYSTEM_NAME = "threads";
 
     @Override
     public void initialize(final ExtensionContext context) {
@@ -96,11 +92,7 @@ public class ThreadsExtension implements Extension {
                 THREAD_FACTORY_DESC);
         threadFactories.registerOperationHandler(ADD, ThreadFactoryAdd.INSTANCE, ThreadFactoryAdd.INSTANCE, false);
         threadFactories.registerOperationHandler(REMOVE, ThreadFactoryRemove.INSTANCE, ThreadFactoryRemove.INSTANCE, false);
-        threadFactories.registerReadWriteAttribute(THREAD_NAME_PATTERN, null, ThreadFactoryThreadNamePatternUpdate.INSTANCE,
-                AttributeAccess.Storage.CONFIGURATION);
-        threadFactories.registerReadWriteAttribute(GROUP_NAME, null, ThreadFactoryGroupNameUpdate.INSTANCE,
-                AttributeAccess.Storage.CONFIGURATION);
-        threadFactories.registerReadWriteAttribute(PRIORITY, null, ThreadFactoryPriorityUpdate.INSTANCE, AttributeAccess.Storage.CONFIGURATION);
+        ThreadFactoryWriteAttributeHandler.INSTANCE.registerAttributes(threadFactories);
 
         final ManagementResourceRegistration boundedQueueThreadPools = subsystem.registerSubModel(
                 PathElement.pathElement(BOUNDED_QUEUE_THREAD_POOL), BOUNDED_QUEUE_THREAD_POOL_DESC);
@@ -108,6 +100,8 @@ public class ThreadsExtension implements Extension {
                 BoundedQueueThreadPoolAdd.INSTANCE, false);
         boundedQueueThreadPools.registerOperationHandler(REMOVE, BoundedQueueThreadPoolRemove.INSTANCE,
                 BoundedQueueThreadPoolRemove.INSTANCE, false);
+        BoundedQueueThreadPoolReadAttributeHandler.INSTANCE.registerAttributes(boundedQueueThreadPools);
+        BoundedQueueThreadPoolWriteAttributeHandler.INSTANCE.registerAttributes(boundedQueueThreadPools);
 
         final ManagementResourceRegistration unboundedQueueThreadPools = subsystem.registerSubModel(
                 PathElement.pathElement(UNBOUNDED_QUEUE_THREAD_POOL), UNBOUNDED_QUEUE_THREAD_POOL_DESC);
@@ -115,6 +109,8 @@ public class ThreadsExtension implements Extension {
                 UnboundedQueueThreadPoolAdd.INSTANCE, false);
         unboundedQueueThreadPools.registerOperationHandler(REMOVE, UnboundedQueueThreadPoolRemove.INSTANCE,
                 UnboundedQueueThreadPoolRemove.INSTANCE, false);
+        UnboundedQueueThreadPoolReadAttributeHandler.INSTANCE.registerAttributes(unboundedQueueThreadPools);
+        UnboundedQueueThreadPoolWriteAttributeHandler.INSTANCE.registerAttributes(unboundedQueueThreadPools);
 
         final ManagementResourceRegistration queuelessThreadPools = subsystem.registerSubModel(
                 PathElement.pathElement(QUEUELESS_THREAD_POOL), QUEUELESS_THREAD_POOL_DESC);
@@ -122,6 +118,8 @@ public class ThreadsExtension implements Extension {
                 false);
         queuelessThreadPools.registerOperationHandler(REMOVE, QueuelessThreadPoolRemove.INSTANCE,
                 QueuelessThreadPoolRemove.INSTANCE, false);
+        QueuelessThreadPoolReadAttributeHandler.INSTANCE.registerAttributes(queuelessThreadPools);
+        QueuelessThreadPoolWriteAttributeHandler.INSTANCE.registerAttributes(queuelessThreadPools);
 
         final ManagementResourceRegistration scheduledThreadPools = subsystem.registerSubModel(
                 PathElement.pathElement(SCHEDULED_THREAD_POOL), SCHEDULED_THREAD_POOL_DESC);
@@ -129,6 +127,8 @@ public class ThreadsExtension implements Extension {
                 false);
         scheduledThreadPools.registerOperationHandler(REMOVE, ScheduledThreadPoolRemove.INSTANCE,
                 ScheduledThreadPoolRemove.INSTANCE, false);
+        ScheduledThreadPoolReadAttributeHandler.INSTANCE.registerAttributes(scheduledThreadPools);
+        ScheduledThreadPoolWriteAttributeHandler.INSTANCE.registerAttributes(scheduledThreadPools);
     }
 
     @Override

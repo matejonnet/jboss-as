@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Observable;
 import java.util.Set;
 
+import org.jboss.as.controller.OperationContext;
 import org.jboss.as.osgi.service.FrameworkBootstrapService;
 import org.jboss.modules.ModuleIdentifier;
 import org.jboss.msc.service.Service;
@@ -60,11 +61,15 @@ public class SubsystemState  extends Observable implements Serializable, Service
 
     public static final ServiceName SERVICE_NAME = FrameworkBootstrapService.FRAMEWORK_BASE_NAME.append("subsystemstate");
     public static final String PROP_JBOSS_OSGI_SYSTEM_MODULES = "org.jboss.osgi.system.modules";
+    public static final String PROP_JBOSS_OSGI_SYSTEM_PACKAGES = "org.jboss.osgi.system.packages";
+    public static final String PROP_JBOSS_OSGI_SYSTEM_MODULES_EXTRA = "org.jboss.osgi.system.modules.extra";
 
     private final Map<String, Dictionary<String, String>> configurations = new LinkedHashMap<String, Dictionary<String, String>>();
     private final Map<String, Object> properties = new LinkedHashMap<String, Object>();
-    private final List<OSGiModule> modules = new ArrayList<OSGiModule>();
+    private final List<OSGiCapability> capabilities = new ArrayList<OSGiCapability>();
     private volatile Activation activationPolicy = Activation.LAZY;
+
+    static final Activation DEFAULT_ACTIVATION = Activation.LAZY;
 
     public static ServiceController<SubsystemState> addService(ServiceTarget serviceTarget, Activation activation) {
         SubsystemState state = new SubsystemState();
@@ -73,6 +78,11 @@ public class SubsystemState  extends Observable implements Serializable, Service
         ServiceBuilder<SubsystemState> builder = serviceTarget.addService(SERVICE_NAME, state);
         builder.setInitialMode(Mode.LAZY);
         return builder.install();
+    }
+
+    static SubsystemState getSubsystemState(OperationContext context) {
+        ServiceController<?> controller = context.getServiceRegistry(true).getService(SubsystemState.SERVICE_NAME);
+        return controller != null ? (SubsystemState) controller.getValue() : null;
     }
 
     SubsystemState() {}
@@ -150,23 +160,23 @@ public class SubsystemState  extends Observable implements Serializable, Service
         }
     }
 
-    public List<OSGiModule> getModules() {
-        return Collections.unmodifiableList(modules);
+    public List<OSGiCapability> getCapabilities() {
+        return Collections.unmodifiableList(capabilities);
     }
 
-    public void addModule(OSGiModule module) {
-        modules.add(module);
-        notifyObservers(new ChangeEvent(ChangeType.MODULE, false, module.getIdentifier().toString()));
+    public void addCapability(OSGiCapability module) {
+        capabilities.add(module);
+        notifyObservers(new ChangeEvent(ChangeType.CAPABILITY, false, module.getIdentifier().toString()));
     }
 
-    public OSGiModule removeModule(String id) {
+    public OSGiCapability removeCapability(String id) {
         ModuleIdentifier identifier = ModuleIdentifier.fromString(id);
-        synchronized (modules) {
-            for (Iterator<OSGiModule> it = modules.iterator(); it.hasNext(); ) {
-                OSGiModule module = it.next();
+        synchronized (capabilities) {
+            for (Iterator<OSGiCapability> it = capabilities.iterator(); it.hasNext(); ) {
+                OSGiCapability module = it.next();
                 if (module.getIdentifier().equals(identifier)) {
                     it.remove();
-                    notifyObservers(new ChangeEvent(ChangeType.MODULE, true, identifier.toString()));
+                    notifyObservers(new ChangeEvent(ChangeType.CAPABILITY, true, identifier.toString()));
                     return module;
                 }
             }
@@ -195,13 +205,13 @@ public class SubsystemState  extends Observable implements Serializable, Service
         super.notifyObservers(arg);
     }
 
-    public static class OSGiModule implements Serializable {
+    public static class OSGiCapability implements Serializable {
         private static final long serialVersionUID = -2280880859263752474L;
 
         private final ModuleIdentifier identifier;
         private final Integer startlevel;
 
-        public OSGiModule(ModuleIdentifier identifier, Integer startlevel) {
+        public OSGiCapability(ModuleIdentifier identifier, Integer startlevel) {
             this.identifier = identifier;
             this.startlevel = startlevel;
         }
@@ -221,10 +231,10 @@ public class SubsystemState  extends Observable implements Serializable, Service
 
         @Override
         public boolean equals(Object obj) {
-            if (obj instanceof OSGiModule == false)
+            if (obj instanceof OSGiCapability == false)
                 return false;
 
-            OSGiModule om = (OSGiModule) obj;
+            OSGiCapability om = (OSGiCapability) obj;
             return identifier == null ? om.identifier == null : identifier.equals(om.identifier);
         }
     }
@@ -253,5 +263,5 @@ public class SubsystemState  extends Observable implements Serializable, Service
         }
     }
 
-    public enum ChangeType { ACTIVATION, CONFIG, PROPERTY, MODULE };
+    public enum ChangeType { ACTIVATION, CONFIG, PROPERTY, CAPABILITY };
 }

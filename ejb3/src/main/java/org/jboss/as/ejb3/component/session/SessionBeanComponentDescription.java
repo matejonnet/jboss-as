@@ -23,6 +23,21 @@
 package org.jboss.as.ejb3.component.session;
 
 
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+import javax.ejb.AccessTimeout;
+import javax.ejb.ConcurrencyManagementType;
+import javax.ejb.LockType;
+import javax.ejb.SessionBean;
+import javax.ejb.TransactionManagementType;
+
 import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ee.component.ComponentConfigurator;
 import org.jboss.as.ee.component.ComponentDescription;
@@ -30,13 +45,13 @@ import org.jboss.as.ee.component.ViewConfiguration;
 import org.jboss.as.ee.component.ViewConfigurator;
 import org.jboss.as.ee.component.ViewDescription;
 import org.jboss.as.ee.component.interceptors.InterceptorOrder;
+import org.jboss.as.ejb3.component.interceptors.CurrentInvocationContextInterceptor;
 import org.jboss.as.ejb3.component.EJBComponentDescription;
 import org.jboss.as.ejb3.component.EJBViewDescription;
 import org.jboss.as.ejb3.component.MethodIntf;
 import org.jboss.as.ejb3.concurrency.AccessTimeoutDetails;
 import org.jboss.as.ejb3.deployment.EjbJarDescription;
-import org.jboss.as.ejb3.timerservice.AutoTimer;
-import org.jboss.as.ejb3.tx.CMTTxInterceptorFactory;
+import org.jboss.as.ejb3.tx.CMTTxInterceptor;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.invocation.ImmediateInterceptorFactory;
@@ -44,32 +59,12 @@ import org.jboss.invocation.proxy.MethodIdentifier;
 import org.jboss.logging.Logger;
 import org.jboss.metadata.ejb.spec.SessionBeanMetaData;
 import org.jboss.msc.service.ServiceName;
-
-import javax.ejb.AccessTimeout;
-import javax.ejb.ConcurrencyManagementType;
-import javax.ejb.LockType;
-import javax.ejb.SessionBean;
-import javax.ejb.TransactionManagementType;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * @author Jaikiran Pai
  * @author <a href="mailto:ropalka@redhat.com">Richard Opalka</a>
  */
 public abstract class SessionBeanComponentDescription extends EJBComponentDescription {
-
-    private static final Logger logger = Logger.getLogger(SessionBeanComponentDescription.class);
 
     /**
      * Flag marking the presence/absence of a no-interface view on the session bean
@@ -112,10 +107,6 @@ public abstract class SessionBeanComponentDescription extends EJBComponentDescri
     private final Set<String> asynchronousClasses = new HashSet<String>();
 
     /**
-     * Views the component marked as @Asynchronous
-     */
-    private final Set<String> asynchronousViews = new HashSet<String>();
-    /**
      * mapped-name of the session bean
      */
     private String mappedName;
@@ -156,6 +147,7 @@ public abstract class SessionBeanComponentDescription extends EJBComponentDescri
         }
     }
 
+
     public void addLocalBusinessInterfaceViews(final String... classNames) {
         addLocalBusinessInterfaceViews(Arrays.asList(classNames));
     }
@@ -169,7 +161,7 @@ public abstract class SessionBeanComponentDescription extends EJBComponentDescri
             public void configure(final DeploymentPhaseContext context, final ComponentConfiguration componentConfiguration, final ViewDescription description, final ViewConfiguration configuration) throws DeploymentUnitProcessingException {
                 for (final Method method : configuration.getProxyFactory().getCachedMethods()) {
                     if (!Modifier.isPublic(method.getModifiers())) {
-                        configuration.addViewInterceptor(method, new ImmediateInterceptorFactory(new NotBusinessMethodInterceptor(method)), InterceptorOrder.View.NOT_BUSINESS_METHOD);
+                        configuration.addViewInterceptor(method, new ImmediateInterceptorFactory(new NotBusinessMethodInterceptor(method)), InterceptorOrder.View.NOT_BUSINESS_METHOD_EXCEPTION);
                     }
                 }
             }
@@ -178,6 +170,10 @@ public abstract class SessionBeanComponentDescription extends EJBComponentDescri
 
     public EJBViewDescription addWebserviceEndpointView() {
         return registerView(getEJBClassName(), MethodIntf.SERVICE_ENDPOINT);
+    }
+
+    public EJBViewDescription addWebserviceEndpointView(final String wsEndpointViewName) {
+        return registerView(wsEndpointViewName, MethodIntf.SERVICE_ENDPOINT);
     }
 
     public void addRemoteBusinessInterfaceViews(final Collection<String> classNames) {
@@ -192,8 +188,7 @@ public abstract class SessionBeanComponentDescription extends EJBComponentDescri
         for (final ViewDescription view : getViews()) {
             ejbView = (EJBViewDescription) view;
             if (viewClassName.equals(ejbView.getViewClassName()) && ejbView.getMethodIntf() == MethodIntf.REMOTE) {
-                throw new IllegalStateException("[EJB 3.1 spec, section 4.9.7] - Can't add view class: " + viewClassName
-                        + " as local view since it's already marked as remote view for bean: " + getEJBName());
+                throw MESSAGES.failToAddClassToLocalView(viewClassName,getEJBName());
             }
         }
     }
@@ -203,8 +198,7 @@ public abstract class SessionBeanComponentDescription extends EJBComponentDescri
         for (final ViewDescription view : getViews()) {
             ejbView = (EJBViewDescription) view;
             if (viewClassName.equals(ejbView.getViewClassName()) && ejbView.getMethodIntf() == MethodIntf.LOCAL) {
-                throw new IllegalStateException("[EJB 3.1 spec, section 4.9.7] - Can't add view class: " + viewClassName
-                        + " as remote view since it's already marked as local view for bean: " + getEJBName());
+                throw MESSAGES.failToAddClassToLocalView(viewClassName,getEJBName());
             }
         }
     }
@@ -322,7 +316,6 @@ public abstract class SessionBeanComponentDescription extends EJBComponentDescri
     }
 
     /**
-     *
      * @return The identifier of all async methods
      */
     public Set<MethodIdentifier> getAsynchronousMethods() {
@@ -339,32 +332,11 @@ public abstract class SessionBeanComponentDescription extends EJBComponentDescri
     }
 
     /**
-     *
      * @return The class name of all asynchronous classes
      */
     public Set<String> getAsynchronousClasses() {
         return asynchronousClasses;
     }
-
-    /**
-     *
-     * @return The class name of all asynchronous views
-     */
-    public Set<String> getAsynchronousViews() {
-        return asynchronousViews;
-    }
-
-    /**
-     * Set an entire view's asynchronous nature.  All business methods for the view will be asynchronous.
-     *
-     * @param viewName The view name
-     */
-    public void addAsynchronousView(final String viewName) {
-        asynchronousViews.add(viewName);
-    }
-
-
-
 
     /**
      * Returns the type of the session bean
@@ -374,14 +346,20 @@ public abstract class SessionBeanComponentDescription extends EJBComponentDescri
     public abstract SessionBeanType getSessionBeanType();
 
     @Override
-    protected void setupViewInterceptors(ViewDescription view) {
+    protected void setupViewInterceptors(EJBViewDescription view) {
         // let super do it's job first
         super.setupViewInterceptors(view);
 
         // tx management interceptor(s)
         addTxManagementInterceptorForView(view);
 
+        if(view.isEjb2xView()) {
+            view.getConfigurators().add(getSessionBeanObjectViewConfigurator());
+        }
+
     }
+
+    protected abstract ViewConfigurator getSessionBeanObjectViewConfigurator();
 
     /**
      * Sets up the transaction management interceptor for all methods of the passed view.
@@ -396,7 +374,7 @@ public abstract class SessionBeanComponentDescription extends EJBComponentDescri
                 EJBComponentDescription ejbComponentDescription = (EJBComponentDescription) componentConfiguration.getComponentDescription();
                 // Add CMT interceptor factory
                 if (TransactionManagementType.CONTAINER.equals(ejbComponentDescription.getTransactionManagementType())) {
-                    configuration.addViewInterceptor(CMTTxInterceptorFactory.INSTANCE, InterceptorOrder.View.CMT_TRANSACTION_INTERCEPTOR);
+                    configuration.addViewInterceptor(CMTTxInterceptor.FACTORY, InterceptorOrder.View.CMT_TRANSACTION_INTERCEPTOR);
                 }
             }
         });
@@ -408,8 +386,8 @@ public abstract class SessionBeanComponentDescription extends EJBComponentDescri
         this.getConfigurators().add(new ComponentConfigurator() {
             @Override
             public void configure(DeploymentPhaseContext context, ComponentDescription description, ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
-                configuration.addPostConstructInterceptor(SessionInvocationContextInterceptor.LIFECYCLE_FACTORY, InterceptorOrder.ComponentPostConstruct.EJB_SESSION_CONTEXT_INTERCEPTOR);
-                configuration.addPreDestroyInterceptor(SessionInvocationContextInterceptor.LIFECYCLE_FACTORY, InterceptorOrder.ComponentPreDestroy.EJB_SESSION_CONTEXT_INTERCEPTOR);
+                configuration.addPostConstructInterceptor(CurrentInvocationContextInterceptor.FACTORY, InterceptorOrder.ComponentPostConstruct.EJB_SESSION_CONTEXT_INTERCEPTOR);
+                configuration.addPreDestroyInterceptor(CurrentInvocationContextInterceptor.FACTORY, InterceptorOrder.ComponentPreDestroy.EJB_SESSION_CONTEXT_INTERCEPTOR);
             }
         });
     }
@@ -433,7 +411,7 @@ public abstract class SessionBeanComponentDescription extends EJBComponentDescri
         view.getConfigurators().add(new ViewConfigurator() {
             @Override
             public void configure(DeploymentPhaseContext context, ComponentConfiguration componentConfiguration, ViewDescription description, ViewConfiguration configuration) throws DeploymentUnitProcessingException {
-                configuration.addViewInterceptor(SessionInvocationContextInterceptor.FACTORY, InterceptorOrder.View.INVOCATION_CONTEXT_INTERCEPTOR);
+                configuration.addViewInterceptor(CurrentInvocationContextInterceptor.FACTORY, InterceptorOrder.View.INVOCATION_CONTEXT_INTERCEPTOR);
             }
         });
 

@@ -21,10 +21,13 @@
  */
 package org.jboss.as.clustering;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 
 import org.jgroups.Address;
+
+import static org.jboss.as.clustering.ClusteringImplMessages.MESSAGES;
 
 /**
  * Replacement for a JG IpAddress that doesn't base its representation on the JG address but on the computed node name added to
@@ -49,7 +52,7 @@ public class ClusterNodeImpl implements ClusterNode {
     // Attributes ----------------------------------------------------
 
     private final String id;
-    private final Address jgAddress;
+    private transient Address jgAddress;
     private final InetSocketAddress socketAddress;
 
     // Static --------------------------------------------------------
@@ -58,10 +61,10 @@ public class ClusterNodeImpl implements ClusterNode {
 
     ClusterNodeImpl(String id, Address jgAddress, InetSocketAddress socketAddress) {
         if (id == null) {
-            throw new IllegalArgumentException("Null id");
+            throw MESSAGES.nullVar("id");
         }
         if (socketAddress == null) {
-            throw new IllegalArgumentException("Null addressPort");
+            throw MESSAGES.nullVar("addressPort");
         }
         this.id = id;
         this.socketAddress = socketAddress;
@@ -97,12 +100,6 @@ public class ClusterNodeImpl implements ClusterNode {
 
     @Override
     public int compareTo(ClusterNode o) {
-        if (o == null)
-            throw new ClassCastException("Comparison to null value");
-
-        if (!(o instanceof ClusterNodeImpl))
-            throw new ClassCastException("Comparison between different classes");
-
         return this.id.compareTo(o.getName());
     }
 
@@ -130,12 +127,27 @@ public class ClusterNodeImpl implements ClusterNode {
         return this.getName();
     }
 
-    // Package protected ---------------------------------------------
+    private void writeObject(java.io.ObjectOutputStream out) throws IOException {
+        out.defaultWriteObject();
+        out.writeUTF(this.jgAddress.getClass().getName());
+        try {
+            this.jgAddress.writeTo(out);
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
+    }
 
-    // Protected -----------------------------------------------------
-
-    // Private -------------------------------------------------------
-
-    // Inner classes -------------------------------------------------
-
+    private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
+        in.defaultReadObject();
+        try {
+            this.jgAddress = Address.class.getClassLoader().loadClass(in.readUTF()).asSubclass(Address.class).newInstance();
+            this.jgAddress.readFrom(in);
+        } catch (IOException e) {
+            throw e;
+        } catch (ClassNotFoundException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
+    }
 }

@@ -22,6 +22,9 @@
 
 package org.jboss.as.ee.datasource;
 
+import static org.jboss.as.ee.EeLogger.ROOT_LOGGER;
+import static org.jboss.as.ee.EeMessages.MESSAGES;
+
 import org.jboss.as.ee.component.InjectionSource;
 import org.jboss.as.naming.ManagedReferenceFactory;
 import org.jboss.as.naming.ValueManagedReferenceFactory;
@@ -33,7 +36,6 @@ import org.jboss.as.server.deployment.reflect.DeploymentReflectionIndex;
 import org.jboss.invocation.proxy.MethodIdentifier;
 import org.jboss.invocation.proxy.ProxyConfiguration;
 import org.jboss.invocation.proxy.ProxyFactory;
-import org.jboss.logging.Logger;
 import org.jboss.modules.Module;
 import org.jboss.msc.inject.Injector;
 import org.jboss.msc.service.ServiceBuilder;
@@ -56,8 +58,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Jason T. Greene
  */
 public class DirectDataSourceInjectionSource extends InjectionSource {
-
-    private static final Logger logger = Logger.getLogger(DirectDataSourceInjectionSource.class);
 
     public static final ServiceName JBOSS_TXN = ServiceName.JBOSS.append("txn");
     public static final ServiceName JBOSS_TXN_TRANSACTION_MANAGER = JBOSS_TXN.append("TransactionManager");
@@ -121,11 +121,11 @@ public class DirectDataSourceInjectionSource extends InjectionSource {
             classIndex = deploymentReflectionIndex.getClassIndex(clazz);
             Constructor<?> ctor = classIndex.getConstructor(NO_CLASSES);
             if (ctor == null) {
-                throw new DeploymentUnitProcessingException("Could not found no-arg constructor for @DataSourceDefinition class " + className);
+                throw MESSAGES.defaultConstructorNotFound("@DataSourceDefinition", className);
             }
             object = ctor.newInstance();
 
-            setProperties(deploymentReflectionIndex, classIndex, object);
+            setProperties(deploymentReflectionIndex, clazz, object);
 
 
             if (transactional) {
@@ -133,11 +133,11 @@ public class DirectDataSourceInjectionSource extends InjectionSource {
                 final ServiceController<?> syncController = phaseContext.getServiceRegistry().getService(JBOSS_TXN_SYNCHRONIZATION_REGISTRY);
                 final ServiceController<?> managerController = phaseContext.getServiceRegistry().getService(JBOSS_TXN_TRANSACTION_MANAGER);
                 if (syncController == null || managerController == null) {
-                    logger.warn("Transactional datasource " + className + " will not be enlisted in the transaction as the transaction subsystem is not available");
+                    ROOT_LOGGER.transactionSubsystemNotAvailable(className);
                 } else {
                     try {
-                        TransactionSynchronizationRegistry transactionSynchronizationRegistry = (TransactionSynchronizationRegistry) syncController.getValue();
-                        TransactionManager transactionManager = (TransactionManager) managerController.getValue();
+                        final TransactionSynchronizationRegistry transactionSynchronizationRegistry = (TransactionSynchronizationRegistry) syncController.getValue();
+                        final TransactionManager transactionManager = (TransactionManager) managerController.getValue();
                         final ProxyConfiguration proxyConfiguration = new ProxyConfiguration()
                                 .setClassLoader(module.getClassLoader())
                                 .setSuperClass(clazz)
@@ -147,7 +147,7 @@ public class DirectDataSourceInjectionSource extends InjectionSource {
                         ProxyFactory<?> proxyFactory = new ProxyFactory(proxyConfiguration);
                         object = proxyFactory.newInstance(new DataSourceTransactionProxyHandler(object, transactionManager, transactionSynchronizationRegistry));
                     } catch (Exception e) {
-                        logger.warn("Transactional datasource " + className + " could not be proxied and will not be enlisted in transactions automatically", e);
+                        ROOT_LOGGER.cannotProxyTransactionalDatasource(e, className);
                     }
                 }
             }
@@ -157,33 +157,33 @@ public class DirectDataSourceInjectionSource extends InjectionSource {
         }
     }
 
-    private void setProperties(DeploymentReflectionIndex deploymentReflectionIndex, ClassReflectionIndex<?> classIndex, Object object) {
-        setProperty(deploymentReflectionIndex, classIndex, object, DESCRIPTION_PROP, description);
-        setProperty(deploymentReflectionIndex, classIndex, object, URL_PROP, url);
-        setProperty(deploymentReflectionIndex, classIndex, object, UPPERCASE_USER_PROP, url);
-        setProperty(deploymentReflectionIndex, classIndex, object, DATABASE_NAME_PROP, databaseName);
-        setProperty(deploymentReflectionIndex, classIndex, object, SERVER_NAME_PROP, serverName);
-        setProperty(deploymentReflectionIndex, classIndex, object, PORT_NUMBER_PROP, Integer.valueOf(portNumber));
-        setProperty(deploymentReflectionIndex, classIndex, object, LOGIN_TIMEOUT_PROP, Integer.valueOf(loginTimeout));
-        setProperty(deploymentReflectionIndex, classIndex, object, ISOLATION_LEVEL_PROP, Integer.valueOf(isolationLevel));
-        setProperty(deploymentReflectionIndex, classIndex, object, TRANSACTIONAL_PROP, Boolean.valueOf(transactional));
-        setProperty(deploymentReflectionIndex, classIndex, object, INITIAL_POOL_SIZE_PROP, Integer.valueOf(initialPoolSize));
-        setProperty(deploymentReflectionIndex, classIndex, object, MAX_IDLE_TIME_PROP, Integer.valueOf(maxIdleTime));
-        setProperty(deploymentReflectionIndex, classIndex, object, MAX_POOL_SIZE_PROP, Integer.valueOf(maxPoolSize));
-        setProperty(deploymentReflectionIndex, classIndex, object, MAX_STATEMENTS_PROP, Integer.valueOf(maxStatements));
-        setProperty(deploymentReflectionIndex, classIndex, object, MIN_POOL_SIZE_PROP, Integer.valueOf(minPoolSize));
-        setProperty(deploymentReflectionIndex, classIndex, object, USER_PROP, user);
-        setProperty(deploymentReflectionIndex, classIndex, object, PASSWORD_PROP, password);
+    private void setProperties(final DeploymentReflectionIndex deploymentReflectionIndex, final Class<?> clazz, final Object object) {
+        setProperty(deploymentReflectionIndex, clazz, object, DESCRIPTION_PROP, description);
+        setProperty(deploymentReflectionIndex, clazz, object, URL_PROP, url);
+        setProperty(deploymentReflectionIndex, clazz, object, UPPERCASE_USER_PROP, url);
+        setProperty(deploymentReflectionIndex, clazz, object, DATABASE_NAME_PROP, databaseName);
+        setProperty(deploymentReflectionIndex, clazz, object, SERVER_NAME_PROP, serverName);
+        setProperty(deploymentReflectionIndex, clazz, object, PORT_NUMBER_PROP, Integer.valueOf(portNumber));
+        setProperty(deploymentReflectionIndex, clazz, object, LOGIN_TIMEOUT_PROP, Integer.valueOf(loginTimeout));
+        setProperty(deploymentReflectionIndex, clazz, object, ISOLATION_LEVEL_PROP, Integer.valueOf(isolationLevel));
+        setProperty(deploymentReflectionIndex, clazz, object, TRANSACTIONAL_PROP, Boolean.valueOf(transactional));
+        setProperty(deploymentReflectionIndex, clazz, object, INITIAL_POOL_SIZE_PROP, Integer.valueOf(initialPoolSize));
+        setProperty(deploymentReflectionIndex, clazz, object, MAX_IDLE_TIME_PROP, Integer.valueOf(maxIdleTime));
+        setProperty(deploymentReflectionIndex, clazz, object, MAX_POOL_SIZE_PROP, Integer.valueOf(maxPoolSize));
+        setProperty(deploymentReflectionIndex, clazz, object, MAX_STATEMENTS_PROP, Integer.valueOf(maxStatements));
+        setProperty(deploymentReflectionIndex, clazz, object, MIN_POOL_SIZE_PROP, Integer.valueOf(minPoolSize));
+        setProperty(deploymentReflectionIndex, clazz, object, USER_PROP, user);
+        setProperty(deploymentReflectionIndex, clazz, object, PASSWORD_PROP, password);
 
         if (properties != null) for (String property : properties) {
             int pos = property.indexOf('=');
             if (pos == -1 || pos == property.length() - 1) continue;
 
-            setProperty(deploymentReflectionIndex, classIndex, object, property.substring(0, pos), property.substring(pos + 1));
+            setProperty(deploymentReflectionIndex, clazz, object, property.substring(0, pos), property.substring(pos + 1));
         }
     }
 
-    private void setProperty(DeploymentReflectionIndex deploymentReflectionIndex, ClassReflectionIndex<?> classIndex, Object object, String name, Object value) {
+    private void setProperty(final DeploymentReflectionIndex deploymentReflectionIndex, final Class<?> clazz, final Object object, final String name, final Object value) {
         // Ignore defaulted values
         if (value == null) return;
         if (value instanceof String && "".equals(value)) return;
@@ -193,17 +193,16 @@ public class DirectDataSourceInjectionSource extends InjectionSource {
         final String methodName = builder.toString();
         final Class<?> paramType = value.getClass();
         final MethodIdentifier methodIdentifier = MethodIdentifier.getIdentifier(void.class, methodName, paramType);
-        final Method setterMethod = ClassReflectionIndexUtil.findMethod(deploymentReflectionIndex, classIndex, methodIdentifier);
+        final Method setterMethod = ClassReflectionIndexUtil.findMethod(deploymentReflectionIndex, clazz, methodIdentifier);
         if (setterMethod == null) {
             // just log a WARN message
-            logger.warn("Ignoring property " + name + " due to missing setter method: " + methodName + "("
-                    + paramType.getName() + ") on datasource class: " + classIndex.getIndexedClass().getName());
+            ROOT_LOGGER.ignoringProperty(name, methodName, paramType.getName(), clazz.getName());
             return;
         }
         try {
             setterMethod.invoke(object, value);
         } catch (Exception e) {
-            throw new RuntimeException("Could not set property " + name + " on datasource class " + classIndex.getIndexedClass().getName(), e);
+            throw MESSAGES.cannotSetProperty(e, name, clazz.getName());
         }
     }
 

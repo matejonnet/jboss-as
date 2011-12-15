@@ -21,6 +21,9 @@
  */
 package org.jboss.as.test.integration.respawn;
 
+import static org.jboss.as.arquillian.container.Authentication.PASSWORD;
+import static org.jboss.as.arquillian.container.Authentication.USERNAME;
+import static org.jboss.as.arquillian.container.Authentication.getCallbackHandler;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HOST;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MASTER;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAME;
@@ -35,22 +38,30 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUC
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.security.AccessController;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivilegedAction;
+import java.security.Provider;
+import java.security.Security;
 import java.util.ArrayList;
 import java.util.List;
 
 import junit.framework.Assert;
-
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.client.ModelControllerClient;
 import org.jboss.as.process.Main;
 import org.jboss.as.process.ProcessController;
-import org.jboss.as.protocol.old.StreamUtils;
+import org.jboss.as.protocol.StreamUtils;
 import org.jboss.dmr.ModelNode;
+import org.jboss.sasl.JBossSaslProvider;
+import org.jboss.sasl.util.UsernamePasswordHashUtil;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -70,13 +81,31 @@ public class RespawnTestCase {
     private static final String SERVER_ONE = "respawn-one";
     private static final String SERVER_TWO = "respawn-two";
     private static final int HC_PORT = 9999;
+    private static final Provider saslProvider = new JBossSaslProvider();
 
 
     static ProcessController processController;
     static ProcessUtil processUtil;
 
     @BeforeClass
-    public static void createProcessController() throws IOException, URISyntaxException {
+    public static void createProcessController() throws IOException, URISyntaxException, NoSuchAlgorithmException {
+        AccessController.doPrivileged(new PrivilegedAction<Object>() {
+            public Object run() {
+                if (Security.getProperty(saslProvider.getName()) == null) {
+                    Security.insertProviderAt(saslProvider, 1);
+                }
+                return null;
+            }
+        });
+
+        final String testName = RespawnTestCase.class.getSimpleName();
+        final File domains = new File("target" + File.separator + "domains" + File.separator + testName);
+        final File masterDir = new File(domains, "master");
+        final String masterDirPath = masterDir.getAbsolutePath();
+        final File domainConfigDir = new File(masterDir, "configuration");
+        // TODO this should not be necessary
+        domainConfigDir.mkdirs();
+
         if (File.pathSeparatorChar == ':'){
             processUtil = new UnixProcessUtil();
         } else {
@@ -98,13 +127,22 @@ public class RespawnTestCase {
         Assert.assertTrue(domainXml.exists());
         Assert.assertTrue(hostXml.exists());
 
+        // No point backing up the file in a test scenario, just write what we need.
+        File usersFile = new File(domainConfigDir, "mgmt-users.properties");
+        FileOutputStream fos = new FileOutputStream(usersFile);
+        PrintWriter pw = new PrintWriter(fos);
+        pw.println(USERNAME + "=" + new UsernamePasswordHashUtil().generateHashedHexURP(USERNAME, "ManagementRealm", PASSWORD.toCharArray()));
+        pw.println("slave=" + new UsernamePasswordHashUtil().generateHashedHexURP("slave", "ManagementRealm", "slave_user_password".toCharArray()));
+        pw.close();
+        fos.close();
+
         List<String> args = new ArrayList<String>();
         args.add("-jboss-home");
         args.add(jbossHome);
         args.add("-jvm");
         args.add(processUtil.getJavaCommand());
         args.add("--");
-        args.add("-Dorg.jboss.boot.log.file=" + jbossHome + "/domain/log/host-controller/boot.log");
+        args.add("-Dorg.jboss.boot.log.file=" + masterDirPath + "/log/host-controller.log");
         args.add("-Dlogging.configuration=file:" + jbossHome + "/domain/configuration/logging.properties");
         args.add("-Djboss.test.host.master.address=" + System.getProperty("jboss.test.host.master.address", "127.0.0.1"));
         args.add("-Xms64m");
@@ -119,6 +157,7 @@ public class RespawnTestCase {
         args.add("--host-config=" + hostXml.getAbsolutePath());
         args.add("--domain-config=" + domainXml.getAbsolutePath());
         args.add("-Djboss.test.host.master.address=" + System.getProperty("jboss.test.host.master.address", "127.0.0.1"));
+        args.add("-Djboss.domain.base.dir=" + masterDir.getAbsolutePath());
 
         processController = Main.start(args.toArray(new String[args.size()]));
     }
@@ -187,7 +226,7 @@ public class RespawnTestCase {
         operation.get(OP).set(READ_RESOURCE_OPERATION);
         operation.get(OP_ADDR).set(getHostControllerServerAddress(host, server));
 
-        final ModelControllerClient client = ModelControllerClient.Factory.create("localhost", HC_PORT);
+        final ModelControllerClient client = ModelControllerClient.Factory.create("localhost", HC_PORT, getCallbackHandler());
         try {
             final ModelNode result = client.execute(operation);
             if (result.get(OUTCOME).asString().equals(SUCCESS)){

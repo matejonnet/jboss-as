@@ -21,37 +21,9 @@
  */
 package org.jboss.as.ejb3.component;
 
-import org.jboss.as.ee.component.ComponentConfiguration;
-import org.jboss.as.ee.component.ComponentConfigurator;
-import org.jboss.as.ee.component.ComponentDescription;
-import org.jboss.as.ee.component.ComponentNamingMode;
-import org.jboss.as.ee.component.ComponentViewInstance;
-import org.jboss.as.ee.component.NamespaceConfigurator;
-import org.jboss.as.ee.component.ViewConfiguration;
-import org.jboss.as.ee.component.ViewConfigurator;
-import org.jboss.as.ee.component.ViewDescription;
-import org.jboss.as.ee.component.interceptors.InterceptorOrder;
-import org.jboss.as.ejb3.EJBMethodIdentifier;
-import org.jboss.as.ejb3.deployment.EjbDeploymentAttachmentKeys;
-import org.jboss.as.ejb3.deployment.EjbJarConfiguration;
-import org.jboss.as.ejb3.deployment.EjbJarDescription;
-import org.jboss.as.ejb3.security.EJBSecurityViewConfigurator;
-import org.jboss.as.ejb3.timerservice.AutoTimer;
-import org.jboss.as.ejb3.timerservice.NonFunctionalTimerService;
-import org.jboss.as.server.deployment.DeploymentPhaseContext;
-import org.jboss.as.server.deployment.DeploymentUnit;
-import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
-import org.jboss.invocation.ImmediateInterceptorFactory;
-import org.jboss.invocation.Interceptor;
-import org.jboss.invocation.InterceptorContext;
-import org.jboss.metadata.ejb.spec.EnterpriseBeanMetaData;
-import org.jboss.msc.service.ServiceBuilder;
-import org.jboss.msc.service.ServiceName;
 
-import javax.ejb.TimerService;
-import javax.ejb.TransactionAttributeType;
-import javax.ejb.TransactionManagementType;
 import java.lang.reflect.Method;
+import java.rmi.Remote;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -62,6 +34,48 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import javax.ejb.TimerService;
+import javax.ejb.TransactionAttributeType;
+import javax.ejb.TransactionManagementType;
+
+import org.jboss.as.ee.component.ComponentConfiguration;
+import org.jboss.as.ee.component.ComponentConfigurator;
+import org.jboss.as.ee.component.ComponentDescription;
+import org.jboss.as.ee.component.ComponentNamingMode;
+import org.jboss.as.ee.component.ComponentView;
+import org.jboss.as.ee.component.DependencyConfigurator;
+import org.jboss.as.ee.component.NamespaceConfigurator;
+import org.jboss.as.ee.component.NamespaceViewConfigurator;
+import org.jboss.as.ee.component.TCCLInterceptor;
+import org.jboss.as.ee.component.ViewConfiguration;
+import org.jboss.as.ee.component.ViewConfigurator;
+import org.jboss.as.ee.component.ViewDescription;
+import org.jboss.as.ee.component.interceptors.InterceptorOrder;
+import org.jboss.as.ejb3.EJBMethodIdentifier;
+import org.jboss.as.ejb3.component.interceptors.EjbExceptionTransformingInterceptorFactory;
+import org.jboss.as.ejb3.component.interceptors.LoggingInterceptor;
+import org.jboss.as.ejb3.deployment.ApplicationExceptions;
+import org.jboss.as.ejb3.deployment.EjbDeploymentAttachmentKeys;
+import org.jboss.as.ejb3.deployment.EjbJarDescription;
+import org.jboss.as.ejb3.remote.EJBRemoteTransactionsRepository;
+import org.jboss.as.ejb3.remote.EJBRemoteTransactionsViewConfigurator;
+import org.jboss.as.ejb3.security.EJBSecurityViewConfigurator;
+import org.jboss.as.ejb3.timerservice.AutoTimer;
+import org.jboss.as.ejb3.timerservice.NonFunctionalTimerService;
+import org.jboss.as.server.deployment.DeploymentPhaseContext;
+import org.jboss.as.server.deployment.DeploymentUnit;
+import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
+import org.jboss.invocation.ImmediateInterceptorFactory;
+import org.jboss.invocation.Interceptor;
+import org.jboss.invocation.InterceptorContext;
+import org.jboss.invocation.InterceptorFactory;
+import org.jboss.metadata.ejb.spec.EnterpriseBeanMetaData;
+import org.jboss.metadata.javaee.spec.SecurityRolesMetaData;
+import org.jboss.msc.service.ServiceBuilder;
+import org.jboss.msc.service.ServiceName;
+
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 
 /**
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
@@ -99,6 +113,16 @@ public abstract class EJBComponentDescription extends ComponentDescription {
     private String runAsRole;
 
     /**
+     * The @RunAsPrincipal associated with this bean, if any
+     */
+    private String runAsPrincipal;
+
+    /**
+     * Roles mapped with secuirty-role
+     */
+    private SecurityRolesMetaData securityRoles;
+
+    /**
      * The @DenyAll/exclude-list map of methods. The key is the view class name and the value is a collection of EJB methods
      * which are marked for @DenyAll/exclude-list
      */
@@ -128,7 +152,6 @@ public abstract class EJBComponentDescription extends ComponentDescription {
      */
     private final Map<String, Collection<String>> securityRoleLinks = new HashMap<String, Collection<String>>();
 
-
     /**
      * The @PermitAll map of methods. The key is the view class name and the value is a collection of EJB methods
      * which are marked for @PermitAll
@@ -144,14 +167,6 @@ public abstract class EJBComponentDescription extends ComponentDescription {
 
 
     /**
-     * Stores around invoke methods that are referenced in the DD that cannot be resolved until the module is loaded
-     */
-    private final List<String> aroundInvokeDDMethods = new ArrayList<String>(0);
-    private final List<String> preDestroyDDMethods = new ArrayList<String>(0);
-    private final List<String> postConstructDDMethods = new ArrayList<String>(0);
-
-
-    /**
      * @Schedule methods
      */
     private final Map<Method, List<AutoTimer>> scheduleMethods = new IdentityHashMap<Method, List<AutoTimer>>();
@@ -162,9 +177,33 @@ public abstract class EJBComponentDescription extends ComponentDescription {
     private Method timeoutMethod;
 
     /**
+     * The EJB 2.x local view
+     */
+    private EJBViewDescription ejbLocalView;
+
+    /**
+     * The ejb local home view
+     */
+    private EjbHomeViewDescription ejbLocalHomeView;
+
+    /**
+     * The EJB 2.x remote view
+     */
+    private EJBViewDescription ejbRemoteView;
+
+    /**
+     * The ejb local home view
+     */
+    private EjbHomeViewDescription ejbHomeView;
+    /**
      * TODO: this should not be part of the description
      */
     private TimerService timerService = NonFunctionalTimerService.INSTANCE;
+
+    /**
+     * If true this component is accessible via CORBA
+     */
+    private boolean exposedViaIiop = false;
 
 
     private final PopulatingMap<MethodIntf, Map<String, TransactionAttributeType>> txPerViewStyle2 = new PopulatingMap<MethodIntf, Map<String, TransactionAttributeType>>() {
@@ -207,7 +246,7 @@ public abstract class EJBComponentDescription extends ComponentDescription {
      * @param ejbJarDescription  the module
      */
     public EJBComponentDescription(final String componentName, final String componentClassName, final EjbJarDescription ejbJarDescription, final ServiceName deploymentUnitServiceName) {
-        super(componentName, componentClassName, ejbJarDescription.getEEModuleDescription(), ejbJarDescription.getApplicationClassesDescription().getOrAddClassByName(componentClassName), deploymentUnitServiceName, ejbJarDescription.getApplicationClassesDescription());
+        super(componentName, componentClassName, ejbJarDescription.getEEModuleDescription(), deploymentUnitServiceName);
         if (ejbJarDescription.isWar()) {
             setNamingMode(ComponentNamingMode.USE_MODULE);
         } else {
@@ -221,6 +260,8 @@ public abstract class EJBComponentDescription extends ComponentDescription {
         this.addDependency(EJBUtilities.SERVICE_NAME, ServiceBuilder.DependencyType.REQUIRED);
         // setup a current invocation interceptor
         this.addCurrentInvocationContextFactory();
+        // setup a dependency on EJB remote tx repository service, if this EJB exposes atleast one remote view
+        this.addRemoteTransactionsRepositoryDependency();
 
     }
 
@@ -257,6 +298,43 @@ public abstract class EJBComponentDescription extends ComponentDescription {
         return beanTransactionAttribute;
     }
 
+    public void addLocalHome(final String localHome) {
+        final EjbHomeViewDescription view = new EjbHomeViewDescription(this, localHome, MethodIntf.LOCAL_HOME);
+        getViews().add(view);
+        // setup server side view interceptors
+        setupViewInterceptors(view);
+        // setup server side home view interceptors
+        this.setupHomeViewInterceptors(view);
+        // setup client side view interceptors
+        setupClientViewInterceptors(view);
+        // return created view
+        this.ejbLocalHomeView = view;
+    }
+
+    public void addRemoteHome(final String remoteHome) {
+        final EjbHomeViewDescription view = new EjbHomeViewDescription(this, remoteHome, MethodIntf.HOME);
+        getViews().add(view);
+        // setup server side view interceptors
+        setupViewInterceptors(view);
+        // setup server side home view interceptors
+        this.setupHomeViewInterceptors(view);
+        // setup client side view interceptors
+        setupClientViewInterceptors(view);
+
+        // return created view
+        this.ejbHomeView = view;
+    }
+
+    public void addEjbLocalObjectView(final String viewClassName) {
+        final EJBViewDescription view = registerView(viewClassName, MethodIntf.LOCAL, true);
+        this.ejbLocalView = view;
+    }
+
+    public void addEjbObjectView(final String viewClassName) {
+        final EJBViewDescription view = registerView(viewClassName, MethodIntf.REMOTE, true);
+        this.ejbRemoteView = view;
+    }
+
     public TransactionManagementType getTransactionManagementType() {
         return transactionManagementType;
     }
@@ -269,7 +347,7 @@ public abstract class EJBComponentDescription extends ComponentDescription {
      */
     public void setTransactionAttribute(MethodIntf methodIntf, String className, TransactionAttributeType transactionAttribute) {
         if (methodIntf != null && className != null)
-            throw new IllegalArgumentException("both methodIntf and className are set on " + getComponentName());
+            throw MESSAGES.bothMethodIntAndClassNameSet(getComponentName());
         if (methodIntf == null) {
             txStyle1.put(className, transactionAttribute);
         } else
@@ -318,9 +396,59 @@ public abstract class EJBComponentDescription extends ComponentDescription {
         return this.getComponentClassName();
     }
 
-    protected void setupViewInterceptors(ViewDescription view) {
+    protected void setupViewInterceptors(EJBViewDescription view) {
+        // add a logging interceptor (to take care of EJB3 spec, section 14.3 logging requirements)
+        view.getConfigurators().add(new ViewConfigurator() {
+            @Override
+            public void configure(DeploymentPhaseContext context, ComponentConfiguration componentConfiguration, ViewDescription description, ViewConfiguration viewConfiguration) throws DeploymentUnitProcessingException {
+                viewConfiguration.addViewInterceptor(new ImmediateInterceptorFactory(LoggingInterceptor.INSTANCE), InterceptorOrder.View.EJB_EXCEPTION_LOGGING_INTERCEPTOR);
+            }
+        });
         this.addCurrentInvocationContextFactory(view);
         this.setupSecurityInterceptors(view);
+        this.setupRemoteViewInterceptors(view);
+        view.getConfigurators().addFirst(new NamespaceViewConfigurator());
+    }
+
+    private void setupRemoteViewInterceptors(final EJBViewDescription view) {
+        if (view.getMethodIntf() == MethodIntf.REMOTE || view.getMethodIntf() == MethodIntf.HOME) {
+            view.getConfigurators().add(new ViewConfigurator() {
+                @Override
+                public void configure(final DeploymentPhaseContext context, final ComponentConfiguration componentConfiguration, final ViewDescription description, final ViewConfiguration configuration) throws DeploymentUnitProcessingException {
+                    if (Remote.class.isAssignableFrom(configuration.getViewClass())) {
+                        configuration.addViewInterceptor(EjbExceptionTransformingInterceptorFactory.INSTANCE, InterceptorOrder.View.REMOTE_EXCEPTION_TRANSFORMER);
+                    }
+                }
+            });
+            if (view.getMethodIntf() == MethodIntf.HOME) {
+                view.getConfigurators().add(new ViewConfigurator() {
+                    @Override
+                    public void configure(final DeploymentPhaseContext context, final ComponentConfiguration componentConfiguration, final ViewDescription description, final ViewConfiguration configuration) throws DeploymentUnitProcessingException {
+                        if (Remote.class.isAssignableFrom(configuration.getViewClass())) {
+                            final String earApplicationName = componentConfiguration.getComponentDescription().getModuleDescription().getEarApplicationName();
+                            configuration.setViewInstanceFactory(new RemoteHomeViewInstanceFactory(earApplicationName, componentConfiguration.getModuleName(), componentConfiguration.getComponentDescription().getModuleDescription().getDistinctName(), componentConfiguration.getComponentName()));
+                        }
+                    }
+                });
+            }
+            // add the remote tx propogating interceptor
+            view.getConfigurators().add(new EJBRemoteTransactionsViewConfigurator());
+        }
+
+    }
+
+    private void setupHomeViewInterceptors(final EjbHomeViewDescription ejbHomeViewDescription) {
+        // setup the TCCL interceptor, which usually would have been setup by the ComponentDescription.DefaultConfigurator
+        // but since the DefaultConfiguration is skipped for EJBHomeViewDescription (@see EJBHomeViewDescription.isDefaultConfiguratorRequired())
+        // we add this interceptor here explicitly
+        ejbHomeViewDescription.getConfigurators().add(new ViewConfigurator() {
+            @Override
+            public void configure(DeploymentPhaseContext context, ComponentConfiguration componentConfiguration, ViewDescription description, ViewConfiguration viewConfiguration) throws DeploymentUnitProcessingException {
+                final ClassLoader componentClassLoader = componentConfiguration.getModuleClassLoder();
+                final InterceptorFactory tcclInterceptorFactory = new ImmediateInterceptorFactory(new TCCLInterceptor(componentClassLoader));
+                viewConfiguration.addViewInterceptor(tcclInterceptorFactory, InterceptorOrder.View.TCCL_INTERCEPTOR);
+            }
+        });
     }
 
     protected void setupClientViewInterceptors(ViewDescription view) {
@@ -340,6 +468,46 @@ public abstract class EJBComponentDescription extends ComponentDescription {
      * @param view The view for which the interceptor has to be setup
      */
     protected abstract void addCurrentInvocationContextFactory(ViewDescription view);
+
+    /**
+     * Adds a dependency for the ComponentConfiguration, on the {@link EJBRemoteTransactionsRepository} service,
+     * if the EJB exposes atleast one remote view
+     */
+    protected void addRemoteTransactionsRepositoryDependency() {
+        this.getConfigurators().add(new ComponentConfigurator() {
+            @Override
+            public void configure(DeploymentPhaseContext context, ComponentDescription description, ComponentConfiguration componentConfiguration) throws DeploymentUnitProcessingException {
+                if (this.hasRemoteView((EJBComponentDescription) description)) {
+                    // add a dependency on EJBRemoteTransactionsRepository service
+                    componentConfiguration.getCreateDependencies().add(new DependencyConfigurator<EJBComponentCreateService>() {
+                        @Override
+                        public void configureDependency(ServiceBuilder<?> serviceBuilder, EJBComponentCreateService ejbComponentCreateService) throws DeploymentUnitProcessingException {
+                            serviceBuilder.addDependency(EJBRemoteTransactionsRepository.SERVICE_NAME, EJBRemoteTransactionsRepository.class, ejbComponentCreateService.getEJBRemoteTransactionsRepositoryInjector());
+                        }
+                    });
+                }
+            }
+
+            /**
+             * Returns true if the passed EJB component description has atleast one remote view
+             * @param ejbComponentDescription
+             * @return
+             */
+            private boolean hasRemoteView(final EJBComponentDescription ejbComponentDescription) {
+                final Set<ViewDescription> views = ejbComponentDescription.getViews();
+                for (final ViewDescription view : views) {
+                    if (!(view instanceof EJBViewDescription)) {
+                        continue;
+                    }
+                    final MethodIntf viewType = ((EJBViewDescription) view).getMethodIntf();
+                    if (viewType == MethodIntf.REMOTE || viewType == MethodIntf.HOME) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        });
+    }
 
     protected void setupSecurityInterceptors(final ViewDescription view) {
         // setup security interceptor for the component
@@ -389,7 +557,7 @@ public abstract class EJBComponentDescription extends ComponentDescription {
 
     public void setDeclaredRoles(Collection<String> roles) {
         if (roles == null) {
-            throw new IllegalArgumentException("Cannot set security roles to null");
+            throw MESSAGES.SecurityRolesIsNull();
         }
         this.declaredRoles.clear();
         this.declaredRoles.addAll(roles);
@@ -407,6 +575,14 @@ public abstract class EJBComponentDescription extends ComponentDescription {
         return this.runAsRole;
     }
 
+    public void setRunAsPrincipal(String principal) {
+        this.runAsPrincipal = principal;
+    }
+
+    public String getRunAsPrincipal() {
+        return runAsPrincipal;
+    }
+
     public void setSecurityDomain(String securityDomain) {
         this.securityDomain = securityDomain;
     }
@@ -415,9 +591,17 @@ public abstract class EJBComponentDescription extends ComponentDescription {
         return this.securityDomain;
     }
 
+    public SecurityRolesMetaData getSecurityRoles() {
+        return securityRoles;
+    }
+
+    public void setSecurityRoles(SecurityRolesMetaData securityRoles) {
+        this.securityRoles = securityRoles;
+    }
+
     public void applyDenyAllOnAllViewsForClass(final String className) {
         if (className == null || className.trim().isEmpty()) {
-            throw new IllegalArgumentException("Classname cannot be null or empty: " + className);
+            throw MESSAGES.classnameIsNull(className);
         }
         for (final ViewDescription view : this.getViews()) {
             Collection<String> denyAllClasses = this.classLevelDenyAll.get(view.getViewClassName());
@@ -506,10 +690,10 @@ public abstract class EJBComponentDescription extends ComponentDescription {
 
     public void setRolesAllowedOnAllViewsForClass(final String className, final Set<String> roles) {
         if (className == null || className.trim().isEmpty()) {
-            throw new IllegalArgumentException("Classname cannot be null or empty: " + className);
+            MESSAGES.classnameIsNull(className);
         }
         if (roles == null) {
-            throw new IllegalArgumentException("Cannot set null roles for class " + className);
+            throw MESSAGES.setRolesForClassIsNull(className);
         }
         for (final ViewDescription view : this.getViews()) {
             Map<String, Set<String>> perViewRoles = this.classLevelRolesAllowed.get(view.getViewClassName());
@@ -529,10 +713,10 @@ public abstract class EJBComponentDescription extends ComponentDescription {
 
     public void setRolesAllowedOnAllViewsForMethod(final EJBMethodIdentifier ejbMethodIdentifier, final Set<String> roles) {
         if (ejbMethodIdentifier == null) {
-            throw new IllegalArgumentException("EJB method identifier cannot be null while setting roles on method");
+            throw MESSAGES.ejbMethodIsNull();
         }
         if (roles == null) {
-            throw new IllegalArgumentException("Roles cannot be null while setting roles on method: " + ejbMethodIdentifier);
+            throw MESSAGES.rolesIsNull(ejbMethodIdentifier);
         }
         for (final ViewDescription view : this.getViews()) {
             Map<EJBMethodIdentifier, Set<String>> perViewMethodRoles = this.methodLevelRolesAllowed.get(view.getViewClassName());
@@ -547,7 +731,7 @@ public abstract class EJBComponentDescription extends ComponentDescription {
 
     public void setRolesAllowedForAllMethodsOnViewType(final MethodIntf viewType, final Set<String> roles) {
         if (roles == null) {
-            throw new IllegalArgumentException("Roles cannot be null while setting roles on view type: " + viewType);
+            throw MESSAGES.rolesIsNullOnViewType(viewType);
         }
         // find the right view(s) to apply the @RolesAllowed
         for (final ViewDescription view : this.getViews()) {
@@ -574,10 +758,10 @@ public abstract class EJBComponentDescription extends ComponentDescription {
 
     public void setRolesAllowedForMethodOnViewType(final MethodIntf viewType, final EJBMethodIdentifier ejbMethodIdentifier, final Set<String> roles) {
         if (ejbMethodIdentifier == null) {
-            throw new IllegalArgumentException("EJB method identifier cannot be null while setting roles on view type: " + viewType);
+            throw MESSAGES.ejbMethodIsNullForViewType(viewType);
         }
         if (roles == null) {
-            throw new IllegalArgumentException("Roles cannot be null while setting roles on view type: " + viewType + " and method: " + ejbMethodIdentifier);
+            throw MESSAGES.rolesIsNullOnViewTypeAndMethod(viewType, ejbMethodIdentifier);
         }
 
         // find the right view(s) to apply the @RolesAllowed
@@ -610,6 +794,15 @@ public abstract class EJBComponentDescription extends ComponentDescription {
         return methods.get(method);
     }
 
+    public Map<EJBMethodIdentifier, Set<String>> getRolesAllowed(final String viewClassName) {
+        final Map<EJBMethodIdentifier, Set<String>> methods = this.methodLevelRolesAllowed.get(viewClassName);
+        if (methods == null) {
+            return Collections.emptyMap();
+        }
+
+        return methods;
+    }
+
     public Set<String> getRolesAllowedForClass(final String viewClassName, final String className) {
         final Map<String, Set<String>> perClassRoles = this.classLevelRolesAllowed.get(viewClassName);
         if (perClassRoles == null || perClassRoles.get(className) == null) {
@@ -621,10 +814,10 @@ public abstract class EJBComponentDescription extends ComponentDescription {
 
     public void linkSecurityRoles(final String fromRole, final String toRole) {
         if (fromRole == null || fromRole.trim().isEmpty()) {
-            throw new IllegalArgumentException("Cannot link from a null or empty security role: " + fromRole);
+            throw MESSAGES.failToLinkFromEmptySecurityRole(fromRole);
         }
         if (toRole == null || toRole.trim().isEmpty()) {
-            throw new IllegalArgumentException("Cannot link to a null or empty security role: " + toRole);
+            throw MESSAGES.failToLinkToEmptySecurityRole(toRole);
         }
 
         Collection<String> roleLinks = this.securityRoleLinks.get(fromRole);
@@ -636,8 +829,12 @@ public abstract class EJBComponentDescription extends ComponentDescription {
     }
 
     protected EJBViewDescription registerView(final String viewClassName, final MethodIntf viewType) {
+        return registerView(viewClassName, viewType, false);
+    }
+
+    protected EJBViewDescription registerView(final String viewClassName, final MethodIntf viewType, final boolean ejb2xView) {
         // setup the ViewDescription
-        final EJBViewDescription viewDescription = new EJBViewDescription(this, viewClassName, viewType);
+        final EJBViewDescription viewDescription = new EJBViewDescription(this, viewClassName, viewType, ejb2xView);
         getViews().add(viewDescription);
         // setup server side view interceptors
         setupViewInterceptors(viewDescription);
@@ -653,7 +850,7 @@ public abstract class EJBComponentDescription extends ComponentDescription {
 
     public void applyPermitAllOnAllViewsForClass(final String className) {
         if (className == null || className.trim().isEmpty()) {
-            throw new IllegalArgumentException("Classname cannot be null or empty: " + className);
+            throw MESSAGES.classnameIsNull(className);
         }
         for (final ViewDescription view : this.getViews()) {
             Collection<String> permitAllClasses = this.classLevelPermitAll.get(view.getViewClassName());
@@ -702,7 +899,7 @@ public abstract class EJBComponentDescription extends ComponentDescription {
     }
 
     /**
-     * A {@link ComponentConfigurator} which picks up {@link EjbJarConfiguration} from the attachment of the deployment
+     * A {@link ComponentConfigurator} which picks up {@link org.jboss.as.ejb3.deployment.ApplicationExceptions} from the attachment of the deployment
      * unit and sets it to the {@link EJBComponentCreateServiceFactory component create service factory} of the component
      * configuration.
      * <p/>
@@ -714,12 +911,12 @@ public abstract class EJBComponentDescription extends ComponentDescription {
         @Override
         public void configure(DeploymentPhaseContext context, ComponentDescription description, ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
             final DeploymentUnit deploymentUnit = context.getDeploymentUnit();
-            final EjbJarConfiguration ejbJarConfiguration = deploymentUnit.getAttachment(EjbDeploymentAttachmentKeys.EJB_JAR_CONFIGURATION);
-            if (ejbJarConfiguration == null) {
-                throw new DeploymentUnitProcessingException("EjbJarConfiguration not found as an attachment in deployment unit: " + deploymentUnit);
+            final ApplicationExceptions appExceptions = deploymentUnit.getAttachment(EjbDeploymentAttachmentKeys.APPLICATION_EXCEPTION_DETAILS);
+            if (appExceptions == null) {
+                throw MESSAGES.ejbJarConfigNotFound(deploymentUnit);
             }
             final EJBComponentCreateServiceFactory ejbComponentCreateServiceFactory = (EJBComponentCreateServiceFactory) configuration.getComponentCreateServiceFactory();
-            ejbComponentCreateServiceFactory.setEjbJarConfiguration(ejbJarConfiguration);
+            ejbComponentCreateServiceFactory.setEjbJarConfiguration(appExceptions);
         }
     }
 
@@ -740,25 +937,14 @@ public abstract class EJBComponentDescription extends ComponentDescription {
 
         @Override
         public Object processInvocation(InterceptorContext context) throws Exception {
-            final ComponentViewInstance componentViewInstance = context.getPrivateData(ComponentViewInstance.class);
-            if (componentViewInstance == null) {
-                throw new IllegalStateException("ComponentViewInstance not available in interceptor context: " + context);
+            final ComponentView componentView = context.getPrivateData(ComponentView.class);
+            if (componentView == null) {
+                throw MESSAGES.componentViewNotAvailableInContext(context);
             }
-            return "Proxy for view class: " + componentViewInstance.getViewClass().getName() + " of EJB: " + name;
+            return "Proxy for view class: " + componentView.getViewClass().getName() + " of EJB: " + name;
         }
     }
 
-    public List<String> getAroundInvokeDDMethods() {
-        return aroundInvokeDDMethods;
-    }
-
-    public List<String> getPostConstructDDMethods() {
-        return postConstructDDMethods;
-    }
-
-    public List<String> getPreDestroyDDMethods() {
-        return preDestroyDDMethods;
-    }
 
     public TimerService getTimerService() {
         return timerService;
@@ -776,7 +962,6 @@ public abstract class EJBComponentDescription extends ComponentDescription {
         this.descriptorData = descriptorData;
     }
 
-
     public Method getTimeoutMethod() {
         return timeoutMethod;
     }
@@ -791,10 +976,34 @@ public abstract class EJBComponentDescription extends ComponentDescription {
 
     public void addScheduleMethod(final Method method, final AutoTimer timer) {
         List<AutoTimer> schedules = scheduleMethods.get(method);
-        if(schedules == null) {
+        if (schedules == null) {
             scheduleMethods.put(method, schedules = new ArrayList<AutoTimer>(1));
         }
         schedules.add(timer);
+    }
+
+    public EJBViewDescription getEjbLocalView() {
+        return ejbLocalView;
+    }
+
+    public EjbHomeViewDescription getEjbLocalHomeView() {
+        return ejbLocalHomeView;
+    }
+
+    public EjbHomeViewDescription getEjbHomeView() {
+        return ejbHomeView;
+    }
+
+    public EJBViewDescription getEjbRemoteView() {
+        return ejbRemoteView;
+    }
+
+    public boolean isExposedViaIiop() {
+        return exposedViaIiop;
+    }
+
+    public void setExposedViaIiop(final boolean exposedViaIiop) {
+        this.exposedViaIiop = exposedViaIiop;
     }
 
     @Override

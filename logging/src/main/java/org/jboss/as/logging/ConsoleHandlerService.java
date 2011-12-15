@@ -29,13 +29,14 @@ import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
 
+import java.util.logging.Filter;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 
 /**
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
-public final class ConsoleHandlerService implements Service<Handler> {
+public final class ConsoleHandlerService implements FlushingHandlerService {
 
     private AbstractFormatterSpec formatterSpec;
 
@@ -47,6 +48,8 @@ public final class ConsoleHandlerService implements Service<Handler> {
 
     private String encoding;
 
+    private Filter filter;
+
     private ConsoleHandler value;
 
     public synchronized void start(final StartContext context) throws StartException {
@@ -55,6 +58,7 @@ public final class ConsoleHandlerService implements Service<Handler> {
         formatterSpec.apply(handler);
         setTarget(handler, target);
         if (level != null) handler.setLevel(level);
+        if (filter != null) handler.setFilter(filter);
         handler.setAutoFlush(autoflush);
         try {
             handler.setEncoding(encoding);
@@ -105,6 +109,13 @@ public final class ConsoleHandlerService implements Service<Handler> {
         this.formatterSpec = formatterSpec;
         final ConsoleHandler handler = value;
         if (handler != null) formatterSpec.apply(handler);
+    }
+
+    @Override
+    public synchronized void setFilter(final Filter filter) {
+        this.filter = filter;
+        final ConsoleHandler handler = value;
+        if (handler != null) handler.setFilter(filter);
     }
 
     public synchronized Target getTarget() {

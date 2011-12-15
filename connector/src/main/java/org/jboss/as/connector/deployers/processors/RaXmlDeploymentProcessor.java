@@ -40,13 +40,15 @@ import org.jboss.jca.core.api.management.ManagementRepository;
 import org.jboss.jca.core.spi.mdr.MetadataRepository;
 import org.jboss.jca.core.spi.rar.ResourceAdapterRepository;
 import org.jboss.jca.core.spi.transaction.TransactionIntegration;
-import org.jboss.logging.Logger;
 import org.jboss.modules.Module;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceController.Mode;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceTarget;
 import org.jboss.security.SubjectFactory;
+
+import static org.jboss.as.connector.ConnectorLogger.ROOT_LOGGER;
+import static org.jboss.as.connector.ConnectorMessages.MESSAGES;
 
 /**
  * DeploymentUnitProcessor responsible for using IronJacamar metadata and create
@@ -57,8 +59,6 @@ import org.jboss.security.SubjectFactory;
  * @author <a href="jesper.pedersen@jboss.org">Jesper Pedersen</a>
  */
 public class RaXmlDeploymentProcessor implements DeploymentUnitProcessor {
-
-    public static final Logger log = Logger.getLogger("org.jboss.as.connector.deployer.raxmldeployer");
 
     private final MetadataRepository mdr;
 
@@ -91,11 +91,11 @@ public class RaXmlDeploymentProcessor implements DeploymentUnitProcessor {
         if (raxmls == null)
             return;
 
-        log.tracef("processing Raxml");
+        ROOT_LOGGER.tracef("processing Raxml");
         Module module = deploymentUnit.getAttachment(Attachments.MODULE);
 
         if (module == null)
-            throw new DeploymentUnitProcessingException("Failed to get module attachment for " + deploymentUnit);
+            throw MESSAGES.failedToGetModuleAttachment(deploymentUnit);
 
         try {
             final ServiceTarget serviceTarget = phaseContext.getServiceTarget();
@@ -110,11 +110,14 @@ public class RaXmlDeploymentProcessor implements DeploymentUnitProcessor {
                         deployment = deploymentUnit.getName().substring(0, deploymentUnit.getName().lastIndexOf('.'));
                     }
 
-                    ResourceAdapterXmlDeploymentService service = new ResourceAdapterXmlDeploymentService(connectorXmlDescriptor,
-                            raxml, module, deployment);
                     // Create the service
-                    ServiceName serviceName = ConnectorServices.getNextValidResourceAdapterXmlServiceName(connectorXmlDescriptor.getDeploymentName());
-                     serviceTarget
+                    String raName = connectorXmlDescriptor.getDeploymentName();
+                    ServiceName serviceName = ConnectorServices.registerDeployment(raName);
+
+                    ResourceAdapterXmlDeploymentService service = new ResourceAdapterXmlDeploymentService(connectorXmlDescriptor,
+                        raxml, module, deployment, serviceName);
+
+                    serviceTarget
                             .addService(serviceName, service)
                             .addDependency(ConnectorServices.IRONJACAMAR_MDR, MetadataRepository.class, service.getMdrInjector())
                             .addDependency(ConnectorServices.RA_REPOSISTORY_SERVICE, ResourceAdapterRepository.class,
@@ -131,9 +134,8 @@ public class RaXmlDeploymentProcessor implements DeploymentUnitProcessor {
                                     service.getSubjectFactoryInjector())
                             .addDependency(ConnectorServices.CCM_SERVICE, CachedConnectionManager.class, service.getCcmInjector())
                             .addDependency(NamingService.SERVICE_NAME)
-                            .addDependencies(
-                                    ConnectorServices.RESOURCE_ADAPTER_SERVICE_PREFIX.append(connectorXmlDescriptor
-                                            .getDeploymentName())).setInitialMode(Mode.ACTIVE).install();
+                            .addDependency(ConnectorServices.RESOURCE_ADAPTER_DEPLOYER_SERVICE_PREFIX.append(connectorXmlDescriptor.getDeploymentName()))
+                            .setInitialMode(Mode.ACTIVE).install();
                 }
             }
         } catch (Throwable t) {

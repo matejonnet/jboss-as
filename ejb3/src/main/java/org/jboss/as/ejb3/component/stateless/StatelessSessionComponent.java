@@ -22,6 +22,12 @@
 
 package org.jboss.as.ejb3.component.stateless;
 
+import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+
 import org.jboss.as.ee.component.BasicComponentInstance;
 import org.jboss.as.ejb3.component.pool.PoolConfig;
 import org.jboss.as.ejb3.component.pool.PooledComponent;
@@ -34,13 +40,7 @@ import org.jboss.as.naming.ManagedReference;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
-import org.jboss.logging.Logger;
-
-import java.lang.reflect.Method;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
+import static org.jboss.as.ejb3.EjbLogger.ROOT_LOGGER;
 
 /**
  * {@link org.jboss.as.ee.component.Component} responsible for managing EJB3 stateless session beans
@@ -50,10 +50,9 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class StatelessSessionComponent extends SessionBeanComponent implements PooledComponent<StatelessSessionComponentInstance> {
 
-    private static final Logger logger = Logger.getLogger(StatelessSessionComponent.class);
-
     private final Pool<StatelessSessionComponentInstance> pool;
     private final Method timeoutMethod;
+    private final TimedObjectInvoker timedObjectInvoker;
 
     /**
      * Constructs a StatelessEJBComponent for a stateless session bean
@@ -76,14 +75,21 @@ public class StatelessSessionComponent extends SessionBeanComponent implements P
         };
         final PoolConfig poolConfig = slsbComponentCreateService.getPoolConfig();
         if (poolConfig == null) {
-            logger.debug("Pooling is disabled for Stateless EJB " + slsbComponentCreateService.getComponentName());
+            ROOT_LOGGER.debug("Pooling is disabled for Stateless EJB " + slsbComponentCreateService.getComponentName());
             this.pool = null;
         } else {
-            logger.debug("Using pool config " + poolConfig + " to create pool for Stateless EJB " + slsbComponentCreateService.getComponentName());
+            ROOT_LOGGER.debug("Using pool config " + poolConfig + " to create pool for Stateless EJB " + slsbComponentCreateService.getComponentName());
             this.pool = poolConfig.createPool(factory);
         }
 
         this.timeoutMethod = slsbComponentCreateService.getTimeoutMethod();
+        final String deploymentName;
+        if (slsbComponentCreateService.getDistinctName() == null || slsbComponentCreateService.getDistinctName().length() == 0) {
+            deploymentName = slsbComponentCreateService.getApplicationName() + "." + slsbComponentCreateService.getModuleName();
+        } else {
+            deploymentName = slsbComponentCreateService.getApplicationName() + "." + slsbComponentCreateService.getModuleName() + "." + slsbComponentCreateService.getDistinctName();
+        }
+        this.timedObjectInvoker = new PooledTimedObjectInvokerImpl(this, deploymentName);
     }
 
 
@@ -109,7 +115,7 @@ public class StatelessSessionComponent extends SessionBeanComponent implements P
 
     @Override
     public TimedObjectInvoker getTimedObjectInvoker() {
-        return new PooledTimedObjectInvokerImpl(this);
+        return timedObjectInvoker;
     }
 
     public Method getTimeoutMethod() {

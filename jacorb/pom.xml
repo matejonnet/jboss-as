@@ -30,12 +30,12 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-parent</artifactId>
-        <version>7.1.0.Alpha1-SNAPSHOT</version>
+        <version>7.1.0.Beta1</version>
     </parent>
 
     <groupId>org.jboss.as</groupId>
     <artifactId>jboss-as-jacorb</artifactId>
-    <version>7.1.0.Alpha1-SNAPSHOT</version>
+    <version>7.1.0.Beta1</version>
     <packaging>jar</packaging>
 
     <name>JBoss Application Server: JacORB Subsystem</name>
@@ -49,6 +49,9 @@
                 <compilerArguments>
                    <endorseddirs>${project.build.directory}/endorsed</endorseddirs>
                 </compilerArguments>
+                <compilerArgument>
+                   -AgeneratedTranslationFilesPath=${project.build.directory}/generated-translation-files
+                </compilerArgument>
              </configuration>
           </plugin>
           <plugin>
@@ -94,10 +97,50 @@
         </dependency>
 
         <dependency>
-        	<groupId>org.picketbox</groupId>
-        	<artifactId>picketbox</artifactId>
+            <groupId>org.jboss.jbossts</groupId>
+            <artifactId>jbossjts</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.jboss.spec.javax.rmi</groupId>
+            <artifactId>jboss-rmi-api_1.0_spec</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jboss.spec.javax.transaction</groupId>
+            <artifactId>jboss-transaction-api_1.1_spec</artifactId>
+        </dependency>
+
+        <dependency>
+         <groupId>org.picketbox</groupId>
+         <artifactId>picketbox</artifactId>
+        </dependency>
+
+        <dependency>
+         <groupId>org.jboss.as</groupId>
+         <artifactId>jboss-as-subsystem-test</artifactId>
+         <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging-processor</artifactId>
+            <!-- This is a compile-time dependency of this project, but is not needed at compile or runtime by other
+                  projects that depend on this project.-->
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+         <groupId>org.slf4j</groupId>
+         <artifactId>slf4j-api</artifactId>
+         <scope>test</scope>
+        </dependency>
     </dependencies>
 
 </project>

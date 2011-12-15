@@ -22,36 +22,36 @@
 
 package org.jboss.as.ejb3.component.singleton;
 
-import org.jboss.as.ee.component.Component;
-import org.jboss.as.ee.component.ComponentConfiguration;
-import org.jboss.as.ee.component.ComponentConfigurator;
-import org.jboss.as.ee.component.ComponentDescription;
-import org.jboss.as.ee.component.ComponentInstanceInterceptorFactory;
-import org.jboss.as.ee.component.EEApplicationDescription;
-import org.jboss.as.ee.component.ViewConfiguration;
-import org.jboss.as.ee.component.ViewConfigurator;
-import org.jboss.as.ee.component.ViewDescription;
-import org.jboss.as.ee.component.interceptors.InterceptorOrder;
-import org.jboss.as.ejb3.component.MethodIntf;
-import org.jboss.as.ejb3.component.session.ComponentTypeIdentityInterceptorFactory;
-import org.jboss.as.ejb3.component.session.SessionBeanComponentDescription;
-import org.jboss.as.ejb3.concurrency.ContainerManagedConcurrencyInterceptorFactory;
-import org.jboss.as.ejb3.deployment.EjbJarDescription;
-import org.jboss.as.ejb3.tx.SingletonLifecycleCMTTxInterceptorFactory;
-import org.jboss.as.ejb3.tx.TimerCMTTxInterceptorFactory;
-import org.jboss.as.server.deployment.DeploymentPhaseContext;
-import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
-import org.jboss.invocation.Interceptor;
-import org.jboss.invocation.InterceptorFactoryContext;
-import org.jboss.msc.service.ServiceName;
-
-import javax.ejb.ConcurrencyManagementType;
-import javax.ejb.TransactionAttributeType;
-import javax.ejb.TransactionManagementType;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
+import javax.ejb.ConcurrencyManagementType;
+import javax.ejb.TransactionAttributeType;
+import javax.ejb.TransactionManagementType;
+
+import org.jboss.as.ee.component.ComponentConfiguration;
+import org.jboss.as.ee.component.ComponentConfigurator;
+import org.jboss.as.ee.component.ComponentDescription;
+import org.jboss.as.ee.component.ViewConfiguration;
+import org.jboss.as.ee.component.ViewConfigurator;
+import org.jboss.as.ee.component.ViewDescription;
+import org.jboss.as.ee.component.interceptors.InterceptorOrder;
+import org.jboss.as.ejb3.component.DefaultAccessTimeoutService;
+import org.jboss.as.ejb3.component.EJBViewDescription;
+import org.jboss.as.ejb3.component.MethodIntf;
+import org.jboss.as.ejb3.component.interceptors.ComponentTypeIdentityInterceptorFactory;
+import org.jboss.as.ejb3.component.session.SessionBeanComponentDescription;
+import org.jboss.as.ejb3.component.session.StatelessRemoteViewInstanceFactory;
+import org.jboss.as.ejb3.concurrency.ContainerManagedConcurrencyInterceptorFactory;
+import org.jboss.as.ejb3.deployment.EjbJarDescription;
+import org.jboss.as.ejb3.tx.EjbBMTInterceptor;
+import org.jboss.as.ejb3.tx.SingletonLifecycleCMTTxInterceptor;
+import org.jboss.as.ejb3.tx.TimerCMTTxInterceptor;
+import org.jboss.as.server.deployment.DeploymentPhaseContext;
+import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
+import org.jboss.as.server.deployment.reflect.ClassIndex;
+import org.jboss.msc.service.ServiceName;
 /**
  * Component description for a singleton bean
  *
@@ -65,6 +65,8 @@ public class SingletonComponentDescription extends SessionBeanComponentDescripti
     private boolean initOnStartup;
 
     private final List<ServiceName> dependsOn = new ArrayList<ServiceName>();
+
+    private DefaultAccessTimeoutService defaultAccessTimeoutProvider;
 
     /**
      * Construct a new instance.
@@ -82,27 +84,23 @@ public class SingletonComponentDescription extends SessionBeanComponentDescripti
     }
 
     @Override
-    public ComponentConfiguration createConfiguration(EEApplicationDescription applicationDescription) {
+    public ComponentConfiguration createConfiguration(final ClassIndex classIndex, final ClassLoader moduleClassLoder) {
 
-        ComponentConfiguration singletonComponentConfiguration = new ComponentConfiguration(this, applicationDescription.getClassConfiguration(getComponentClassName()));
+        ComponentConfiguration singletonComponentConfiguration = new ComponentConfiguration(this, classIndex, moduleClassLoder);
         // setup the component create service
         singletonComponentConfiguration.setComponentCreateServiceFactory(new SingletonComponentCreateServiceFactory(this.isInitOnStartup(), dependsOn));
 
-        if(getTransactionManagementType().equals(TransactionManagementType.CONTAINER)) {
+        if (getTransactionManagementType().equals(TransactionManagementType.CONTAINER)) {
             //we need to add the transaction interceptor to the lifecycle methods
             getConfigurators().add(new ComponentConfigurator() {
                 @Override
                 public void configure(final DeploymentPhaseContext context, final ComponentDescription description, final ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
 
-                    if(getClassDescription().getPostConstructMethod() != null) {
-                        TransactionAttributeType txAttr = getTransactionAttribute(MethodIntf.BEAN, getClassDescription().getClassName(), getClassDescription().getPostConstructMethod().getName(), getClassDescription().getPostConstructMethod().getParameterTypes());
-                        configuration.addPostConstructInterceptor(new SingletonLifecycleCMTTxInterceptorFactory(txAttr), InterceptorOrder.ComponentPostConstruct.TRANSACTION_INTERCEPTOR);
-                    }
-                    if(getClassDescription().getPreDestroyMethod() != null) {
-                        TransactionAttributeType txAttr = getTransactionAttribute(MethodIntf.BEAN, getClassDescription().getClassName(), getClassDescription().getPreDestroyMethod().getName(), getClassDescription().getPreDestroyMethod().getParameterTypes());
-                        configuration.addPreDestroyInterceptor(new SingletonLifecycleCMTTxInterceptorFactory(txAttr), InterceptorOrder.ComponentPreDestroy.TRANSACTION_INTERCEPTOR);
-                    }
-                    configuration.addTimeoutInterceptor(TimerCMTTxInterceptorFactory.INSTANCE, InterceptorOrder.Component.TIMEOUT_CMT_INTERCEPTOR);
+                    configuration.addPostConstructInterceptor(new SingletonLifecycleCMTTxInterceptor.Factory(TransactionAttributeType.REQUIRES_NEW), InterceptorOrder.ComponentPostConstruct.TRANSACTION_INTERCEPTOR);
+                    configuration.addPreDestroyInterceptor(new SingletonLifecycleCMTTxInterceptor.Factory(TransactionAttributeType.REQUIRES_NEW), InterceptorOrder.ComponentPreDestroy.TRANSACTION_INTERCEPTOR);
+
+                    configuration.addTimeoutInterceptor(TimerCMTTxInterceptor.FACTORY, InterceptorOrder.Component.COMPONENT_CMT_INTERCEPTOR);
+
                 }
             });
         } else {
@@ -110,25 +108,13 @@ public class SingletonComponentDescription extends SessionBeanComponentDescripti
             getConfigurators().add(new ComponentConfigurator() {
                 @Override
                 public void configure(final DeploymentPhaseContext context, final ComponentDescription description, final ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
-                    final ComponentInstanceInterceptorFactory slsbBmtInterceptorFactory = new ComponentInstanceInterceptorFactory() {
-                        @Override
-                        protected Interceptor create(Component component, InterceptorFactoryContext context) {
-                            if (component instanceof SingletonComponent == false) {
-                                throw new IllegalArgumentException("Component " + component + " with component class: " + component.getComponentClass() +
-                                        " isn't a singleton component");
-                            }
-                            return new SingletonBMTInterceptor((SingletonComponent) component);
-                        }
-                    };
-                    if(getClassDescription().getPostConstructMethod() != null) {
-                        configuration.addPostConstructInterceptor(slsbBmtInterceptorFactory, InterceptorOrder.ComponentPostConstruct.TRANSACTION_INTERCEPTOR);
-                    }
-                    if(getClassDescription().getPreDestroyMethod() != null) {
-                        configuration.addPreDestroyInterceptor(slsbBmtInterceptorFactory, InterceptorOrder.ComponentPreDestroy.TRANSACTION_INTERCEPTOR);
-                    }
+
+                    configuration.addPostConstructInterceptor(EjbBMTInterceptor.FACTORY, InterceptorOrder.ComponentPostConstruct.TRANSACTION_INTERCEPTOR);
+                    configuration.addPreDestroyInterceptor(EjbBMTInterceptor.FACTORY, InterceptorOrder.ComponentPreDestroy.TRANSACTION_INTERCEPTOR);
                     // add the bmt interceptor factory
-                    configuration.addComponentInterceptor(slsbBmtInterceptorFactory, InterceptorOrder.Component.BMT_TRANSACTION_INTERCEPTOR, false);
-                    configuration.addTimeoutInterceptor(slsbBmtInterceptorFactory, InterceptorOrder.Component.BMT_TRANSACTION_INTERCEPTOR);
+                    configuration.addComponentInterceptor(EjbBMTInterceptor.FACTORY, InterceptorOrder.Component.BMT_TRANSACTION_INTERCEPTOR, false);
+                    configuration.addTimeoutInterceptor(EjbBMTInterceptor.FACTORY, InterceptorOrder.Component.BMT_TRANSACTION_INTERCEPTOR);
+
                 }
             });
         }
@@ -166,7 +152,7 @@ public class SingletonComponentDescription extends SessionBeanComponentDescripti
     }
 
     @Override
-    protected void setupViewInterceptors(ViewDescription view) {
+    protected void setupViewInterceptors(EJBViewDescription view) {
         // let super do its job first
         super.setupViewInterceptors(view);
 
@@ -180,7 +166,7 @@ public class SingletonComponentDescription extends SessionBeanComponentDescripti
                     if ((method.getName().equals("hashCode") && method.getParameterTypes().length == 0) ||
                             method.getName().equals("equals") && method.getParameterTypes().length == 1 &&
                                     method.getParameterTypes()[0] == Object.class) {
-                        configuration.addViewInterceptor(method, ComponentTypeIdentityInterceptorFactory.INSTANCE, InterceptorOrder.View.SESSION_BEAN_EQUALS_HASHCODE);
+                        configuration.addClientInterceptor(method, ComponentTypeIdentityInterceptorFactory.INSTANCE, InterceptorOrder.Client.EJB_EQUALS_HASHCODE);
                     }
                 }
 
@@ -188,6 +174,26 @@ public class SingletonComponentDescription extends SessionBeanComponentDescripti
                 configuration.addViewInterceptor(SingletonComponentInstanceAssociationInterceptor.FACTORY, InterceptorOrder.View.ASSOCIATING_INTERCEPTOR);
             }
         });
+
+
+        if (view instanceof EJBViewDescription) {
+            EJBViewDescription ejbViewDescription = (EJBViewDescription) view;
+            if(ejbViewDescription.getMethodIntf() == MethodIntf.REMOTE) {
+                view.getConfigurators().add(new ViewConfigurator() {
+                    @Override
+                    public void configure(final DeploymentPhaseContext context, final ComponentConfiguration componentConfiguration, final ViewDescription description, final ViewConfiguration configuration) throws DeploymentUnitProcessingException {
+                        final String earApplicationName = componentConfiguration.getComponentDescription().getModuleDescription().getEarApplicationName();
+                        configuration.setViewInstanceFactory(new StatelessRemoteViewInstanceFactory(earApplicationName, componentConfiguration.getModuleName(), componentConfiguration.getComponentDescription().getModuleDescription().getDistinctName(), componentConfiguration.getComponentName()));
+                    }
+                });
+            }
+        }
+
+    }
+
+    @Override
+    protected ViewConfigurator getSessionBeanObjectViewConfigurator() {
+        throw new RuntimeException("Singleton beans cannot have EJB 2.x views");
     }
 
     private void addConcurrencyManagementInterceptor() {
@@ -213,4 +219,5 @@ public class SingletonComponentDescription extends SessionBeanComponentDescripti
     public boolean isTimerServiceApplicable() {
         return true;
     }
+
 }

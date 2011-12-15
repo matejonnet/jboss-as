@@ -21,6 +21,13 @@
  */
 package org.jboss.as.ejb3.deployment.processors.merging;
 
+import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Map;
+
+import javax.ejb.TransactionAttribute;
+import javax.ejb.TransactionAttributeType;
+
 import org.jboss.as.ee.component.EEApplicationClasses;
 import org.jboss.as.ee.component.ViewDescription;
 import org.jboss.as.ee.metadata.MethodAnnotationAggregator;
@@ -28,22 +35,21 @@ import org.jboss.as.ee.metadata.RuntimeAnnotationInformation;
 import org.jboss.as.ejb3.component.EJBComponentDescription;
 import org.jboss.as.ejb3.component.EJBViewDescription;
 import org.jboss.as.ejb3.component.MethodIntf;
+import org.jboss.as.ejb3.deployment.EjbDeploymentAttachmentKeys;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.reflect.DeploymentReflectionIndex;
 import org.jboss.invocation.proxy.MethodIdentifier;
+import org.jboss.metadata.ejb.spec.AssemblyDescriptorMetaData;
 import org.jboss.metadata.ejb.spec.ContainerTransactionMetaData;
 import org.jboss.metadata.ejb.spec.ContainerTransactionsMetaData;
+import org.jboss.metadata.ejb.spec.EjbJarMetaData;
 import org.jboss.metadata.ejb.spec.MethodMetaData;
 import org.jboss.metadata.ejb.spec.MethodParametersMetaData;
 import org.jboss.metadata.ejb.spec.MethodsMetaData;
 import org.jboss.modules.Module;
 
-import javax.ejb.TransactionAttribute;
-import javax.ejb.TransactionAttributeType;
-import java.lang.reflect.Method;
-import java.util.List;
-import java.util.Map;
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 
 /**
  * @author Stuart Douglas
@@ -66,7 +72,7 @@ public class TransactionAttributeMergingProcessor extends AbstractMergingProcess
                 EJBViewDescription ejbView = (EJBViewDescription) view;
                 processTransactionAttributeAnnotation(applicationClasses, deploymentReflectionIndex, viewClass, ejbView.getMethodIntf(), componentConfiguration);
             } catch (ClassNotFoundException e) {
-                throw new RuntimeException("Could not load EJB view class ", e);
+                throw MESSAGES.failToLoadEjbViewClass(e);
             }
 
         }
@@ -77,7 +83,7 @@ public class TransactionAttributeMergingProcessor extends AbstractMergingProcess
         for (Map.Entry<String, List<TransactionAttributeType>> entry : data.getClassAnnotations().entrySet()) {
             if (!entry.getValue().isEmpty()) {
                 //we can't specify both methodIntf and class name
-                final  String className = methodIntf == null ? entry.getKey() : null;
+                final String className = methodIntf == null ? entry.getKey() : null;
                 componentConfiguration.setTransactionAttribute(methodIntf, className, entry.getValue().get(0));
             }
         }
@@ -93,27 +99,40 @@ public class TransactionAttributeMergingProcessor extends AbstractMergingProcess
     @Override
     protected void handleDeploymentDescriptor(final DeploymentUnit deploymentUnit, final DeploymentReflectionIndex deploymentReflectionIndex, final Class<?> componentClass, final EJBComponentDescription componentConfiguration) throws DeploymentUnitProcessingException {
         // CMT Tx attributes
-        if (componentConfiguration.getDescriptorData() != null) {
-            ContainerTransactionsMetaData containerTransactions = componentConfiguration.getDescriptorData().getContainerTransactions();
-            if (containerTransactions != null && !containerTransactions.isEmpty()) {
-                final String className = null; // applies to any class
-                for (ContainerTransactionMetaData containerTx : containerTransactions) {
-                    TransactionAttributeType txAttr = containerTx.getTransAttribute();
-                    MethodsMetaData methods = containerTx.getMethods();
-                    for (MethodMetaData method : methods) {
-                        String methodName = method.getMethodName();
-                        MethodIntf methodIntf = this.getMethodIntf(method.getMethodIntf());
-                        if (methodName.equals("*")) {
-                            componentConfiguration.setTransactionAttribute(methodIntf, className, txAttr);
-                        } else {
 
-                            MethodParametersMetaData methodParams = method.getMethodParams();
-                            // update the session bean description with the tx attribute info
-                            componentConfiguration.setTransactionAttribute(methodIntf, txAttr, className, methodName, this.getMethodParams(methodParams));
+        //DO NOT USE componentConfiguration.getDescriptorData()
+        //It will return null if there is no <enterprise-beans/> declaration even if there is an assembly descriptor entry
+
+        EjbJarMetaData ejbJarMetadata = deploymentUnit.getAttachment(EjbDeploymentAttachmentKeys.EJB_JAR_METADATA);
+        if (ejbJarMetadata != null) {
+            final AssemblyDescriptorMetaData assemblyDescriptor = ejbJarMetadata.getAssemblyDescriptor();
+            if (assemblyDescriptor != null) {
+                final ContainerTransactionsMetaData containerTransactions = assemblyDescriptor.getContainerTransactionsByEjbName(componentConfiguration.getEJBName());
+                if (containerTransactions != null) {
+                    for (final ContainerTransactionMetaData containerTx : containerTransactions) {
+                        final TransactionAttributeType txAttr = containerTx.getTransAttribute();
+                        final MethodsMetaData methods = containerTx.getMethods();
+                        for (final MethodMetaData method : methods) {
+                            final String methodName = method.getMethodName();
+                            final MethodIntf methodIntf = this.getMethodIntf(method.getMethodIntf());
+                            if (methodName.equals("*")) {
+                                componentConfiguration.setTransactionAttribute(methodIntf, null, txAttr);
+                            } else {
+
+                                final MethodParametersMetaData methodParams = method.getMethodParams();
+                                // update the session bean description with the tx attribute info
+                                if (methodParams == null) {
+                                    componentConfiguration.setTransactionAttribute(methodIntf, txAttr, methodName);
+                                } else {
+
+                                    componentConfiguration.setTransactionAttribute(methodIntf, txAttr, null, methodName, this.getMethodParams(methodParams));
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+
     }
 }

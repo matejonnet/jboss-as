@@ -21,7 +21,7 @@
  */
 package org.jboss.as.ejb3.cache;
 
-import java.io.Serializable;
+import org.jboss.ejb.client.SessionID;
 
 /**
  * An object that has an identification. How the object obtains
@@ -37,5 +37,5 @@ public interface Identifiable {
      *
      * @return the object identifier
      */
-    Serializable getId();
+    SessionID getId();
 }

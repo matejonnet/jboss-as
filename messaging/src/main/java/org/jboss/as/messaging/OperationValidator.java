@@ -22,7 +22,10 @@
 
 package org.jboss.as.messaging;
 
+import static org.jboss.as.messaging.MessagingMessages.MESSAGES;
+
 import org.jboss.as.controller.AttributeDefinition;
+import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.dmr.ModelNode;
 
@@ -42,10 +45,11 @@ interface OperationValidator {
     /**
      * Validate resolved.
      *
+     * @param context the operation context
      * @param operation the operation to validate
      * @throws OperationFailedException
      */
-    void validateResolved(ModelNode operation) throws OperationFailedException;
+    void validateResolved(OperationContext context, ModelNode operation) throws OperationFailedException;
 
     /**
      * Validate and Set
@@ -69,11 +73,11 @@ interface OperationValidator {
                 final String attributeName = definition.getName();
                 final boolean has = operation.has(attributeName);
                 if(! has && definition.isRequired(operation)) {
-                    throw new OperationFailedException(new ModelNode().set("required " + definition.getName()));
+                    throw new OperationFailedException(new ModelNode().set(MESSAGES.required(definition.getName())));
                 }
                 if(has) {
                     if(! definition.isAllowed(operation)) {
-                        throw new OperationFailedException(new ModelNode().set("invalid " + definition.getName()));
+                        throw new OperationFailedException(new ModelNode().set(MESSAGES.invalid(definition.getName())));
                     }
                     definition.validateOperation(operation);
                 }
@@ -81,18 +85,18 @@ interface OperationValidator {
         }
 
         @Override
-        public void validateResolved(final ModelNode operation) throws OperationFailedException {
+        public void validateResolved(final OperationContext context, final ModelNode operation) throws OperationFailedException {
             for(final AttributeDefinition definition : attributes) {
                 final String attributeName = definition.getName();
                 final boolean has = operation.has(attributeName);
                 if(! has && definition.isRequired(operation)) {
-                    throw new OperationFailedException(new ModelNode().set("required " + definition.getName()));
+                    throw new OperationFailedException(new ModelNode().set(MESSAGES.required(definition.getName())));
                 }
                 if(has) {
                     if(! definition.isAllowed(operation)) {
-                        throw new OperationFailedException(new ModelNode().set("invalid " + definition.getName()));
+                        throw new OperationFailedException(new ModelNode().set(MESSAGES.invalid(definition.getName())));
                     }
-                    definition.validateResolvedOperation(operation);
+                    definition.resolveModelAttribute(context, operation);
                 }
             }
         }
@@ -103,11 +107,11 @@ interface OperationValidator {
                 final String attributeName = definition.getName();
                 final boolean has = operation.has(attributeName);
                 if(! has && definition.isRequired(operation)) {
-                    throw new OperationFailedException(new ModelNode().set("required " + definition.getName()));
+                    throw new OperationFailedException(new ModelNode().set(MESSAGES.required(definition.getName())));
                 }
                 if(has) {
                     if(! definition.isAllowed(operation)) {
-                        throw new OperationFailedException(new ModelNode().set("invalid " + definition.getName()));
+                        throw new OperationFailedException(new ModelNode().set(MESSAGES.invalid(definition.getName())));
                     }
                     definition.validateAndSet(operation, subModel);
                 }

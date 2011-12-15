@@ -21,9 +21,9 @@
  */
 package org.jboss.as.osgi.service;
 
-import org.jboss.as.server.deployment.module.ModuleSpecification;
+import java.util.List;
+
 import org.jboss.as.server.moduleservice.ServiceModuleLoader;
-import org.jboss.logging.Logger;
 import org.jboss.modules.DependencySpec;
 import org.jboss.modules.Module;
 import org.jboss.modules.ModuleIdentifier;
@@ -49,12 +49,11 @@ import org.jboss.osgi.resolver.XModule;
 import org.jboss.osgi.resolver.XModuleIdentity;
 import org.jboss.osgi.spi.NotImplementedException;
 
-import java.util.List;
-
+import static org.jboss.as.osgi.OSGiLogger.ROOT_LOGGER;
+import static org.jboss.as.osgi.OSGiMessages.MESSAGES;
 import static org.jboss.as.server.Services.JBOSS_SERVICE_MODULE_LOADER;
 import static org.jboss.as.server.moduleservice.ServiceModuleLoader.MODULE_SERVICE_PREFIX;
 import static org.jboss.as.server.moduleservice.ServiceModuleLoader.MODULE_SPEC_SERVICE_PREFIX;
-import static org.jboss.as.server.moduleservice.ServiceModuleLoader.MODULE_INFORMATION_SERVICE_PREFIX;
 
 /**
  * This is the single {@link ModuleLoader} that the OSGi layer uses for the modules that are associated with the bundles that
@@ -67,9 +66,6 @@ import static org.jboss.as.server.moduleservice.ServiceModuleLoader.MODULE_INFOR
  * @since 20-Apr-2011
  */
 final class ModuleLoaderIntegration extends ModuleLoader implements ModuleLoaderProvider {
-
-    // Provide logging
-    private static final Logger log = Logger.getLogger("org.jboss.as.osgi");
 
     private final InjectedValue<ServiceModuleLoader> injectedModuleLoader = new InjectedValue<ServiceModuleLoader>();
     private ServiceContainer serviceContainer;
@@ -89,7 +85,7 @@ final class ModuleLoaderIntegration extends ModuleLoader implements ModuleLoader
     @Override
     public void start(StartContext context) throws StartException {
         ServiceController<?> controller = context.getController();
-        log.debugf("Starting: %s in mode %s", controller.getName(), controller.getMode());
+        ROOT_LOGGER.debugf("Starting: %s in mode %s", controller.getName(), controller.getMode());
         serviceContainer = context.getController().getServiceContainer();
         serviceTarget = context.getChildTarget();
     }
@@ -97,7 +93,7 @@ final class ModuleLoaderIntegration extends ModuleLoader implements ModuleLoader
     @Override
     public void stop(StopContext context) {
         ServiceController<?> controller = context.getController();
-        log.debugf("Stopping: %s in mode %s", controller.getName(), controller.getMode());
+        ROOT_LOGGER.debugf("Stopping: %s in mode %s", controller.getName(), controller.getMode());
     }
 
     @Override
@@ -116,13 +112,10 @@ final class ModuleLoaderIntegration extends ModuleLoader implements ModuleLoader
     @Override
     public void addModule(final ModuleSpec moduleSpec) {
         ModuleIdentifier identifier = moduleSpec.getModuleIdentifier();
-        log.debugf("Add module spec to loader: %s", identifier);
+        ROOT_LOGGER.debugf("Add module spec to loader: %s", identifier);
 
         ServiceName moduleSpecName = ServiceModuleLoader.moduleSpecServiceName(identifier);
         serviceTarget.addService(moduleSpecName, new ValueService<ModuleSpec>(new ImmediateValue<ModuleSpec>(moduleSpec))).install();
-
-        ServiceName moduleInfoName = ServiceModuleLoader.moduleInformationServiceName(identifier);
-        serviceTarget.addService(moduleInfoName, new ValueService<ModuleSpecification>(new ImmediateValue<ModuleSpecification>(new ModuleSpecification()))).install();
     }
 
     /**
@@ -138,7 +131,7 @@ final class ModuleLoaderIntegration extends ModuleLoader implements ModuleLoader
     public void addModule(final Module module) {
         ServiceName moduleServiceName = getModuleServiceName(module.getIdentifier());
         if (serviceContainer.getService(moduleServiceName) == null) {
-            log.debugf("Add module to loader: %s", module.getIdentifier());
+            ROOT_LOGGER.debugf("Add module to loader: %s", module.getIdentifier());
             serviceTarget.addService(moduleServiceName, new ValueService<Module>(new ImmediateValue<Module>(module))).install();
         }
     }
@@ -151,17 +144,13 @@ final class ModuleLoaderIntegration extends ModuleLoader implements ModuleLoader
         ServiceName serviceName = getModuleSpecServiceName(identifier);
         ServiceController<?> controller = serviceContainer.getService(serviceName);
         if (controller != null) {
-            log.debugf("Remove module spec fom loader: %s", serviceName);
+            ROOT_LOGGER.debugf("Remove module spec fom loader: %s", serviceName);
             controller.setMode(Mode.REMOVE);
         }
         serviceName = getModuleServiceName(identifier);
         controller = serviceContainer.getService(serviceName);
         if (controller != null) {
-            log.debugf("Remove module fom loader: %s", serviceName);
-            controller.setMode(Mode.REMOVE);
-        }
-        controller = serviceContainer.getService(getModuleInformationServiceName(identifier));
-        if (controller != null) {
+            ROOT_LOGGER.debugf("Remove module fom loader: %s", serviceName);
             controller.setMode(Mode.REMOVE);
         }
     }
@@ -173,7 +162,7 @@ final class ModuleLoaderIntegration extends ModuleLoader implements ModuleLoader
     @Override
     public ModuleIdentifier getModuleIdentifier(XModule resModule) {
         if (resModule == null)
-            throw new IllegalArgumentException("Null resModule");
+            throw MESSAGES.nullVar("resModule");
 
         XModuleIdentity moduleId = resModule.getModuleId();
 
@@ -193,7 +182,7 @@ final class ModuleLoaderIntegration extends ModuleLoader implements ModuleLoader
     protected ModuleSpec findModule(ModuleIdentifier identifier) throws ModuleLoadException {
         ModuleSpec moduleSpec = injectedModuleLoader.getValue().findModule(identifier);
         if (moduleSpec == null)
-            log.debugf("Cannot obtain module spec for: %s", identifier);
+            ROOT_LOGGER.debugf("Cannot obtain module spec for: %s", identifier);
         return moduleSpec;
     }
 
@@ -201,7 +190,7 @@ final class ModuleLoaderIntegration extends ModuleLoader implements ModuleLoader
     protected Module preloadModule(ModuleIdentifier identifier) throws ModuleLoadException {
         Module module = ModuleLoader.preloadModule(identifier, injectedModuleLoader.getValue());
         if (module == null)
-            log.debugf("Cannot obtain module for: %s", identifier);
+            ROOT_LOGGER.debugf("Cannot obtain module for: %s", identifier);
         return module;
     }
 
@@ -216,10 +205,6 @@ final class ModuleLoaderIntegration extends ModuleLoader implements ModuleLoader
 
     private ServiceName getModuleServiceName(ModuleIdentifier identifier) {
         return MODULE_SERVICE_PREFIX.append(identifier.getName()).append(identifier.getSlot());
-    }
-
-    private ServiceName getModuleInformationServiceName(ModuleIdentifier identifier) {
-        return MODULE_INFORMATION_SERVICE_PREFIX.append(identifier.getName()).append(identifier.getSlot());
     }
 
     @Override

@@ -22,29 +22,36 @@
 package org.jboss.as.ejb3.component.messagedriven;
 
 
+import java.util.Properties;
+
+import javax.ejb.TransactionManagementType;
+
 import org.jboss.as.ee.component.Component;
 import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ee.component.ComponentConfigurator;
 import org.jboss.as.ee.component.ComponentDescription;
 import org.jboss.as.ee.component.DependencyConfigurator;
-import org.jboss.as.ee.component.EEApplicationDescription;
 import org.jboss.as.ee.component.ViewConfiguration;
 import org.jboss.as.ee.component.ViewConfigurator;
 import org.jboss.as.ee.component.ViewDescription;
 import org.jboss.as.ee.component.interceptors.InterceptorOrder;
 import org.jboss.as.ejb3.component.EJBComponentDescription;
+import org.jboss.as.ejb3.component.EJBViewDescription;
 import org.jboss.as.ejb3.component.MethodIntf;
+import org.jboss.as.ejb3.component.interceptors.CurrentInvocationContextInterceptor;
 import org.jboss.as.ejb3.component.pool.PoolConfig;
 import org.jboss.as.ejb3.component.pool.PoolConfigService;
 import org.jboss.as.ejb3.deployment.EjbJarDescription;
+import org.jboss.as.ejb3.tx.CMTTxInterceptor;
+import org.jboss.as.ejb3.tx.EjbBMTInterceptor;
+import org.jboss.as.ejb3.tx.TimerCMTTxInterceptor;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
+import org.jboss.as.server.deployment.reflect.ClassIndex;
 import org.jboss.metadata.ejb.spec.MessageDrivenBeanMetaData;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceName;
-
-import java.util.Properties;
 
 /**
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
@@ -72,11 +79,12 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
 
         registerView(messageListenerInterfaceName, MethodIntf.MESSAGE_ENDPOINT);
 
+
     }
 
     @Override
-    public ComponentConfiguration createConfiguration(EEApplicationDescription applicationDescription) {
-        final ComponentConfiguration mdbComponentConfiguration = new ComponentConfiguration(this, applicationDescription.getClassConfiguration(getComponentClassName()));
+    public ComponentConfiguration createConfiguration(final ClassIndex classIndex, final ClassLoader moduleClassLoder) {
+        final ComponentConfiguration mdbComponentConfiguration = new ComponentConfiguration(this, classIndex, moduleClassLoder);
         // setup the component create service
         mdbComponentConfiguration.setComponentCreateServiceFactory(new MessageDrivenComponentCreateServiceFactory());
 
@@ -86,6 +94,28 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
 
         // setup the configurator to inject default ra name
         mdbComponentConfiguration.getCreateDependencies().add(new DefaultRANameInjectingConfigurator(mdbComponentDescription));
+
+        // add the bmt interceptor
+        if (TransactionManagementType.BEAN.equals(this.getTransactionManagementType())) {
+            getConfigurators().add(new ComponentConfigurator() {
+                @Override
+                public void configure(final DeploymentPhaseContext context, final ComponentDescription description, final ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
+
+                    // add the bmt interceptor factory
+                    configuration.addComponentInterceptor(EjbBMTInterceptor.FACTORY, InterceptorOrder.Component.BMT_TRANSACTION_INTERCEPTOR, false);
+                    configuration.addTimeoutInterceptor(EjbBMTInterceptor.FACTORY, InterceptorOrder.Component.BMT_TRANSACTION_INTERCEPTOR);
+                }
+            });
+        } else {
+            getConfigurators().add(new ComponentConfigurator() {
+                @Override
+                public void configure(final DeploymentPhaseContext context, final ComponentDescription description, final ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
+                    configuration.addTimeoutInterceptor(TimerCMTTxInterceptor.FACTORY, InterceptorOrder.Component.COMPONENT_CMT_INTERCEPTOR);
+                }
+            });
+        }
+
+
         return mdbComponentConfiguration;
     }
 
@@ -106,7 +136,7 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
     }
 
     @Override
-    protected void setupViewInterceptors(ViewDescription view) {
+    protected void setupViewInterceptors(EJBViewDescription view) {
         // let the super do its job
         super.setupViewInterceptors(view);
 
@@ -118,6 +148,17 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
             }
         });
 
+        //add the transaction interceptor
+        view.getConfigurators().add(new ViewConfigurator() {
+            @Override
+            public void configure(final DeploymentPhaseContext context, final ComponentConfiguration componentConfiguration, final ViewDescription description, final ViewConfiguration configuration) throws DeploymentUnitProcessingException {
+                final MessageDrivenComponentDescription mdb = (MessageDrivenComponentDescription) componentConfiguration.getComponentDescription();
+                if(mdb.getTransactionManagementType() == TransactionManagementType.CONTAINER) {
+                    configuration.addViewInterceptor(CMTTxInterceptor.FACTORY, InterceptorOrder.View.CMT_TRANSACTION_INTERCEPTOR);
+                }
+            }
+        });
+
     }
 
     @Override
@@ -126,8 +167,8 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
         this.getConfigurators().add(new ComponentConfigurator() {
             @Override
             public void configure(DeploymentPhaseContext context, ComponentDescription description, ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
-                configuration.addPostConstructInterceptor(MessageDrivenInvocationContextInterceptor.FACTORY, InterceptorOrder.ComponentPostConstruct.EJB_SESSION_CONTEXT_INTERCEPTOR);
-                configuration.addPreDestroyInterceptor(MessageDrivenInvocationContextInterceptor.FACTORY, InterceptorOrder.ComponentPostConstruct.EJB_SESSION_CONTEXT_INTERCEPTOR);
+                configuration.addPostConstructInterceptor(CurrentInvocationContextInterceptor.FACTORY, InterceptorOrder.ComponentPostConstruct.EJB_SESSION_CONTEXT_INTERCEPTOR);
+                configuration.addPreDestroyInterceptor(CurrentInvocationContextInterceptor.FACTORY, InterceptorOrder.ComponentPostConstruct.EJB_SESSION_CONTEXT_INTERCEPTOR);
             }
         });
     }
@@ -137,7 +178,7 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
         view.getConfigurators().add(new ViewConfigurator() {
             @Override
             public void configure(DeploymentPhaseContext context, ComponentConfiguration componentConfiguration, ViewDescription description, ViewConfiguration configuration) throws DeploymentUnitProcessingException {
-                configuration.addViewInterceptor(MessageDrivenInvocationContextInterceptor.FACTORY, InterceptorOrder.View.INVOCATION_CONTEXT_INTERCEPTOR);
+                configuration.addViewInterceptor(CurrentInvocationContextInterceptor.FACTORY, InterceptorOrder.View.INVOCATION_CONTEXT_INTERCEPTOR);
             }
         });
     }

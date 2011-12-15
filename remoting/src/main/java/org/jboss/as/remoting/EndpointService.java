@@ -22,23 +22,18 @@
 
 package org.jboss.as.remoting;
 
-import static org.xnio.IoUtils.safeClose;
+import java.io.IOException;
 
-import java.util.concurrent.Executor;
-
-import org.jboss.msc.inject.Injector;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
-import org.jboss.msc.value.InjectedValue;
+import org.jboss.remoting3.CloseHandler;
 import org.jboss.remoting3.Endpoint;
-import org.jboss.remoting3.Registration;
 import org.jboss.remoting3.Remoting;
 import org.jboss.remoting3.remote.RemoteConnectionProviderFactory;
 import org.xnio.OptionMap;
 import org.xnio.Options;
-import org.xnio.Xnio;
 
 /**
  * An MSC service for Remoting endpoints.
@@ -46,11 +41,17 @@ import org.xnio.Xnio;
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
 public final class EndpointService implements Service<Endpoint> {
+
+    private final String endpointName;
     private Endpoint endpoint;
     private OptionMap optionMap;
-    private Registration providerRegistration;
 
-    private final InjectedValue<Executor> executor = new InjectedValue<Executor>();
+    public EndpointService(String nodeName, EndpointType type) {
+        if (nodeName == null) {
+            nodeName = "remote";
+        }
+        endpointName = type == EndpointType.SUBSYSTEM ? nodeName : nodeName + ":" + type;
+    }
 
     /**
      * Set the option map for this endpoint.
@@ -63,21 +64,36 @@ public final class EndpointService implements Service<Endpoint> {
 
     /** {@inheritDoc} */
     public synchronized void start(final StartContext context) throws StartException {
+        final Endpoint endpoint;
         try {
-            endpoint = Remoting.createEndpoint("endpoint", executor.getValue(), optionMap);
-            Xnio xnio = XnioUtil.getXnio();
-
-            providerRegistration = endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(xnio), OptionMap.create(Options.SSL_ENABLED, false));
-
-        } catch (Exception e) {
+            boolean ok = false;
+            endpoint = Remoting.createEndpoint(endpointName, optionMap);
+            try {
+                endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), OptionMap.create(Options.SSL_ENABLED, Boolean.FALSE));
+                ok = true;
+            } finally {
+                if (! ok) {
+                    endpoint.closeAsync();
+                }
+            }
+        } catch (IOException e) {
             throw new StartException("Failed to start service", e);
         }
+        this.endpoint = endpoint;
     }
 
     /** {@inheritDoc} */
     public synchronized void stop(final StopContext context) {
-        safeClose(providerRegistration);
-        safeClose(endpoint);
+        context.asynchronous();
+        try {
+            endpoint.closeAsync();
+        } finally {
+            endpoint.addCloseHandler(new CloseHandler<Endpoint>() {
+                public void handleClose(final Endpoint closed, final IOException exception) {
+                    context.complete();
+                }
+            });
+        }
     }
 
     /** {@inheritDoc} */
@@ -87,12 +103,8 @@ public final class EndpointService implements Service<Endpoint> {
         return endpoint;
     }
 
-    /**
-     * Get the injector for the executor dependency.
-     *
-     * @return the injector
-     */
-    Injector<Executor> getExecutorInjector() {
-        return executor;
+    public enum EndpointType {
+        MANAGEMENT,
+        SUBSYSTEM;
     }
 }

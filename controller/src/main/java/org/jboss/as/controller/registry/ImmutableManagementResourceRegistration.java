@@ -79,9 +79,7 @@ public interface ImmutableManagementResourceRegistration {
      * @param operationName the operation name
      * @return the operation entry flags or {@code null}
      *
-     * @deprecated may change in AS 7.1
      */
-    @Deprecated
     Set<OperationEntry.Flag> getOperationFlags(PathAddress address, String operationName);
 
     /**
@@ -170,7 +168,7 @@ public interface ImmutableManagementResourceRegistration {
     /**
      * Get a sub model registration.
      *
-     * @param address the address
+     * @param address the address, relative to this node
      * @return the node registration, <code>null</code> if there is none
      */
     ImmutableManagementResourceRegistration getSubModel(PathAddress address);

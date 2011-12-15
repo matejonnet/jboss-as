@@ -22,26 +22,12 @@
 
 package org.jboss.as.osgi.service;
 
-import org.jboss.as.naming.ServiceBasedNamingStore;
-import static org.jboss.as.osgi.parser.SubsystemState.PROP_JBOSS_OSGI_SYSTEM_MODULES;
-import static org.jboss.osgi.framework.Constants.JBOSGI_PREFIX;
-
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import javax.management.MBeanServer;
-
 import org.jboss.as.jmx.MBeanServerService;
 import org.jboss.as.network.SocketBinding;
 import org.jboss.as.osgi.parser.SubsystemState;
 import org.jboss.as.osgi.parser.SubsystemState.Activation;
 import org.jboss.as.server.ServerEnvironment;
 import org.jboss.as.server.ServerEnvironmentService;
-import org.jboss.logging.Logger;
 import org.jboss.modules.DependencySpec;
 import org.jboss.modules.Module;
 import org.jboss.modules.ModuleClassLoader;
@@ -65,11 +51,29 @@ import org.jboss.msc.service.StopContext;
 import org.jboss.msc.value.InjectedValue;
 import org.jboss.osgi.framework.FrameworkModuleProvider;
 import org.jboss.osgi.framework.Services;
+import org.jboss.osgi.framework.SystemPathsProvider;
 import org.jboss.osgi.framework.SystemServicesProvider;
 import org.jboss.osgi.framework.internal.FrameworkBuilder;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
+
+import javax.management.MBeanServer;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.jboss.as.osgi.OSGiLogger.ROOT_LOGGER;
+import static org.jboss.as.osgi.OSGiMessages.MESSAGES;
+import static org.jboss.as.osgi.parser.SubsystemState.PROP_JBOSS_OSGI_SYSTEM_MODULES;
+import static org.jboss.as.osgi.parser.SubsystemState.PROP_JBOSS_OSGI_SYSTEM_MODULES_EXTRA;
+import static org.jboss.as.osgi.parser.SubsystemState.PROP_JBOSS_OSGI_SYSTEM_PACKAGES;
+import static org.jboss.osgi.framework.Constants.JBOSGI_PREFIX;
 
 /**
  * Service responsible for creating and managing the life-cycle of the OSGi Framework.
@@ -84,14 +88,11 @@ public class FrameworkBootstrapService implements Service<Void> {
     public static final ServiceName FRAMEWORK_BASE_NAME = SERVICE_BASE_NAME.append("framework");
     public static final ServiceName FRAMEWORK_BOOTSTRAP = FRAMEWORK_BASE_NAME.append("bootstrap");
 
-    // Provide logging
-    private static final Logger log = Logger.getLogger("org.jboss.as.osgi");
-
     private final InjectedValue<ServerEnvironment> injectedEnvironment = new InjectedValue<ServerEnvironment>();
     private final InjectedValue<SubsystemState> injectedSubsystemState = new InjectedValue<SubsystemState>();
     private final InjectedValue<SocketBinding> httpServerPortBinding = new InjectedValue<SocketBinding>();
 
-    public static Collection<ServiceController<?>> addService(final ServiceTarget target, final ServiceListener<Object>... listeners) {
+    public static ServiceController<?> addService(final ServiceTarget target, final ServiceListener<Object>... listeners) {
         final List<ServiceController<?>> controllers = new ArrayList<ServiceController<?>>();
         FrameworkBootstrapService service = new FrameworkBootstrapService();
         ServiceBuilder<?> builder = target.addService(FRAMEWORK_BOOTSTRAP, service);
@@ -99,13 +100,7 @@ public class FrameworkBootstrapService implements Service<Void> {
         builder.addDependency(SubsystemState.SERVICE_NAME, SubsystemState.class, service.injectedSubsystemState);
         builder.addDependency(SocketBinding.JBOSS_BINDING_NAME.append("osgi-http"), SocketBinding.class, service.httpServerPortBinding);
         builder.addListener(listeners);
-        controllers.add(builder.install());
-
-        controllers.add(AutoInstallIntegration.addService(target));
-        controllers.add(FrameworkModuleIntegration.addService(target));
-        controllers.add(ModuleLoaderIntegration.addService(target));
-        controllers.add(SystemServicesIntegration.addService(target));
-        return controllers;
+        return builder.install();
     }
 
     private FrameworkBootstrapService() {
@@ -113,12 +108,13 @@ public class FrameworkBootstrapService implements Service<Void> {
 
     public synchronized void start(StartContext context) throws StartException {
         ServiceController<?> controller = context.getController();
-        log.debugf("Starting: %s in mode %s", controller.getName(), controller.getMode());
+        ROOT_LOGGER.debugf("Starting: %s in mode %s", controller.getName(), controller.getMode());
         try {
             ServiceContainer serviceContainer = context.getController().getServiceContainer();
 
             // Setup the OSGi {@link Framework} properties
-            Map<String, Object> props = new HashMap<String, Object>(injectedSubsystemState.getValue().getProperties());
+            SubsystemState subsystemState = injectedSubsystemState.getValue();
+            Map<String, Object> props = new HashMap<String, Object>(subsystemState.getProperties());
             setupIntegrationProperties(context, props);
 
             // Register the URLStreamHandlerFactory
@@ -126,10 +122,16 @@ public class FrameworkBootstrapService implements Service<Void> {
             Module.registerURLStreamHandlerFactoryModule(coreFrameworkModule);
             Module.registerContentHandlerFactoryModule(coreFrameworkModule);
 
+            ServiceTarget target = context.getChildTarget();
+            AutoInstallIntegration.addService(target);
+            FrameworkModuleIntegration.addService(target, props);
+            ModuleLoaderIntegration.addService(target);
+            SystemServicesIntegration.addService(target);
+
             // Configure the {@link Framework} builder
             FrameworkBuilder builder = new FrameworkBuilder(props);
             builder.setServiceContainer(serviceContainer);
-            builder.setServiceTarget(context.getChildTarget());
+            builder.setServiceTarget(target);
             builder.addProvidedService(Services.AUTOINSTALL_PROVIDER);
             builder.addProvidedService(Services.BUNDLE_INSTALL_PROVIDER);
             builder.addProvidedService(Services.FRAMEWORK_MODULE_PROVIDER);
@@ -137,18 +139,19 @@ public class FrameworkBootstrapService implements Service<Void> {
             builder.addProvidedService(Services.SYSTEM_SERVICES_PROVIDER);
 
             // Create the {@link Framework} services
-            Activation activation = injectedSubsystemState.getValue().getActivationPolicy();
+            Activation activation = subsystemState.getActivationPolicy();
             Mode initialMode = (activation == Activation.EAGER ? Mode.ACTIVE : Mode.ON_DEMAND);
             builder.createFrameworkServices(initialMode, true);
+
         } catch (Throwable t) {
-            throw new StartException("Failed to create Framework services", t);
+            throw new StartException(MESSAGES.failedToCreateFrameworkServices(), t);
         }
     }
 
     public synchronized void stop(StopContext context) {
         ServiceController<?> controller = context.getController();
-        log.debugf("Stopping: %s in mode %s", controller.getName(), controller.getMode());
-        log.infof("Stopping OSGi Framework");
+        ROOT_LOGGER.debugf("Stopping: %s in mode %s", controller.getName(), controller.getMode());
+        ROOT_LOGGER.stoppingOsgiFramework();
     }
 
     @Override
@@ -172,6 +175,51 @@ public class FrameworkBootstrapService implements Service<Void> {
             storage = dataDir.getAbsolutePath() + File.separator + "osgi-store";
             props.put(Constants.FRAMEWORK_STORAGE, storage);
         }
+
+        // Setup default system modules
+        String sysmodules = (String) props.get(PROP_JBOSS_OSGI_SYSTEM_MODULES);
+        if (sysmodules == null) {
+            StringBuffer buffer = new StringBuffer();
+            buffer.append("javax.api,");
+            buffer.append("javax.inject.api,");
+            buffer.append("org.apache.commons.logging,");
+            buffer.append("org.apache.log4j,");
+            buffer.append("org.jboss.as.osgi,");
+            buffer.append("org.jboss.logging,");
+            buffer.append("org.jboss.modules,");
+            buffer.append("org.jboss.msc,");
+            buffer.append("org.jboss.osgi.framework,");
+            buffer.append("org.slf4j");
+            props.put(PROP_JBOSS_OSGI_SYSTEM_MODULES, buffer.toString());
+        }
+
+        // Setup default system packages
+        String syspackages = (String) props.get(PROP_JBOSS_OSGI_SYSTEM_PACKAGES);
+        if (syspackages == null) {
+            Set<String> sysPackages = new LinkedHashSet<String>();
+            sysPackages.addAll(Arrays.asList(SystemPathsProvider.DEFAULT_SYSTEM_PACKAGES));
+            sysPackages.addAll(Arrays.asList(SystemPathsProvider.DEFAULT_FRAMEWORK_PACKAGES));
+            sysPackages.add("javax.inject,");
+            sysPackages.add("org.apache.commons.logging;version=1.1.1");
+            sysPackages.add("org.apache.log4j;version=1.2");
+            sysPackages.add("org.jboss.as.osgi.service;version=7.0");
+            sysPackages.add("org.jboss.logging;version=3.0.0");
+            sysPackages.add("org.jboss.osgi.deployment.interceptor;version=1.0");
+            sysPackages.add("org.jboss.osgi.spi.capability;version=1.0");
+            sysPackages.add("org.jboss.osgi.spi.util;version=1.0");
+            sysPackages.add("org.jboss.osgi.testing;version=1.0");
+            sysPackages.add("org.jboss.osgi.vfs;version=1.0");
+            sysPackages.add("org.slf4j;version=1.5.10");
+            syspackages = sysPackages.toString();
+            syspackages = syspackages.substring(1, syspackages.length() -1);
+            props.put(PROP_JBOSS_OSGI_SYSTEM_PACKAGES, syspackages);
+        }
+
+        String extrapackages = (String) props.get(Constants.FRAMEWORK_SYSTEMPACKAGES_EXTRA);
+        if (extrapackages != null) {
+            syspackages += "," + extrapackages;
+        }
+        props.put(Constants.FRAMEWORK_SYSTEMPACKAGES_EXTRA, syspackages);
     }
 
     private static final class SystemServicesIntegration implements Service<SystemServicesProvider>, SystemServicesProvider {
@@ -196,14 +244,14 @@ public class FrameworkBootstrapService implements Service<Void> {
         @Override
         public void start(StartContext context) throws StartException {
             ServiceController<?> controller = context.getController();
-            log.debugf("Starting: %s in mode %s", controller.getName(), controller.getMode());
+            ROOT_LOGGER.debugf("Starting: %s in mode %s", controller.getName(), controller.getMode());
             serviceContainer = context.getController().getServiceContainer();
         }
 
         @Override
         public void stop(StopContext context) {
             ServiceController<?> controller = context.getController();
-            log.debugf("Stopping: %s in mode %s", controller.getName(), controller.getMode());
+            ROOT_LOGGER.debugf("Stopping: %s in mode %s", controller.getName(), controller.getMode());
         }
 
         @Override
@@ -225,32 +273,30 @@ public class FrameworkBootstrapService implements Service<Void> {
 
     private static final class FrameworkModuleIntegration implements FrameworkModuleProvider {
 
-        private final InjectedValue<Module> injectedSystemModule = new InjectedValue<Module>();
-        private final InjectedValue<SubsystemState> injectedSubsystemState = new InjectedValue<SubsystemState>();
+        private final Map<String, Object> props;
         private Module frameworkModule;
 
-        private static ServiceController<?> addService(final ServiceTarget target) {
-            FrameworkModuleIntegration service = new FrameworkModuleIntegration();
+        private static ServiceController<?> addService(final ServiceTarget target, Map<String, Object> props) {
+            FrameworkModuleIntegration service = new FrameworkModuleIntegration(props);
             ServiceBuilder<?> builder = target.addService(Services.FRAMEWORK_MODULE_PROVIDER, service);
-            builder.addDependency(Services.SYSTEM_MODULE_PROVIDER, Module.class, service.injectedSystemModule);
-            builder.addDependency(SubsystemState.SERVICE_NAME, SubsystemState.class, service.injectedSubsystemState);
             builder.setInitialMode(Mode.ON_DEMAND);
             return builder.install();
         }
 
-        private FrameworkModuleIntegration() {
+        private FrameworkModuleIntegration(Map<String, Object> props) {
+            this.props = props;
         }
 
         @Override
         public void start(StartContext context) throws StartException {
             ServiceController<?> controller = context.getController();
-            log.debugf("Starting: %s in mode %s", controller.getName(), controller.getMode());
+            ROOT_LOGGER.debugf("Starting: %s in mode %s", controller.getName(), controller.getMode());
         }
 
         @Override
         public void stop(StopContext context) {
             ServiceController<?> controller = context.getController();
-            log.debugf("Stopping: %s in mode %s", controller.getName(), controller.getMode());
+            ROOT_LOGGER.debugf("Stopping: %s in mode %s", controller.getName(), controller.getMode());
             frameworkModule = null;
         }
 
@@ -269,28 +315,25 @@ public class FrameworkBootstrapService implements Service<Void> {
 
         private Module createFrameworkModule(final Bundle systemBundle) {
             // Setup the extended framework module spec
-            Module systemModule = injectedSystemModule.getValue();
-            ModuleIdentifier systemIdentifier = systemModule.getIdentifier();
-            ModuleLoader systemLoader = systemModule.getModuleLoader();
             ModuleSpec.Builder specBuilder = ModuleSpec.build(ModuleIdentifier.create(JBOSGI_PREFIX + ".framework"));
-            PathFilter acceptAll = PathFilters.acceptAll();
-            specBuilder.addDependency(DependencySpec.createModuleDependencySpec(acceptAll, acceptAll, systemLoader, systemIdentifier, false));
 
-            // Add a dependency on the default framework module
+            // Add the framework module dependencies
+            String sysmodules = (String) props.get(PROP_JBOSS_OSGI_SYSTEM_MODULES);
+            if (sysmodules == null)
+                sysmodules = "";
+
+            String extramodules = (String) props.get(PROP_JBOSS_OSGI_SYSTEM_MODULES_EXTRA);
+            if (extramodules != null)
+                sysmodules += "," + extramodules;
+
+            // Add a dependency on the default framework modules
             ModuleLoader bootLoader = Module.getBootModuleLoader();
-            ModuleIdentifier frameworkIdentifier = ModuleIdentifier.create("org.jboss.osgi.framework");
-            specBuilder.addDependency(DependencySpec.createModuleDependencySpec(acceptAll, acceptAll, bootLoader, frameworkIdentifier, false));
-
-            // Add the user defined module dependencies
-            String modulesProps = (String) injectedSubsystemState.getValue().getProperties().get(PROP_JBOSS_OSGI_SYSTEM_MODULES);
-            if (modulesProps != null) {
-                for (String moduleProp : modulesProps.split(",")) {
-                    moduleProp = moduleProp.trim();
-                    if (moduleProp.length() > 0) {
-                        ModuleIdentifier moduleId = ModuleIdentifier.create(moduleProp);
-                        DependencySpec moduleDep = DependencySpec.createModuleDependencySpec(acceptAll, acceptAll, bootLoader, moduleId, false);
-                        specBuilder.addDependency(moduleDep);
-                    }
+            PathFilter acceptAll = PathFilters.acceptAll();
+            for (String modid : sysmodules.split(",")) {
+                modid = modid.trim();
+                if (modid.length() > 0) {
+                    ModuleIdentifier identifier = ModuleIdentifier.create(modid);
+                    specBuilder.addDependency(DependencySpec.createModuleDependencySpec(acceptAll, acceptAll, bootLoader, identifier, false));
                 }
             }
 
@@ -307,7 +350,7 @@ public class FrameworkBootstrapService implements Service<Void> {
 
                     @Override
                     public String toString() {
-                        return getClass().getSimpleName();
+                        return "FrameworkModuleLoader";
                     }
                 };
                 return moduleLoader.loadModule(specBuilder.getIdentifier());
@@ -317,4 +360,3 @@ public class FrameworkBootstrapService implements Service<Void> {
         }
     }
 }
-

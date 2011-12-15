@@ -22,14 +22,27 @@
 
 package org.jboss.as.server;
 
+import java.io.File;
+import java.security.AccessController;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
 import org.jboss.as.controller.AbstractControllerService;
 import org.jboss.as.controller.BootContext;
 import org.jboss.as.controller.ControlledProcessState;
+import org.jboss.as.controller.ModelController;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.persistence.ConfigurationPersistenceException;
+import org.jboss.as.controller.persistence.ExtensibleConfigurationPersister;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.Resource;
 import org.jboss.as.platform.mbean.PlatformMBeanConstants;
@@ -48,8 +61,9 @@ import org.jboss.as.server.deployment.annotation.CompositeIndexProcessor;
 import org.jboss.as.server.deployment.integration.Seam2Processor;
 import org.jboss.as.server.deployment.module.AdditionalModuleProcessor;
 import org.jboss.as.server.deployment.module.ClassFileTransformerProcessor;
+import org.jboss.as.server.deployment.module.DeploymentRootExplodedMountProcessor;
 import org.jboss.as.server.deployment.module.DeploymentRootMountProcessor;
-import org.jboss.as.server.deployment.module.DeploymentStructureDescriptorParser;
+import org.jboss.as.server.deployment.module.DeploymentVisibilityProcessor;
 import org.jboss.as.server.deployment.module.ManifestAttachmentProcessor;
 import org.jboss.as.server.deployment.module.ManifestClassPathProcessor;
 import org.jboss.as.server.deployment.module.ManifestDependencyProcessor;
@@ -60,10 +74,10 @@ import org.jboss.as.server.deployment.module.ModuleDependencyProcessor;
 import org.jboss.as.server.deployment.module.ModuleExtensionListProcessor;
 import org.jboss.as.server.deployment.module.ModuleExtensionNameProcessor;
 import org.jboss.as.server.deployment.module.ModuleIdentifierProcessor;
-import org.jboss.as.server.deployment.module.ModuleInformationServiceProcessor;
 import org.jboss.as.server.deployment.module.ModuleSpecProcessor;
 import org.jboss.as.server.deployment.module.ServerDependenciesProcessor;
 import org.jboss.as.server.deployment.module.SubDeploymentDependencyProcessor;
+import org.jboss.as.server.deployment.module.descriptor.DeploymentStructureDescriptorParser;
 import org.jboss.as.server.deployment.reflect.InstallReflectionIndexProcessor;
 import org.jboss.as.server.deployment.repository.api.ContentRepository;
 import org.jboss.as.server.deployment.repository.api.ServerDeploymentRepository;
@@ -72,6 +86,7 @@ import org.jboss.as.server.deployment.service.ServiceActivatorProcessor;
 import org.jboss.as.server.moduleservice.ExtensionIndexService;
 import org.jboss.as.server.moduleservice.ExternalModuleService;
 import org.jboss.as.server.moduleservice.ServiceModuleLoader;
+import org.jboss.as.server.services.security.RuntimeVaultReader;
 import org.jboss.dmr.ModelNode;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceController;
@@ -81,13 +96,11 @@ import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
 import org.jboss.msc.value.InjectedValue;
-
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import org.jboss.threads.JBossThreadFactory;
 
 /**
+ * Service for the {@link ModelController} for an AS server instance.
+ *
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
 public final class ServerService extends AbstractControllerService {
@@ -100,6 +113,9 @@ public final class ServerService extends AbstractControllerService {
     private final Bootstrap.Configuration configuration;
     private final BootstrapListener bootstrapListener;
     private final ControlledProcessState processState;
+    private volatile ExecutorService queuelessExecutor;
+    private volatile ExtensibleConfigurationPersister extensibleConfigurationPersister;
+    private final RuntimeVaultReader vaultReader;
 
     /**
      * Construct a new instance.
@@ -107,11 +123,13 @@ public final class ServerService extends AbstractControllerService {
      * @param configuration the bootstrap configuration
      * @param prepareStep the prepare step to use
      */
-    ServerService(final Bootstrap.Configuration configuration, final ControlledProcessState processState, final OperationStepHandler prepareStep, final BootstrapListener bootstrapListener) {
-        super(OperationContext.Type.SERVER, configuration.getConfigurationPersister(), processState, ServerDescriptionProviders.ROOT_PROVIDER, prepareStep);
+    ServerService(final Bootstrap.Configuration configuration, final ControlledProcessState processState,
+                  final OperationStepHandler prepareStep, final BootstrapListener bootstrapListener, RuntimeVaultReader vaultReader) {
+        super(OperationContext.Type.SERVER, processState, ServerDescriptionProviders.ROOT_PROVIDER, prepareStep, new RuntimeExpressionResolver(vaultReader));
         this.configuration = configuration;
         this.bootstrapListener = bootstrapListener;
         this.processState = processState;
+        this.vaultReader = vaultReader;
     }
 
     /**
@@ -120,8 +138,9 @@ public final class ServerService extends AbstractControllerService {
      * @param serviceTarget the service target
      * @param configuration the bootstrap configuration
      */
-    public static void addService(final ServiceTarget serviceTarget, final Bootstrap.Configuration configuration, final ControlledProcessState processState, final BootstrapListener bootstrapListener) {
-        ServerService service = new ServerService(configuration, processState, null, bootstrapListener);
+    public static void addService(final ServiceTarget serviceTarget, final Bootstrap.Configuration configuration,
+                                  final ControlledProcessState processState, final BootstrapListener bootstrapListener, final RuntimeVaultReader vaultReader) {
+        ServerService service = new ServerService(configuration, processState, null, bootstrapListener, vaultReader);
         ServiceBuilder<?> serviceBuilder = serviceTarget.addService(Services.JBOSS_SERVER_CONTROLLER, service);
         serviceBuilder.addDependency(ServerDeploymentRepository.SERVICE_NAME,ServerDeploymentRepository.class, service.injectedDeploymentRepository);
         serviceBuilder.addDependency(ContentRepository.SERVICE_NAME, ContentRepository.class, service.injectedContentRepository);
@@ -131,8 +150,27 @@ public final class ServerService extends AbstractControllerService {
         serviceBuilder.install();
     }
 
-    public void start(final StartContext context) throws StartException {
+    public synchronized void start(final StartContext context) throws StartException {
+        ServerEnvironment serverEnvironment = configuration.getServerEnvironment();
+        initializeExecutorService(serverEnvironment);
+
+        Bootstrap.ConfigurationPersisterFactory configurationPersisterFactory = configuration.getConfigurationPersisterFactory();
+        extensibleConfigurationPersister = configurationPersisterFactory.createConfigurationPersister(serverEnvironment, getExecutorServiceInjector().getOptionalValue());
+        setConfigurationPersister(extensibleConfigurationPersister);
         super.start(context);
+    }
+
+    private void initializeExecutorService(ServerEnvironment serverEnvironment) {
+        if (serverEnvironment.isAllowModelControllerExecutor()) {
+            final ThreadGroup threadGroup = new ThreadGroup("ModelController ThreadGroup");
+            final String namePattern = "ServerService Thread Pool -- %t";
+            final ThreadFactory threadFactory = new JBossThreadFactory(threadGroup, Boolean.FALSE, null, namePattern, null, null, AccessController.getContext());
+            queuelessExecutor = new ThreadPoolExecutor(0, Integer.MAX_VALUE,
+                                      5L, TimeUnit.SECONDS,
+                                      new SynchronousQueue<Runnable>(),
+                                      threadFactory);
+            getExecutorServiceInjector().inject(queuelessExecutor);
+        }
     }
 
     protected void boot(final BootContext context) throws ConfigurationPersistenceException {
@@ -144,6 +182,7 @@ public final class ServerService extends AbstractControllerService {
         newExtDirs[extDirs.length] = new File(serverEnvironment.getServerBaseDir(), "lib/ext");
         serviceTarget.addService(org.jboss.as.server.deployment.Services.JBOSS_DEPLOYMENT_EXTENSION_INDEX,
                 new ExtensionIndexService(newExtDirs)).setInitialMode(ServiceController.Mode.ON_DEMAND).install();
+
 
         // Activate module loader
         DeployerChainAddHandler.addDeploymentProcessor(Phase.STRUCTURE, Phase.STRUCTURE_SERVICE_MODULE_LOADER, new DeploymentUnitProcessor() {
@@ -160,6 +199,7 @@ public final class ServerService extends AbstractControllerService {
         });
 
         // Activate core processors for jar deployment
+        DeployerChainAddHandler.addDeploymentProcessor(Phase.STRUCTURE, Phase.STRUCTURE_EXPLODED_MOUNT, new DeploymentRootExplodedMountProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.STRUCTURE, Phase.STRUCTURE_MOUNT, new DeploymentRootMountProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.STRUCTURE, Phase.STRUCTURE_MANIFEST, new ManifestAttachmentProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.STRUCTURE, Phase.STRUCTURE_ADDITIONAL_MANIFEST, new ManifestAttachmentProcessor());
@@ -180,7 +220,7 @@ public final class ServerService extends AbstractControllerService {
         DeployerChainAddHandler.addDeploymentProcessor(Phase.DEPENDENCIES, Phase.DEPENDENCIES_EXTENSION_LIST, new ModuleExtensionListProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.DEPENDENCIES, Phase.DEPENDENCIES_SUB_DEPLOYMENTS, new SubDeploymentDependencyProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.DEPENDENCIES, Phase.DEPENDENCIES_JDK, new ServerDependenciesProcessor());
-        DeployerChainAddHandler.addDeploymentProcessor(Phase.DEPENDENCIES, Phase.DEPENDENCIES_MODULE_INFO_SERVICE, new ModuleInformationServiceProcessor());
+        DeployerChainAddHandler.addDeploymentProcessor(Phase.DEPENDENCIES, Phase.DEPENDENCIES_VISIBLE_MODULES, new DeploymentVisibilityProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.CONFIGURE_MODULE, Phase.CONFIGURE_MODULE_SPEC, new ModuleSpecProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.POST_MODULE, Phase.POST_MODULE_INSTALL_EXTENSION, new ModuleExtensionNameProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.POST_MODULE, Phase.POST_MODULE_REFLECTION_INDEX, new InstallReflectionIndexProcessor());
@@ -194,7 +234,7 @@ public final class ServerService extends AbstractControllerService {
         try {
             super.boot(context);
         } finally {
-            DeployerChainAddHandler.DEPLOYERS.set(null);
+            DeployerChainAddHandler.INSTANCE.clearDeployerMap();
         }
 
         bootstrapListener.tick();
@@ -208,17 +248,35 @@ public final class ServerService extends AbstractControllerService {
 
     public void stop(final StopContext context) {
         super.stop(context);
+
+        if (queuelessExecutor != null) {
+            context.asynchronous();
+            Thread executorShutdown = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        queuelessExecutor.shutdown();
+                    } finally {
+                        queuelessExecutor = null;
+                        context.complete();
+                    }
+                }
+            }, "Controller ExecutorService Shutdown Thread");
+            executorShutdown.start();
+        }
     }
 
     @Override
     protected void initModel(Resource rootResource, ManagementResourceRegistration rootRegistration) {
         ServerControllerModelUtil.updateCoreModel(rootResource.getModel());
         ServerControllerModelUtil.initOperations(rootRegistration, injectedContentRepository.getValue(),
-                configuration.getConfigurationPersister(), configuration.getServerEnvironment(), processState);
+                extensibleConfigurationPersister, configuration.getServerEnvironment(), processState,
+                vaultReader, queuelessExecutor != null);
 
         // TODO maybe make creating of empty nodes part of the MNR description
         rootResource.registerChild(PathElement.pathElement(ModelDescriptionConstants.CORE_SERVICE, ModelDescriptionConstants.MANAGEMENT), Resource.Factory.create());
         rootResource.registerChild(PathElement.pathElement(ModelDescriptionConstants.CORE_SERVICE, ModelDescriptionConstants.SERVICE_CONTAINER), Resource.Factory.create());
+        rootResource.registerChild(ServerEnvironmentResourceDescription.RESOURCE_PATH, Resource.Factory.create());
 
         // Platform MBeans
         rootResource.registerChild(PlatformMBeanConstants.ROOT_PATH, new RootPlatformMBeanResource());

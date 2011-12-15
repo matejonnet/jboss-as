@@ -22,10 +22,10 @@
 
 package org.jboss.as.jpa.transaction;
 
-import org.jboss.as.jpa.container.EntityManagerMetadata;
-import org.jboss.as.jpa.container.EntityManagerUtil;
-import org.jboss.logging.Logger;
-import org.jboss.tm.TxUtils;
+import static org.jboss.as.jpa.JpaLogger.JPA_LOGGER;
+import static org.jboss.as.jpa.JpaMessages.MESSAGES;
+
+import java.util.Map;
 
 import javax.persistence.EntityManager;
 import javax.persistence.EntityManagerFactory;
@@ -36,7 +36,10 @@ import javax.transaction.SystemException;
 import javax.transaction.Transaction;
 import javax.transaction.TransactionManager;
 import javax.transaction.TransactionSynchronizationRegistry;
-import java.util.Map;
+
+import org.jboss.as.jpa.container.EntityManagerMetadata;
+import org.jboss.as.jpa.container.EntityManagerUtil;
+import org.jboss.tm.TxUtils;
 
 /**
  * Transaction utilities for JPA
@@ -46,7 +49,6 @@ import java.util.Map;
 public class TransactionUtil {
 
     private static final TransactionUtil INSTANCE = new TransactionUtil();
-    private static final Logger log = Logger.getLogger("org.jboss.jpa");
 
     private static volatile TransactionSynchronizationRegistry transactionSynchronizationRegistry;
     private static volatile TransactionManager transactionManager;
@@ -116,15 +118,15 @@ public class TransactionUtil {
         EntityManager entityManager = getEntityManagerInTransactionRegistry(scopedPuName);
         if (entityManager == null) {
             entityManager = EntityManagerUtil.createEntityManager(emf, properties);
-            if (log.isDebugEnabled())
-                log.debug(getEntityManagerDetails(entityManager) + ": created entity manager session " +
+            if (JPA_LOGGER.isDebugEnabled())
+                JPA_LOGGER.debugf("%s: created entity manager session %s", getEntityManagerDetails(entityManager),
                     getTransaction().toString());
-            registerSynchronization(entityManager, scopedPuName, true);
+            boolean autoCloseEntityManager = true;
+            registerSynchronization(entityManager, scopedPuName, autoCloseEntityManager);
             putEntityManagerInTransactionRegistry(scopedPuName, entityManager);
-            entityManager.joinTransaction(); // force registration with TX
         } else {
-            if (log.isDebugEnabled()) {
-                log.debug(getEntityManagerDetails(entityManager) + ": reuse entity manager session already in tx" +
+            if (JPA_LOGGER.isDebugEnabled()) {
+                JPA_LOGGER.debugf("%s: reuse entity manager session already in tx %s", getEntityManagerDetails(entityManager),
                     getTransaction().toString());
             }
         }
@@ -134,7 +136,7 @@ public class TransactionUtil {
     private void registerSynchronization(EntityManager entityManager, String puScopedName, boolean closeEMAtTxEnd) {
         Transaction tx = getTransaction();
         try {
-            tx.registerSynchronization(new SessionSynchronization(entityManager, tx, closeEMAtTxEnd, puScopedName));
+            tx.registerSynchronization(new SessionSynchronization(entityManager, closeEMAtTxEnd, puScopedName));
         } catch (RollbackException e) {
             throw new RuntimeException(e);
         } catch (SystemException e) {
@@ -146,8 +148,7 @@ public class TransactionUtil {
         try {
             return transactionManager.getTransaction();
         } catch (SystemException e) {
-            throw new IllegalStateException("An error occured while getting the " +
-                "transaction associated with the current thread: " + e);
+            throw MESSAGES.errorGettingTransaction(e);
         }
     }
 
@@ -201,7 +202,7 @@ public class TransactionUtil {
         private boolean closeAtTxCompletion;
         private String scopedPuName;
 
-        public SessionSynchronization(EntityManager session, Transaction tx, boolean close, String scopedPuName) {
+        public SessionSynchronization(EntityManager session, boolean close, String scopedPuName) {
             this.manager = session;
             closeAtTxCompletion = close;
             this.scopedPuName = scopedPuName;
@@ -212,8 +213,8 @@ public class TransactionUtil {
 
         public void afterCompletion(int status) {
             if (closeAtTxCompletion) {
-                if (log.isDebugEnabled())
-                    log.debug(getEntityManagerDetails(manager) + ": closing entity managersession ");
+                if (JPA_LOGGER.isDebugEnabled())
+                    JPA_LOGGER.debugf("%s: closing entity managersession", getEntityManagerDetails(manager));
                 manager.close();
             }
             // clear TX reference to entity manager

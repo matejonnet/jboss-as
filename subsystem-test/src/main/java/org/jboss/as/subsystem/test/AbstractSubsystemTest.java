@@ -1,6 +1,10 @@
 package org.jboss.as.subsystem.test;
 
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEPLOYMENT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIPTION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.FAILURE_DESCRIPTION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OUTCOME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_ATTRIBUTE_OPERATION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_CHILDREN_NAMES_OPERATION;
@@ -18,6 +22,7 @@ import static org.jboss.as.controller.parsing.ParseUtils.unexpectedElement;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringReader;
@@ -46,7 +51,9 @@ import junit.framework.Assert;
 import junit.framework.AssertionFailedError;
 
 import org.jboss.as.controller.AbstractControllerService;
+import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.ControlledProcessState;
+import org.jboss.as.controller.ExpressionResolver;
 import org.jboss.as.controller.Extension;
 import org.jboss.as.controller.ExtensionContext;
 import org.jboss.as.controller.ExtensionContextImpl;
@@ -56,6 +63,7 @@ import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.ProxyController;
+import org.jboss.as.controller.ResourceDefinition;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.descriptions.common.CommonProviders;
 import org.jboss.as.controller.operations.common.Util;
@@ -76,12 +84,18 @@ import org.jboss.as.controller.registry.OperationEntry;
 import org.jboss.as.controller.registry.OperationEntry.EntryType;
 import org.jboss.as.controller.registry.OperationEntry.Flag;
 import org.jboss.as.controller.registry.Resource;
+import org.jboss.as.server.DeployerChainAddHandler;
+import org.jboss.as.server.Services;
+import org.jboss.as.server.controller.descriptions.ServerDescriptionProviders;
+import org.jboss.as.server.deployment.repository.impl.ContentRepositoryImpl;
+import org.jboss.as.server.operations.RootResourceHack;
+import org.jboss.as.subsystem.test.ModelDescriptionValidator.ValidationConfiguration;
+import org.jboss.as.subsystem.test.ModelDescriptionValidator.ValidationFailure;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 import org.jboss.dmr.Property;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceContainer;
-import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceTarget;
 import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
@@ -125,7 +139,6 @@ public abstract class AbstractSubsystemTest {
     protected AbstractSubsystemTest(final String mainSubsystemName, final Extension mainExtension) {
         this.mainSubsystemName = mainSubsystemName;
         this.mainExtension = mainExtension;
-
     }
 
     public String getMainSubsystemName() {
@@ -174,7 +187,7 @@ public abstract class AbstractSubsystemTest {
     protected String readResource(final String name) throws IOException {
 
         URL configURL = getClass().getResource(name);
-        org.junit.Assert.assertNotNull(name + " url is not null", configURL);
+        org.junit.Assert.assertNotNull(name + " url is null", configURL);
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(configURL.openStream()));
         StringWriter writer = new StringWriter();
@@ -238,7 +251,7 @@ public abstract class AbstractSubsystemTest {
         StringConfigurationPersister persister = new StringConfigurationPersister(Collections.<ModelNode>emptyList(), testParser);
 
         Extension extension = mainExtension.getClass().newInstance();
-        extension.initialize(new ExtensionContextImpl(MOCK_RESOURCE_REG, MOCK_RESOURCE_REG, persister));
+        extension.initialize(new ExtensionContextImpl(MOCK_RESOURCE_REG, MOCK_RESOURCE_REG, persister, ExtensionContext.ProcessType.EMBEDDED));
 
         ConfigurationPersister.PersistenceResource resource = persister.store(model, Collections.<PathAddress>emptySet());
         resource.commit();
@@ -305,7 +318,7 @@ public abstract class AbstractSubsystemTest {
         allOps.addAll(bootOperations);
         StringConfigurationPersister persister = new StringConfigurationPersister(allOps, testParser);
         ModelControllerService svc = new ModelControllerService(additionalInit.getType(), mainExtension, controllerInitializer, additionalInit, processState, persister, additionalInit.isValidateOperations());
-        ServiceBuilder<ModelController> builder = target.addService(ServiceName.of("ModelController"), svc);
+        ServiceBuilder<ModelController> builder = target.addService(Services.JBOSS_SERVER_CONTROLLER, svc);
         builder.install();
 
         additionalInit.addExtraServices(target);
@@ -323,9 +336,10 @@ public abstract class AbstractSubsystemTest {
             throw svc.error;
         }
 
+        validateDescriptionProviders(additionalInit, kernelServices);
+
         return kernelServices;
     }
-
 
     /**
      * Checks that the result was successful and gets the real result contents
@@ -356,7 +370,7 @@ public abstract class AbstractSubsystemTest {
                 Assert.assertTrue("Missing: " + key + "\n" + node1 + "\n" + node2, node2.has(key));
                 final ModelNode child2 = node2.get(key);
                 if (child1.isDefined()) {
-                    Assert.assertTrue(child1.toString(), child2.isDefined());
+                    Assert.assertTrue("key="+ key + "\n with child1 \n" + child1.toString() + "\n has child2 not defined\n node2 is:\n" + node2.toString(), child2.isDefined());
                     stack.get().push(key + "/");
                     compare(child1, child2);
                     stack.get().pop();
@@ -437,6 +451,41 @@ public abstract class AbstractSubsystemTest {
         }
     }
 
+
+    private void validateDescriptionProviders(AdditionalInitialization additionalInit, KernelServices kernelServices) {
+        ValidationConfiguration arbitraryDescriptors = additionalInit.getModelValidationConfiguration();
+        ModelNode address = new ModelNode();
+        address.setEmptyList();
+        address.add("subsystem", mainSubsystemName);
+
+        ModelNode op = new ModelNode();
+        op.get(OP).set("read-resource-description");
+        //op.get(OP_ADDR).setEmptyList();
+        op.get(OP_ADDR).set(address);
+        op.get("recursive").set(true);
+        op.get("inherited").set(false);
+        op.get("operations").set(true);
+        ModelNode result = kernelServices.executeOperation(op);
+        if (result.hasDefined(FAILURE_DESCRIPTION)) {
+            throw new RuntimeException(result.get(FAILURE_DESCRIPTION).asString());
+        }
+        ModelNode model = result.get(RESULT);
+
+        ModelDescriptionValidator validator = new ModelDescriptionValidator(address, model, arbitraryDescriptors);
+        List<ValidationFailure> validationMessages = validator.validateResource();
+        if (validationMessages.size() > 0) {
+            final StringBuilder builder = new StringBuilder("VALIDATION ERRORS IN MODEL:");
+            for (ValidationFailure failure :validationMessages) {
+                builder.append(failure);
+                builder.append("\n");
+
+            }
+            if (arbitraryDescriptors != null) {
+                Assert.fail("Failed due to validation errors in the model. Please fix :-) " + builder.toString());
+            }
+        }
+    }
+
     private final class ExtensionParsingContextImpl implements ExtensionParsingContext {
         private final XMLMapper mapper;
 
@@ -508,7 +557,7 @@ public abstract class AbstractSubsystemTest {
         volatile Exception error;
 
         ModelControllerService(final OperationContext.Type type, final Extension mainExtension, final ControllerInitializer controllerInitializer, final AdditionalInitialization additionalPreStep, final ControlledProcessState processState, final StringConfigurationPersister persister, boolean validateOps) {
-            super(type, persister, processState, DESC_PROVIDER, null);
+            super(type, persister, processState, DESC_PROVIDER, null, ExpressionResolver.DEFAULT);
             this.persister = persister;
             this.additionalInit = additionalPreStep;
             this.mainExtension = mainExtension;
@@ -530,9 +579,15 @@ public abstract class AbstractSubsystemTest {
             rootRegistration.registerOperationHandler(READ_OPERATION_DESCRIPTION_OPERATION, GlobalOperationHandlers.READ_OPERATION_DESCRIPTION, CommonProviders.READ_OPERATION_PROVIDER, true);
             rootRegistration.registerOperationHandler(WRITE_ATTRIBUTE_OPERATION, GlobalOperationHandlers.WRITE_ATTRIBUTE, CommonProviders.WRITE_ATTRIBUTE_PROVIDER, true);
 
+            ManagementResourceRegistration deployments = rootRegistration.registerSubModel(PathElement.pathElement(DEPLOYMENT), ServerDescriptionProviders.DEPLOYMENT_PROVIDER);
+
+            //Hack to be able to access the registry for the jmx facade
+            rootRegistration.registerOperationHandler(RootResourceHack.NAME, RootResourceHack.INSTANCE, RootResourceHack.INSTANCE, false, OperationEntry.EntryType.PRIVATE);
+
+
             controllerInitializer.initializeModel(rootResource, rootRegistration);
 
-            ExtensionContext context = new ExtensionContextImpl(rootRegistration, null, persister);
+            ExtensionContext context = new ExtensionContextImpl(rootRegistration, deployments, persister, ExtensionContext.ProcessType.EMBEDDED);
             additionalInit.initializeExtraSubystemsAndModel(context, rootResource, rootRegistration);
             mainExtension.initialize(context);
         }
@@ -543,13 +598,13 @@ public abstract class AbstractSubsystemTest {
                 if (validateOps) {
                     new OperationValidator(rootRegistration).validateOperations(bootOperations);
                 }
-
                 super.boot(persister.bootOperations);
             } catch (Exception e) {
                 error = e;
             } catch (Throwable t) {
                 error = new Exception(t);
             } finally {
+                DeployerChainAddHandler.INSTANCE.clearDeployerMap();
                 latch.countDown();
             }
         }
@@ -708,6 +763,11 @@ public abstract class AbstractSubsystemTest {
         }
 
         @Override
+        public ManagementResourceRegistration registerSubModel(ResourceDefinition resourceDefinition) {
+            return MOCK_RESOURCE_REG;
+        }
+
+        @Override
         public void registerSubModel(PathElement address, ManagementResourceRegistration subModel) {
         }
 
@@ -746,6 +806,10 @@ public abstract class AbstractSubsystemTest {
         }
 
         @Override
+        public void registerReadWriteAttribute(AttributeDefinition definition, OperationStepHandler readHandler, OperationStepHandler writeHandler) {
+        }
+
+        @Override
         public void registerReadOnlyAttribute(String attributeName, OperationStepHandler readHandler, Storage storage) {
         }
 
@@ -754,7 +818,15 @@ public abstract class AbstractSubsystemTest {
         }
 
         @Override
+        public void registerReadOnlyAttribute(AttributeDefinition definition, OperationStepHandler readHandler) {
+        }
+
+        @Override
         public void registerMetric(String attributeName, OperationStepHandler metricHandler) {
+        }
+
+        @Override
+        public void registerMetric(AttributeDefinition definition, OperationStepHandler metricHandler) {
         }
 
         @Override
@@ -770,4 +842,33 @@ public abstract class AbstractSubsystemTest {
         }
 
     };
+
+    private static class TestContentRepository extends ContentRepositoryImpl {
+
+        private TestContentRepository(File repoRoot) {
+            // FIXME TestContentRepository constructor
+            super(repoRoot);
+        }
+
+        public static TestContentRepository createTestContentRepository() {
+            File file = new File("target/content-repository");
+            if (file.exists()) {
+                cleanFiles(file);
+            }
+            file.mkdirs();
+            return new TestContentRepository(file);
+        }
+
+        private static void cleanFiles(File file) {
+            if (file.isDirectory()) {
+                for (String name : file.list()) {
+                    File current = new File(file, name);
+                    if (current.isDirectory()) {
+                        cleanFiles(current);
+                    }
+                }
+            }
+            file.delete();
+        }
+    }
 }

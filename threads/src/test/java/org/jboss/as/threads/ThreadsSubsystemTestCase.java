@@ -24,7 +24,6 @@ package org.jboss.as.threads;
 import static junit.framework.Assert.assertEquals;
 import static junit.framework.Assert.assertTrue;
 import static junit.framework.Assert.fail;
-import org.jboss.as.controller.OperationStepHandler;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ATTRIBUTES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CHILDREN;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIPTION;
@@ -96,14 +95,19 @@ import junit.framework.Assert;
 
 import org.jboss.as.controller.AbstractControllerService;
 import org.jboss.as.controller.ControlledProcessState;
+import org.jboss.as.controller.ExpressionResolver;
 import org.jboss.as.controller.ExtensionContext;
 import org.jboss.as.controller.ModelController;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.ResourceDefinition;
+import org.jboss.as.controller.SimpleResourceDefinition;
 import org.jboss.as.controller.SubsystemRegistration;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
+import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.descriptions.common.CommonProviders;
 import org.jboss.as.controller.operations.common.Util;
 import org.jboss.as.controller.operations.global.GlobalOperationHandlers;
@@ -213,7 +217,7 @@ public class ThreadsSubsystemTestCase {
         assertEquals(ModelType.STRING, threadFactoryDescription.require(ATTRIBUTES).require(THREAD_NAME_PATTERN).require(TYPE)
                 .asType());
         assertEquals(ModelType.INT, threadFactoryDescription.require(ATTRIBUTES).require(PRIORITY).require(TYPE).asType());
-        assertEquals(ModelType.OBJECT, threadFactoryDescription.require(ATTRIBUTES).require(PROPERTIES).require(TYPE).asType());
+        assertEquals(ModelType.LIST, threadFactoryDescription.require(ATTRIBUTES).require(PROPERTIES).require(TYPE).asType());
 
         ModelNode boundedQueueThreadPoolDesc = threadsDescription.get(CHILDREN, BOUNDED_QUEUE_THREAD_POOL, MODEL_DESCRIPTION,
                 "*");
@@ -225,26 +229,26 @@ public class ThreadsSubsystemTestCase {
         assertEquals(ModelType.OBJECT, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(TYPE)
                 .asType());
         assertEquals(
-                ModelType.BIG_DECIMAL,
+                ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(VALUE_TYPE).require(COUNT)
                         .require(TYPE).asType());
-        assertEquals(ModelType.BIG_DECIMAL,
+        assertEquals(ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(VALUE_TYPE).require(PER_CPU)
                         .require(TYPE).asType());
         assertEquals(ModelType.OBJECT, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(CORE_THREADS).require(TYPE)
                 .asType());
-        assertEquals(ModelType.BIG_DECIMAL,
+        assertEquals(ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(CORE_THREADS).require(VALUE_TYPE).require(COUNT)
                         .require(TYPE).asType());
-        assertEquals(ModelType.BIG_DECIMAL,
+        assertEquals(ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(CORE_THREADS).require(VALUE_TYPE).require(PER_CPU)
                         .require(TYPE).asType());
         assertEquals(ModelType.OBJECT, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(QUEUE_LENGTH).require(TYPE)
                 .asType());
-        assertEquals(ModelType.BIG_DECIMAL,
+        assertEquals(ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(QUEUE_LENGTH).require(VALUE_TYPE).require(COUNT)
                         .require(TYPE).asType());
-        assertEquals(ModelType.BIG_DECIMAL,
+        assertEquals(ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(QUEUE_LENGTH).require(VALUE_TYPE).require(PER_CPU)
                         .require(TYPE).asType());
         assertEquals(ModelType.OBJECT, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(KEEPALIVE_TIME).require(TYPE)
@@ -266,10 +270,10 @@ public class ThreadsSubsystemTestCase {
                 .asType());
         assertEquals(ModelType.OBJECT, queueLessThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(TYPE).asType());
         assertEquals(
-                ModelType.BIG_DECIMAL,
+                ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(VALUE_TYPE).require(COUNT)
                         .require(TYPE).asType());
-        assertEquals(ModelType.BIG_DECIMAL,
+        assertEquals(ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(VALUE_TYPE).require(PER_CPU)
                         .require(TYPE).asType());
         assertEquals(ModelType.LONG, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(KEEPALIVE_TIME).require(VALUE_TYPE)
@@ -287,10 +291,10 @@ public class ThreadsSubsystemTestCase {
                 .asType());
         assertEquals(ModelType.OBJECT, scheduledThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(TYPE).asType());
         assertEquals(
-                ModelType.BIG_DECIMAL,
+                ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(VALUE_TYPE).require(COUNT)
                         .require(TYPE).asType());
-        assertEquals(ModelType.BIG_DECIMAL,
+        assertEquals(ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(VALUE_TYPE).require(PER_CPU)
                         .require(TYPE).asType());
         assertEquals(ModelType.LONG, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(KEEPALIVE_TIME).require(VALUE_TYPE)
@@ -306,10 +310,10 @@ public class ThreadsSubsystemTestCase {
                 .asType());
         assertEquals(ModelType.OBJECT, unboundedThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(TYPE).asType());
         assertEquals(
-                ModelType.BIG_DECIMAL,
+                ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(VALUE_TYPE).require(COUNT)
                         .require(TYPE).asType());
-        assertEquals(ModelType.BIG_DECIMAL,
+        assertEquals(ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(VALUE_TYPE).require(PER_CPU)
                         .require(TYPE).asType());
         assertEquals(ModelType.LONG, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(KEEPALIVE_TIME).require(VALUE_TYPE)
@@ -798,6 +802,11 @@ public class ThreadsSubsystemTestCase {
         }
 
         @Override
+        public ProcessType getProcessType() {
+            return ProcessType.EMBEDDED;
+        }
+
+        @Override
         public SubsystemRegistration registerSubsystem(final String name) throws IllegalArgumentException {
             return new SubsystemRegistration() {
                 @Override
@@ -805,8 +814,16 @@ public class ThreadsSubsystemTestCase {
                     if (descriptionProvider == null) {
                         throw new IllegalArgumentException("descriptionProvider is null");
                     }
-                    createdRegistration = testProfileRegistration.registerSubModel(PathElement.pathElement("subsystem", name),
-                            descriptionProvider);
+                    PathElement pe = PathElement.pathElement(ModelDescriptionConstants.SUBSYSTEM, name);
+                    return registerSubsystemModel(new SimpleResourceDefinition(pe, descriptionProvider));
+                }
+
+                @Override
+                public ManagementResourceRegistration registerSubsystemModel(ResourceDefinition resourceDefinition) {
+                    if (resourceDefinition == null) {
+                        throw new IllegalArgumentException("resourceDefinition is null");
+                    }
+                    createdRegistration = testProfileRegistration.registerSubModel(resourceDefinition);
                     Assert.assertEquals("threads", name);
                     return createdRegistration;
                 }
@@ -814,6 +831,11 @@ public class ThreadsSubsystemTestCase {
                 @Override
                 public ManagementResourceRegistration registerDeploymentModel(final DescriptionProvider descriptionProvider) {
                     throw new IllegalStateException("Not implemented");
+                }
+
+                @Override
+                public ManagementResourceRegistration registerDeploymentModel(ResourceDefinition resourceDefinition) {
+                    throw new UnsupportedOperationException("Not implemented");
                 }
 
                 @Override
@@ -883,7 +905,7 @@ public class ThreadsSubsystemTestCase {
         private final CountDownLatch latch = new CountDownLatch(1);
 
         ModelControllerService(final ServiceContainer serviceContainer, final ControlledProcessState processState) {
-            super(OperationContext.Type.SERVER, new TestConfigurationPersister(), processState, NULL_PROVIDER, null);
+            super(OperationContext.Type.SERVER, new TestConfigurationPersister(), processState, NULL_PROVIDER, null, ExpressionResolver.DEFAULT);
         }
 
         @Override

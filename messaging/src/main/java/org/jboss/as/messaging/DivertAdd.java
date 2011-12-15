@@ -23,6 +23,7 @@
 package org.jboss.as.messaging;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
+import static org.jboss.as.messaging.MessagingMessages.MESSAGES;
 
 import java.util.List;
 import java.util.Locale;
@@ -42,6 +43,7 @@ import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
 import org.jboss.msc.service.ServiceController;
+import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceRegistry;
 
 /**
@@ -79,18 +81,18 @@ public class DivertAdd extends AbstractAddStepHandler implements DescriptionProv
     protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) throws OperationFailedException {
 
         ServiceRegistry registry = context.getServiceRegistry(true);
-        ServiceController<?> hqService = registry.getService(MessagingServices.JBOSS_MESSAGING);
+        final ServiceName hqServiceName = MessagingServices.getHornetQServiceName(PathAddress.pathAddress(operation.get(ModelDescriptionConstants.OP_ADDR)));
+        ServiceController<?> hqService = registry.getService(hqServiceName);
         if (hqService != null) {
 
             // The original subsystem initialization is complete; use the control object to create the divert
             if (hqService.getState() != ServiceController.State.UP) {
-                throw new IllegalStateException(String.format("Service %s is not in state %s, it is in state %s",
-                        MessagingServices.JBOSS_MESSAGING, ServiceController.State.UP, hqService.getState()));
+                throw MESSAGES.invalidServiceState(hqServiceName, ServiceController.State.UP, hqService.getState());
             }
 
             final String name = PathAddress.pathAddress(operation.require(ModelDescriptionConstants.OP_ADDR)).getLastElement().getValue();
 
-            DivertConfiguration divertConfiguration = createDivertConfiguration(name, model);
+            DivertConfiguration divertConfiguration = createDivertConfiguration(context, name, model);
 
             HornetQServerControl serverControl = HornetQServer.class.cast(hqService.getValue()).getHornetQServerControl();
             createDivert(name, divertConfiguration, serverControl);
@@ -105,25 +107,25 @@ public class DivertAdd extends AbstractAddStepHandler implements DescriptionProv
         return MessagingDescriptions.getDivertAdd(locale);
     }
 
-    static void addDivertConfigs(final Configuration configuration, final ModelNode model)  throws OperationFailedException {
+    static void addDivertConfigs(final OperationContext context, final Configuration configuration, final ModelNode model)  throws OperationFailedException {
         if (model.hasDefined(CommonAttributes.DIVERT)) {
             final List<DivertConfiguration> configs = configuration.getDivertConfigurations();
             for (Property prop : model.get(CommonAttributes.DIVERT).asPropertyList()) {
-                configs.add(createDivertConfiguration(prop.getName(), prop.getValue()));
+                configs.add(createDivertConfiguration(context, prop.getName(), prop.getValue()));
 
             }
         }
     }
 
-    static DivertConfiguration createDivertConfiguration(String name, ModelNode model) throws OperationFailedException {
-        final ModelNode routingNode = CommonAttributes.ROUTING_NAME.validateResolvedOperation(model);
+    static DivertConfiguration createDivertConfiguration(final OperationContext context, String name, ModelNode model) throws OperationFailedException {
+        final ModelNode routingNode = CommonAttributes.ROUTING_NAME.resolveModelAttribute(context, model);
         final String routingName = routingNode.isDefined() ? routingNode.asString() : null;
-        final String address = CommonAttributes.DIVERT_ADDRESS.validateResolvedOperation(model).asString();
-        final String forwardingAddress = CommonAttributes.DIVERT_FORWARDING_ADDRESS.validateResolvedOperation(model).asString();
-        final boolean exclusive = CommonAttributes.EXCLUSIVE.validateResolvedOperation(model).asBoolean();
-        final ModelNode filterNode = CommonAttributes.FILTER.validateResolvedOperation(model);
+        final String address = CommonAttributes.DIVERT_ADDRESS.resolveModelAttribute(context, model).asString();
+        final String forwardingAddress = CommonAttributes.DIVERT_FORWARDING_ADDRESS.resolveModelAttribute(context, model).asString();
+        final boolean exclusive = CommonAttributes.EXCLUSIVE.resolveModelAttribute(context, model).asBoolean();
+        final ModelNode filterNode = CommonAttributes.FILTER.resolveModelAttribute(context, model);
         final String filter = filterNode.isDefined() ? filterNode.asString() : null;
-        final ModelNode transformerNode =  CommonAttributes.TRANSFORMER_CLASS_NAME.validateResolvedOperation(model);
+        final ModelNode transformerNode =  CommonAttributes.TRANSFORMER_CLASS_NAME.resolveModelAttribute(context, model);
         final String transformerClassName = transformerNode.isDefined() ? transformerNode.asString() : null;
         return new DivertConfiguration(name, routingName, address, forwardingAddress, exclusive, filter, transformerClassName);
     }

@@ -39,6 +39,7 @@ public final class ResourceRoot extends SimpleAttachable {
     private final VirtualFile root;
     private final MountHandle mountHandle;
     private final List<FilterSpecification> exportFilters = new ArrayList<FilterSpecification>();
+    private boolean usePhysicalCodeSource;
 
     public ResourceRoot(final VirtualFile root, final MountHandle mountHandle) {
         this(root.getName(), root, mountHandle);
@@ -74,5 +75,26 @@ public final class ResourceRoot extends SimpleAttachable {
             builder.append("root=").append(root);
         builder.append("]");
         return builder.toString();
+    }
+
+    public void setUsePhysicalCodeSource(final boolean usePhysicalCodeSource) {
+        this.usePhysicalCodeSource = usePhysicalCodeSource;
+    }
+
+    public boolean isUsePhysicalCodeSource() {
+        return usePhysicalCodeSource;
+    }
+
+    /**
+     * Merges information from the resource root into this resource root
+     *
+     * @param additionalResourceRoot The root to merge
+     */
+    public void merge(final ResourceRoot additionalResourceRoot) {
+        if(!additionalResourceRoot.getRoot().equals(root)) {
+            throw new IllegalArgumentException("Cannot merge resource root for a different file. This: " + root + " mergee: " + additionalResourceRoot.getRoot());
+        }
+        usePhysicalCodeSource = additionalResourceRoot.usePhysicalCodeSource;
+        this.exportFilters.addAll(additionalResourceRoot.getExportFilters());
     }
 }

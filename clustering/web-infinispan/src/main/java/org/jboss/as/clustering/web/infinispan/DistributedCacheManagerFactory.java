@@ -45,6 +45,8 @@ import org.jboss.metadata.web.jboss.ReplicationConfig;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceRegistry;
 
+import static org.jboss.as.clustering.web.infinispan.InfinispanWebMessages.MESSAGES;
+
 /**
  * Factory for creating an Infinispan-backed distributed cache manager.
  *
@@ -69,7 +71,13 @@ public class DistributedCacheManagerFactory implements org.jboss.as.clustering.w
     private ServiceNameProvider jvmRouteCacheServiceNameProvider = new ServiceNameProvider() {
         @Override
         public ServiceName getServiceName(ReplicationConfig config) {
-            return EmbeddedCacheManagerService.getServiceName(null);
+            ServiceName baseServiceName = EmbeddedCacheManagerService.getServiceName(null);
+            String cacheName = config.getCacheName();
+            ServiceName serviceName = ServiceName.parse((cacheName != null) ? cacheName : DEFAULT_CACHE_CONTAINER);
+            if (!baseServiceName.isParentOf(serviceName)) {
+                serviceName = baseServiceName.append(serviceName);
+            }
+            return (serviceName.length() < 4) ? serviceName : serviceName.getParent();
         }
     };
     private CacheSource jvmRouteCacheSource = new JvmRouteCacheSource(this.jvmRouteCacheServiceNameProvider);
@@ -82,7 +90,7 @@ public class DistributedCacheManagerFactory implements org.jboss.as.clustering.w
     public <T extends OutgoingDistributableSessionData> org.jboss.as.clustering.web.DistributedCacheManager<T> getDistributedCacheManager(ServiceRegistry registry, LocalDistributableSessionManager manager) throws ClusteringNotSupportedException {
         AdvancedCache<SessionKeyImpl, Map<Object, Object>> sessionCache = this.sessionCacheSource.<SessionKeyImpl, Map<Object, Object>>getCache(registry, manager).getAdvancedCache().with(this.getClass().getClassLoader());
         if (!sessionCache.getConfiguration().isInvocationBatchingEnabled()) {
-            throw new ClusteringNotSupportedException(String.format("Failed to configure web application for <distributable/> sessions.  %s.%s cache requires batching=\"true\".", sessionCache.getCacheManager().getGlobalConfiguration().getCacheManagerName(), sessionCache.getName()));
+            throw new ClusteringNotSupportedException(MESSAGES.failedToConfigureWebApp(sessionCache.getCacheManager().getGlobalConfiguration().getCacheManagerName(), sessionCache.getName()));
         }
         SharedLocalYieldingClusterLockManager lockManager = this.lockManagerSource.getLockManager(sessionCache);
         BatchingManager batchingManager = new TransactionBatchingManager(sessionCache.getTransactionManager());

@@ -205,7 +205,7 @@ public class PlatformMBeanResourceRegistrar {
                     return PlatformMBeanDescriptions.getBufferPoolRootResource(locale);
                 }
             });
-            ManagementResourceRegistration bufPool = memPoolRoot.registerSubModel(PathElement.pathElement(NAME), new DescriptionProvider() {
+            ManagementResourceRegistration bufPool = bufPoolRoot.registerSubModel(PathElement.pathElement(NAME), new DescriptionProvider() {
                 @Override
                 public ModelNode getModelDescription(Locale locale) {
                     return PlatformMBeanDescriptions.getBufferPoolResource(locale);
@@ -214,7 +214,8 @@ public class PlatformMBeanResourceRegistrar {
             BufferPoolMXBeanAttributeHandler.INSTANCE.register(bufPool);
 
             // PlatformLoggingMXBean
-            ManagementResourceRegistration logging = root.registerSubModel(LOGGING_PATH, new DescriptionProvider() {
+            // Only exposing through our management layer at this point. [AS7-2185]
+            /*ManagementResourceRegistration logging = root.registerSubModel(LOGGING_PATH, new DescriptionProvider() {
                 @Override
                 public ModelNode getModelDescription(Locale locale) {
                     return PlatformMBeanDescriptions.getPlatformLoggingResource(locale);
@@ -223,7 +224,7 @@ public class PlatformMBeanResourceRegistrar {
             logging.registerOperationHandler(GET_LOGGER_LEVEL, PlatformLoggingMXBeanGetLoggerLevelHandler.INSTANCE, PlatformLoggingMXBeanGetLoggerLevelHandler.INSTANCE);
             logging.registerOperationHandler(SET_LOGGER_LEVEL, PlatformLoggingMXBeanSetLoggerLevelHandler.INSTANCE, PlatformLoggingMXBeanSetLoggerLevelHandler.INSTANCE);
             logging.registerOperationHandler(GET_PARENT_LOGGER_NAME, PlatformLoggingMXBeanGetParentLoggerNameHandler.INSTANCE, PlatformLoggingMXBeanGetParentLoggerNameHandler.INSTANCE);
-            PlatformLoggingMXBeanAttributeHandler.INSTANCE.register(logging);
+            PlatformLoggingMXBeanAttributeHandler.INSTANCE.register(logging);*/
 
         }
 

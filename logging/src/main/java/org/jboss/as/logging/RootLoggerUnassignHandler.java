@@ -22,9 +22,17 @@
 
 package org.jboss.as.logging;
 
+import com.sun.tools.internal.xjc.model.Model;
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.dmr.ModelNode;
+
+import java.util.Collection;
+
+import static org.jboss.as.logging.CommonAttributes.HANDLERS;
+import static org.jboss.as.logging.CommonAttributes.ROOT_LOGGER;
+import static org.jboss.as.logging.CommonAttributes.ROOT_LOGGER_NAME;
 
 
 /**
@@ -33,35 +41,11 @@ import org.jboss.dmr.ModelNode;
  * @author Stan Silvert
  */
 public class RootLoggerUnassignHandler extends LoggerUnassignHandler {
-    private static final String OPERATION_NAME = "root-logger-unassign-handler";
-    private static final RootLoggerUnassignHandler INSTANCE = new RootLoggerUnassignHandler();
-
-    /**
-     * @return the OPERATION_NAME
-     */
-    public static String getOperationName() {
-        return OPERATION_NAME;
-    }
-
-    /**
-     * @return the INSTANCE
-     */
-    public static RootLoggerUnassignHandler getInstance() {
-        return INSTANCE;
-    }
+    static final String OPERATION_NAME = "root-logger-unassign-handler";
+    static final RootLoggerUnassignHandler INSTANCE = new RootLoggerUnassignHandler();
 
     @Override
     protected String getLoggerName(ModelNode operation) {
-        return "";
-    }
-
-    /**
-     * Get the ModelNode that has a "handlers" attribute.
-     * @param model The root model for the operation.
-     * @return The ModelNode that has a "handlers" attribute.
-     */
-    @Override
-    protected ModelNode getTargetModel(ModelNode model) {
-        return model.get(CommonAttributes.ROOT_LOGGER);
+        return ROOT_LOGGER_NAME;
     }
 }

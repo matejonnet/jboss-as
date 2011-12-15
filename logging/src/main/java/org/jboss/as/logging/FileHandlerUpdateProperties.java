@@ -22,11 +22,64 @@
 
 package org.jboss.as.logging;
 
+import static org.jboss.as.logging.CommonAttributes.APPEND;
+import static org.jboss.as.logging.CommonAttributes.AUTOFLUSH;
+
+import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationFailedException;
+import org.jboss.dmr.ModelNode;
+import org.jboss.logmanager.handlers.FileHandler;
+
 /**
  * Operation responsible for updating the properties of a file logging handler.
  *
  * @author John Bailey
  */
-public class FileHandlerUpdateProperties extends FlushingHandlerUpdateProperties {
+public class FileHandlerUpdateProperties extends HandlerUpdateProperties<FileHandler> {
     static final FileHandlerUpdateProperties INSTANCE = new FileHandlerUpdateProperties();
+
+    private FileHandlerUpdateProperties() {
+        super(APPEND, AUTOFLUSH);
+        // TODO (jrp) consider implementing FILE as well
+    }
+
+    @Override
+    protected boolean applyUpdateToRuntime(final OperationContext context, final String handlerName, final ModelNode model,
+                                           final ModelNode originalModel, final FileHandler handler) throws OperationFailedException {
+        final ModelNode autoflush = AUTOFLUSH.resolveModelAttribute(context, model);
+        if (autoflush.isDefined()) {
+            handler.setAutoFlush(autoflush.asBoolean());
+        }
+        final ModelNode append = APPEND.resolveModelAttribute(context, model);
+        if (append.isDefined()) {
+            handler.setAppend(append.asBoolean());
+        }
+
+        // TODO (jrp) consider implementing FILE as well
+        /** final ServiceTarget serviceTarget = context.getServiceTarget();
+         final ModelNode file = FILE.validateResolvedOperation(model);
+         if (file.isDefined()) {
+         final HandlerFileService fileService = new HandlerFileService(PATH.validateOperation(file).asString());
+         final ServiceBuilder<?> fileBuilder = serviceTarget.addService(LogServices.handlerFileName(name), fileService);
+         final ModelNode relativeTo = RELATIVE_TO.validateResolvedOperation(file);
+         if (relativeTo.isDefined()) {
+         fileBuilder.addDependency(AbstractPathService.pathNameOf(relativeTo.asString()), String.class, fileService.getRelativeToInjector());
+         }
+         fileBuilder.setInitialMode(ServiceController.Mode.ACTIVE).install();
+         serviceBuilder.addDependency(LogServices.handlerFileName(name), String.class, service.getFileNameInjector());
+         } **/
+        return false;
+    }
+
+    @Override
+    protected void revertUpdateToRuntime(final OperationContext context, final String handlerName, final ModelNode model, final ModelNode originalModel, final FileHandler handler) throws OperationFailedException {
+        final ModelNode autoflush = AUTOFLUSH.resolveModelAttribute(context, originalModel);
+        if (autoflush.isDefined()) {
+            handler.setAutoFlush(autoflush.asBoolean());
+        }
+        final ModelNode append = APPEND.resolveModelAttribute(context, originalModel);
+        if (append.isDefined()) {
+            handler.setAppend(append.asBoolean());
+        }
+    }
 }

@@ -22,9 +22,9 @@
 package org.jboss.as.subsystem.test;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CRITERIA;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEFAULT_INTERFACE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.FIXED_PORT;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HOST;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INET_ADDRESS;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INTERFACE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MULTICAST_ADDRESS;
@@ -47,6 +47,7 @@ import java.util.Map;
 
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.descriptions.common.CommonProviders;
 import org.jboss.as.controller.operations.common.InterfaceAddHandler;
 import org.jboss.as.controller.operations.common.InterfaceCriteriaWriteHandler;
@@ -57,6 +58,7 @@ import org.jboss.as.controller.operations.common.SystemPropertyValueWriteAttribu
 import org.jboss.as.controller.registry.AttributeAccess;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.Resource;
+import org.jboss.as.controller.resource.SocketBindingGroupResourceDefinition;
 import org.jboss.as.server.controller.descriptions.ServerDescriptionProviders;
 import org.jboss.as.server.operations.SpecifiedPathAddHandler;
 import org.jboss.as.server.operations.SpecifiedPathRemoveHandler;
@@ -71,6 +73,10 @@ import org.jboss.as.server.services.net.BindingMulticastAddressHandler;
 import org.jboss.as.server.services.net.BindingMulticastPortHandler;
 import org.jboss.as.server.services.net.BindingPortHandler;
 import org.jboss.as.server.services.net.BindingRemoveHandler;
+import org.jboss.as.server.services.net.LocalDestinationOutboundSocketBindingResourceDefinition;
+import org.jboss.as.server.services.net.OutboundSocketBindingResourceDefinition;
+import org.jboss.as.server.services.net.RemoteDestinationOutboundSocketBindingResourceDefinition;
+import org.jboss.as.server.services.net.SocketBindingResourceDefinition;
 import org.jboss.as.server.services.net.SpecifiedInterfaceAddHandler;
 import org.jboss.as.server.services.net.SpecifiedInterfaceRemoveHandler;
 import org.jboss.dmr.ModelNode;
@@ -87,6 +93,7 @@ public class ControllerInitializer {
     protected volatile String bindAddress = "localhost";
     protected final Map<String, String> systemProperties = new HashMap<String, String>();
     protected final Map<String, Integer> socketBindings = new HashMap<String, Integer>();
+    protected final Map<String, OutboundSocketBinding> outboundSocketBindings = new HashMap<String, OutboundSocketBinding>();
     protected final Map<String, PathInfo> paths = new HashMap<String, PathInfo>();
 
     /**
@@ -138,6 +145,27 @@ public class ControllerInitializer {
     }
 
     /**
+     * Adds a remote outbound socket binding to the model.
+     *
+     * @param name the socket binding name
+     * @param destinationHost The destination host
+     * @param destinationPort the destination port
+     */
+    public void addRemoteOutboundSocketBinding(final String name, final String destinationHost, final int destinationPort) {
+        if (name == null) {
+            throw new IllegalArgumentException("Null name");
+        }
+        if (destinationPort < 0) {
+            throw new IllegalArgumentException("Negative destination port");
+        }
+        if (destinationHost == null || destinationHost.trim().isEmpty()) {
+            throw new IllegalArgumentException("Null or empty destination host");
+        }
+
+        outboundSocketBindings.put(name, new OutboundSocketBinding(destinationHost, destinationPort, true));
+    }
+
+    /**
      * Adds a path to the model
      * This initializes the path part of the model with the operations to add it.
      *
@@ -179,6 +207,7 @@ public class ControllerInitializer {
         initializeSystemPropertiesOperations(ops);
         initializePathsOperations(ops);
         initializeSocketBindingsOperations(ops);
+        initializeRemoteOutboundSocketBindingsOperations(ops);
         return ops;
     }
 
@@ -206,7 +235,7 @@ public class ControllerInitializer {
      * @param rootRegistration the root model registry
      */
     protected void initializeSocketBindingsModel(Resource rootResource, ManagementResourceRegistration rootRegistration) {
-        if (socketBindings.size() == 0) {
+        if (socketBindings.size() == 0 && outboundSocketBindings.isEmpty()) {
             return;
         }
 
@@ -215,26 +244,17 @@ public class ControllerInitializer {
         ManagementResourceRegistration interfaces = rootRegistration.registerSubModel(PathElement.pathElement(INTERFACE), CommonProviders.SPECIFIED_INTERFACE_PROVIDER);
         interfaces.registerOperationHandler(SpecifiedInterfaceAddHandler.OPERATION_NAME, SpecifiedInterfaceAddHandler.INSTANCE, SpecifiedInterfaceAddHandler.INSTANCE, false);
         interfaces.registerOperationHandler(SpecifiedInterfaceRemoveHandler.OPERATION_NAME, SpecifiedInterfaceRemoveHandler.INSTANCE, SpecifiedInterfaceRemoveHandler.INSTANCE, false);
-        interfaces.registerReadWriteAttribute(CRITERIA, null, InterfaceCriteriaWriteHandler.INSTANCE, AttributeAccess.Storage.CONFIGURATION);
+        InterfaceCriteriaWriteHandler.register(interfaces);
 
         // Sockets
-        ManagementResourceRegistration socketGroup = rootRegistration.registerSubModel(PathElement.pathElement(SOCKET_BINDING_GROUP), ServerDescriptionProviders.SOCKET_BINDING_GROUP_PROVIDER);
-        socketGroup.registerOperationHandler(BindingGroupAddHandler.OPERATION_NAME, BindingGroupAddHandler.INSTANCE, BindingGroupAddHandler.INSTANCE, false);
-        socketGroup.registerOperationHandler(SocketBindingGroupRemoveHandler.OPERATION_NAME, SocketBindingGroupRemoveHandler.INSTANCE, SocketBindingGroupRemoveHandler.INSTANCE, false);
-        socketGroup.registerReadWriteAttribute(PORT_OFFSET, null, BindingGroupPortOffsetHandler.INSTANCE, AttributeAccess.Storage.CONFIGURATION);
-        socketGroup.registerReadWriteAttribute(DEFAULT_INTERFACE, null, BindingGroupDefaultInterfaceHandler.INSTANCE, AttributeAccess.Storage.CONFIGURATION);
-        ManagementResourceRegistration socketBinding = socketGroup.registerSubModel(PathElement.pathElement(SOCKET_BINDING), CommonProviders.SOCKET_BINDING_PROVIDER);
-        socketBinding.registerOperationHandler(BindingAddHandler.OPERATION_NAME, BindingAddHandler.INSTANCE, BindingAddHandler.INSTANCE, false);
-        socketBinding.registerOperationHandler(BindingRemoveHandler.OPERATION_NAME, BindingRemoveHandler.INSTANCE, BindingRemoveHandler.INSTANCE, false);
-        socketBinding.registerMetric(BindingMetricHandlers.BoundHandler.ATTRIBUTE_NAME, BindingMetricHandlers.BoundHandler.INSTANCE);
-        socketBinding.registerMetric(BindingMetricHandlers.BoundAddressHandler.ATTRIBUTE_NAME, BindingMetricHandlers.BoundAddressHandler.INSTANCE);
-        socketBinding.registerMetric(BindingMetricHandlers.BoundPortHandler.ATTRIBUTE_NAME, BindingMetricHandlers.BoundPortHandler.INSTANCE);
-        socketBinding.registerReadWriteAttribute(INTERFACE, null, BindingInterfaceHandler.INSTANCE, AttributeAccess.Storage.CONFIGURATION);
-        socketBinding.registerReadWriteAttribute(PORT, null, BindingPortHandler.INSTANCE, AttributeAccess.Storage.CONFIGURATION);
-        socketBinding.registerReadWriteAttribute(FIXED_PORT, null, BindingFixedPortHandler.INSTANCE, AttributeAccess.Storage.CONFIGURATION);
-        socketBinding.registerReadWriteAttribute(MULTICAST_ADDRESS, null, BindingMulticastAddressHandler.INSTANCE, AttributeAccess.Storage.CONFIGURATION);
-        socketBinding.registerReadWriteAttribute(MULTICAST_PORT, null, BindingMulticastPortHandler.INSTANCE, AttributeAccess.Storage.CONFIGURATION);
+        ManagementResourceRegistration socketGroup = rootRegistration.registerSubModel(new SocketBindingGroupResourceDefinition(BindingGroupAddHandler.INSTANCE, SocketBindingGroupRemoveHandler.INSTANCE, false));
+        socketGroup.registerSubModel(SocketBindingResourceDefinition.INSTANCE);
+        // client-socket-binding (for remote destination)
+        socketGroup.registerSubModel(RemoteDestinationOutboundSocketBindingResourceDefinition.INSTANCE);
+        // client-socket-binding (for local destination)
+        socketGroup.registerSubModel(LocalDestinationOutboundSocketBindingResourceDefinition.INSTANCE);
     }
+
 
     /**
      * Initializes the interface, socket binding group and socket binding part of the model
@@ -279,7 +299,7 @@ public class ControllerInitializer {
 
         //Add the interface
         ModelNode criteria = new ModelNode();
-        criteria.add(INET_ADDRESS, bindAddress);
+        criteria.get(INET_ADDRESS).set(bindAddress);
         ModelNode op = InterfaceAddHandler.getAddInterfaceOperation(
                 PathAddress.pathAddress(PathElement.pathElement(INTERFACE, INTERFACE_NAME)).toModelNode(),
                 criteria);
@@ -299,6 +319,38 @@ public class ControllerInitializer {
             op.get(OP_ADDR).set(PathAddress.pathAddress(PathElement.pathElement(SOCKET_BINDING_GROUP, SOCKET_BINDING_GROUP_NAME),
                     PathElement.pathElement(SOCKET_BINDING, binding.getKey())).toModelNode());
             op.get(PORT).set(binding.getValue());
+            ops.add(op);
+        }
+    }
+
+    /**
+     * Creates and add to the <code>ops</code> the <code>add</code> operation for the
+     * remote outbound socket configurations
+     *
+     * @param ops the operations list to add our ops to
+     */
+    protected void initializeRemoteOutboundSocketBindingsOperations(List<ModelNode> ops) {
+        if (outboundSocketBindings.size() == 0) {
+            return;
+        }
+
+        for (Map.Entry<String, OutboundSocketBinding> entry : outboundSocketBindings.entrySet()) {
+            final OutboundSocketBinding binding = entry.getValue();
+            if (!binding.isRemote()) {
+                // skip local outbound socket bindings
+                continue;
+            }
+            final String bindingName = entry.getKey();
+            final ModelNode op = new ModelNode();
+            op.get(OP).set(ADD);
+
+            final PathAddress address = PathAddress.pathAddress(PathElement.pathElement(SOCKET_BINDING_GROUP, SOCKET_BINDING_GROUP_NAME),
+                    PathElement.pathElement(ModelDescriptionConstants.REMOTE_DESTINATION_OUTBOUND_SOCKET_BINDING, bindingName));
+            op.get(OP_ADDR).set(address.toModelNode());
+            // setup the other parameters for the add operation
+            op.get(HOST).set(binding.getDestination());
+            op.get(PORT).set(binding.getDestinationPort());
+            // add the ADD operation to the operations list
             ops.add(op);
         }
     }
@@ -341,6 +393,30 @@ public class ControllerInitializer {
 
         public String getRelativeTo() {
             return relativeTo;
+        }
+    }
+
+    private static class OutboundSocketBinding {
+        private final String destination;
+        private final int port;
+        private final boolean remote;
+
+        OutboundSocketBinding(final String destination, final int port, final boolean remote) {
+            this.destination = destination;
+            this.port = port;
+            this.remote = remote;
+        }
+
+        int getDestinationPort() {
+            return this.port;
+        }
+
+        String getDestination() {
+            return this.destination;
+        }
+
+        boolean isRemote() {
+            return this.remote;
         }
     }
 }

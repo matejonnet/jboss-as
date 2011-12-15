@@ -22,31 +22,35 @@
 
 package org.jboss.as.messaging;
 
+import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.Set;
+
 import org.hornetq.core.security.Role;
 import org.hornetq.core.server.HornetQServer;
+import org.jboss.as.controller.AbstractWriteAttributeHandler;
 import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
-import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.registry.AttributeAccess;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.Resource;
-import org.jboss.as.server.operations.ServerWriteAttributeOperationHandler;
 import org.jboss.dmr.ModelNode;
 import org.jboss.msc.service.ServiceController;
-
-import java.util.EnumSet;
-import java.util.HashSet;
-import java.util.Set;
+import org.jboss.msc.service.ServiceName;
 
 /**
  * @author Emanuel Muckenhuber
  */
-class SecurityRoleAttributeHandler extends ServerWriteAttributeOperationHandler {
+class SecurityRoleAttributeHandler extends AbstractWriteAttributeHandler<Set<Role>> {
 
     static final SecurityRoleAttributeHandler INSTANCE = new SecurityRoleAttributeHandler();
+
+    private SecurityRoleAttributeHandler() {
+        super(SecurityRoleAdd.ROLE_ATTRIBUTES);
+    }
 
     public void registerAttributes(final ManagementResourceRegistration registry) {
         final EnumSet<AttributeAccess.Flag> flags = EnumSet.of(AttributeAccess.Flag.RESTART_NONE);
@@ -56,53 +60,49 @@ class SecurityRoleAttributeHandler extends ServerWriteAttributeOperationHandler 
     }
 
     @Override
-    protected void validateValue(String name, ModelNode value) throws OperationFailedException {
-        final AttributeDefinition def = getAttributeDefinition(name);
-        def.getValidator().validateParameter(name, value);
-    }
+    protected boolean applyUpdateToRuntime(OperationContext context, ModelNode operation, String attributeName,
+                                           ModelNode newValue, ModelNode currentValue,
+                                           HandbackHolder<Set<Role>> handbackHolder) throws OperationFailedException {
 
-    @Override
-    protected boolean applyUpdateToRuntime(OperationContext context, ModelNode operation, String attributeName, ModelNode newValue, ModelNode currentValue) throws OperationFailedException {
-        context.addStep(new OperationStepHandler() {
-            @Override
-            public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-                final HornetQServer server = getServer(context);
-                if(server != null) {
-                    final PathAddress address = PathAddress.pathAddress(operation.require(ModelDescriptionConstants.OP_ADDR));
-                    final String match = address.getElement(address.size() - 2).getValue();
-                    final String roleName = address.getLastElement().getValue();
-                    final Set<Role> newRoles = new HashSet<Role>();
-                    final Set<Role> roles = server.getSecurityRepository().getMatch(match);
-                    for(final Role role : roles) {
-                        if(! roleName.equals(role.getName())) {
-                             newRoles.add(role);
-                        }
-                    }
-                    final Resource resource = context.readResource(PathAddress.EMPTY_ADDRESS);
-                    final ModelNode subModel = resource.getModel();
-                    final Role updatedRole = SecurityRoleAdd.transform(roleName, subModel);
-                    newRoles.add(updatedRole);
-                    server.getSecurityRepository().addMatch(match, newRoles);
+        final HornetQServer server = getServer(context, operation);
+        if(server != null) {
+            final PathAddress address = PathAddress.pathAddress(operation.require(ModelDescriptionConstants.OP_ADDR));
+            final String match = address.getElement(address.size() - 2).getValue();
+            final String roleName = address.getLastElement().getValue();
+            final Set<Role> newRoles = new HashSet<Role>();
+            final Set<Role> roles = server.getSecurityRepository().getMatch(match);
+            handbackHolder.setHandback(roles);
+            for(final Role role : roles) {
+                if(! roleName.equals(role.getName())) {
+                     newRoles.add(role);
                 }
-                context.completeStep();
             }
-        }, OperationContext.Stage.RUNTIME);
+            final Resource resource = context.readResource(PathAddress.EMPTY_ADDRESS);
+            final ModelNode subModel = resource.getModel();
+            final Role updatedRole = SecurityRoleAdd.transform(context, roleName, subModel);
+            newRoles.add(updatedRole);
+            server.getSecurityRepository().addMatch(match, newRoles);
+        }
         return false;
     }
 
-    static HornetQServer getServer(final OperationContext context) {
-        final ServiceController<?> controller = context.getServiceRegistry(true).getService(MessagingServices.JBOSS_MESSAGING);
-        if(controller != null) {
-            return HornetQServer.class.cast(controller.getValue());
+    @Override
+    protected void revertUpdateToRuntime(OperationContext context, ModelNode operation, String attributeName, ModelNode valueToRestore, ModelNode valueToRevert, Set<Role> handback) throws OperationFailedException {
+        if (handback != null) {
+            final HornetQServer server = getServer(context, operation);
+            if(server != null) {
+                final PathAddress address = PathAddress.pathAddress(operation.require(ModelDescriptionConstants.OP_ADDR));
+                final String match = address.getElement(address.size() - 2).getValue();
+                server.getSecurityRepository().addMatch(match, handback);
+            }
         }
-        return null;
     }
 
-    static final AttributeDefinition getAttributeDefinition(final String attributeName) {
-        for(final AttributeDefinition def : SecurityRoleAdd.ROLE_ATTRIBUTES) {
-            if(def.getName().equals(attributeName)) {
-                return def;
-            }
+    static HornetQServer getServer(final OperationContext context, ModelNode operation) {
+        final ServiceName hqServiceName = MessagingServices.getHornetQServiceName(PathAddress.pathAddress(operation.get(ModelDescriptionConstants.OP_ADDR)));
+        final ServiceController<?> controller = context.getServiceRegistry(true).getService(hqServiceName);
+        if(controller != null) {
+            return HornetQServer.class.cast(controller.getValue());
         }
         return null;
     }

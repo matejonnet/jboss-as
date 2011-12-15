@@ -39,6 +39,8 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPE
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATION_NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PROFILE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELEASE_CODENAME;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELEASE_VERSION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REPLY_PROPERTIES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUIRED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SCHEMA_LOCATIONS;
@@ -52,6 +54,8 @@ import static org.jboss.as.server.controller.descriptions.ServerDescriptionConst
 import java.util.Locale;
 import java.util.ResourceBundle;
 
+import org.jboss.as.controller.descriptions.ResourceDescriptionResolver;
+import org.jboss.as.controller.descriptions.StandardResourceDescriptionResolver;
 import org.jboss.as.controller.descriptions.common.CommonDescriptions;
 import org.jboss.as.server.deployment.DeploymentRemoveHandler;
 import org.jboss.dmr.ModelNode;
@@ -65,6 +69,10 @@ import org.jboss.dmr.ModelType;
 public class DomainRootDescription {
 
     private static final String RESOURCE_NAME = DomainRootDescription.class.getPackage().getName() + ".LocalDescriptions";
+
+    public static ResourceDescriptionResolver getResourceDescriptionResolver(final String keyPrefix) {
+        return new StandardResourceDescriptionResolver(keyPrefix, RESOURCE_NAME, DomainRootDescription.class.getClassLoader(), true, true);
+    }
 
     public static ModelNode getDescription(final Locale locale) {
 
@@ -83,6 +91,18 @@ public class DomainRootDescription {
         root.get(ATTRIBUTES, PROCESS_TYPE, MIN_LENGTH).set(1);
         root.get(ATTRIBUTES, PROCESS_TYPE, ALLOWED).add("Domain Controller");
         root.get(ATTRIBUTES, PROCESS_TYPE, ALLOWED).add("Host Controller");
+
+        root.get(ATTRIBUTES, RELEASE_VERSION, DESCRIPTION).set(bundle.getString("domain.release-version"));
+        root.get(ATTRIBUTES, RELEASE_VERSION, TYPE).set(ModelType.STRING);
+        root.get(ATTRIBUTES, RELEASE_VERSION, REQUIRED).set(true);
+        root.get(ATTRIBUTES, RELEASE_VERSION, NILLABLE).set(false);
+        root.get(ATTRIBUTES, RELEASE_VERSION, MIN_LENGTH).set(1);
+
+        root.get(ATTRIBUTES, RELEASE_CODENAME, DESCRIPTION).set(bundle.getString("domain.release-codename"));
+        root.get(ATTRIBUTES, RELEASE_CODENAME, TYPE).set(ModelType.STRING);
+        root.get(ATTRIBUTES, RELEASE_CODENAME, REQUIRED).set(true);
+        root.get(ATTRIBUTES, RELEASE_CODENAME, NILLABLE).set(false);
+        root.get(ATTRIBUTES, RELEASE_CODENAME, MIN_LENGTH).set(1);
 
         root.get(OPERATIONS).setEmptyObject();
 

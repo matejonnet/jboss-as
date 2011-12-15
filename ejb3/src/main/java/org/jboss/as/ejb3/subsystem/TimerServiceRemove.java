@@ -31,18 +31,21 @@ import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.dmr.ModelNode;
 
 /**
+ * Handles the remove operation for the timer-service resource.
+ *
  * @author Stuart Douglas
  */
-public class TimerServiceRemove extends AbstractRemoveStepHandler implements DescriptionProvider {
+public class TimerServiceRemove extends AbstractRemoveStepHandler {
 
     public static final TimerServiceRemove INSTANCE = new TimerServiceRemove();
 
     @Override
-    public ModelNode getModelDescription(Locale locale) {
-        return EJB3SubsystemDescriptions.getTimerServiceRemoveDescription(locale);
+    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model) throws OperationFailedException {
+        context.reloadRequired();
     }
 
     @Override
-    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model) throws OperationFailedException {
+    protected void recoverServices(OperationContext context, ModelNode operation, ModelNode model) throws OperationFailedException {
+        context.revertReloadRequired();
     }
 }

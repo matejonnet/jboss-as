@@ -21,6 +21,8 @@
  */
 package org.jboss.as.webservices.tomcat;
 
+import static org.jboss.as.webservices.WSMessages.MESSAGES;
+
 import org.jboss.wsf.spi.classloading.ClassLoaderProvider;
 import org.jboss.wsf.spi.deployment.ServletDelegate;
 import org.jboss.wsf.spi.deployment.ServletDelegateFactory;
@@ -33,16 +35,18 @@ import org.jboss.wsf.spi.deployment.ServletDelegateFactory;
  * @since 06-Apr-2011
  *
  */
-public class ServletDelegateFactoryImpl implements ServletDelegateFactory {
+public final class ServletDelegateFactoryImpl implements ServletDelegateFactory {
 
     @Override
-    public ServletDelegate newServletDelegate(String servletClassName) {
+    public ServletDelegate newServletDelegate(final String servletClassName, final boolean isJaxWs) {
+        final ClassLoaderProvider provider = ClassLoaderProvider.getDefaultProvider();
+        final ClassLoader classLoader = isJaxWs ? provider.getServerIntegrationClassLoader() : provider.getServerJAXRPCIntegrationClassLoader();
         try {
-            ClassLoader classLoader = ClassLoaderProvider.getDefaultProvider().getServerIntegrationClassLoader();
-            Class<?> clazz = classLoader.loadClass(servletClassName);
+            final Class<?> clazz = classLoader.loadClass(servletClassName);
             return (ServletDelegate) clazz.newInstance();
-        } catch (Exception e) {
-            throw new RuntimeException("Could not create servlet delegate: " + servletClassName, e);
+        } catch (final Exception e) {
+            throw MESSAGES.cannotInstantiateServletDelegate(e, servletClassName);
         }
     }
+
 }

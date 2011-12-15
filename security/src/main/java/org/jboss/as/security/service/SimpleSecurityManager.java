@@ -21,6 +21,20 @@
  */
 package org.jboss.as.security.service;
 
+import static java.security.AccessController.doPrivileged;
+
+import java.security.Principal;
+import java.security.PrivilegedAction;
+import java.security.acl.Group;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import javax.security.auth.Subject;
+
+import org.jboss.metadata.javaee.spec.SecurityRolesMetaData;
 import org.jboss.security.AuthenticationManager;
 import org.jboss.security.AuthorizationManager;
 import org.jboss.security.RunAs;
@@ -35,18 +49,6 @@ import org.jboss.security.identity.Identity;
 import org.jboss.security.identity.Role;
 import org.jboss.security.identity.RoleGroup;
 import org.jboss.security.identity.plugins.SimpleIdentity;
-
-import javax.security.auth.Subject;
-import java.security.Principal;
-import java.security.PrivilegedAction;
-import java.security.acl.Group;
-import java.util.Collections;
-import java.util.Enumeration;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
-import static java.security.AccessController.doPrivileged;
 
 /**
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
@@ -76,16 +78,17 @@ public class SimpleSecurityManager {
 
     public Principal getCallerPrincipal() {
         final SecurityContext securityContext = doPrivileged(securityContext());
-        if (securityContext == null)
-            throw new IllegalStateException("No security context established");
+        if (securityContext == null) {
+            return getUnauthenticatedIdentity().asPrincipal();
+        }
         /*
-        final Principal principal = getPrincipal(securityContext.getUtil().getSubject());
-        */
+         * final Principal principal = getPrincipal(securityContext.getUtil().getSubject());
+         */
         Principal principal = securityContext.getIncomingRunAs();
         if (principal == null)
             principal = getPrincipal(securityContext.getSubjectInfo().getAuthenticatedSubject());
         if (principal == null)
-            throw new IllegalStateException("No principal available");
+            return getUnauthenticatedIdentity().asPrincipal();
         return principal;
     }
 
@@ -122,13 +125,15 @@ public class SimpleSecurityManager {
 
     /**
      *
+     * @param mappedRoles
      * @param roleNames
      * @return true if the user is in any one of the roles listed
      */
-    public boolean isCallerInRole(final String... roleNames) {
+    public boolean isCallerInRole(final SecurityRolesMetaData mappedRoles, final String... roleNames) {
         final SecurityContext securityContext = doPrivileged(securityContext());
-        if (securityContext == null)
-            throw new IllegalStateException("No security context established");
+        if (securityContext == null) {
+            return false;
+        }
 
         RoleGroup roleGroup = null;
 
@@ -155,6 +160,14 @@ public class SimpleSecurityManager {
         for (Role current : roles) {
             actualRoles.add(current.getRoleName());
         }
+        // add mapped roles
+        if (mappedRoles != null) {
+            Principal callerPrincipal = getCallerPrincipal();
+            Set<String> mapped = mappedRoles.getSecurityRoleNamesByPrincipal(callerPrincipal.getName());
+            if (mapped != null) {
+                actualRoles.addAll(mapped);
+            }
+        }
 
         boolean userNotInRole = Collections.disjoint(requiredRoles, actualRoles);
 
@@ -167,9 +180,10 @@ public class SimpleSecurityManager {
      * @param securityDomain
      * @param runAs
      * @param runAsPrincipal
+     * @param extraRoles
      */
-    public void push(final String securityDomain, final String runAs, final String runAsPrincipal) {
-        // TODO - Handle a null securityDomain here?  Yes I think so.
+    public void push(final String securityDomain, final String runAs, final String runAsPrincipal, final Set<String> extraRoles) {
+        // TODO - Handle a null securityDomain here? Yes I think so.
         final SecurityContext previous = SecurityContextAssociation.getSecurityContext();
         contexts.push(previous);
         SecurityContext current = establishSecurityContext(securityDomain);
@@ -192,7 +206,7 @@ public class SimpleSecurityManager {
         }
 
         if (runAs != null) {
-            RunAs runAsIdentity = new RunAsIdentity(runAs, runAsPrincipal);
+            RunAs runAsIdentity = new RunAsIdentity(runAs, runAsPrincipal, extraRoles);
             current.setOutgoingRunAs(runAsIdentity);
         } else if (previous != null && previous.getOutgoingRunAs() != null) {
             // Ensure the propagation continues.
@@ -230,7 +244,7 @@ public class SimpleSecurityManager {
     // Also the spec requires a container representation of an unauthenticated identity so providing
     // at least a default is not optional.
     private Identity getUnauthenticatedIdentity() {
-      return new SimpleIdentity("anonymous");
+        return new SimpleIdentity("anonymous");
     }
 
     /**

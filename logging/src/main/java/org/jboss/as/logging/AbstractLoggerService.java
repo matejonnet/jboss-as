@@ -28,6 +28,10 @@ import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
 
+import static org.jboss.as.logging.LoggingMessages.MESSAGES;
+
+import java.util.logging.Filter;
+
 /**
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
@@ -36,9 +40,14 @@ public abstract class AbstractLoggerService implements Service<Logger> {
     private final String name;
 
     private Logger logger;
+    private Filter filter;
 
     protected AbstractLoggerService(final String name) {
-        this.name = name;
+        if (CommonAttributes.ROOT_LOGGER_NAME.equals(name)) {
+            this.name = "";
+        } else {
+            this.name = name;
+        }
     }
 
     protected final String getName() {
@@ -47,6 +56,9 @@ public abstract class AbstractLoggerService implements Service<Logger> {
 
     public final synchronized void start(final StartContext context) throws StartException {
         logger = Logger.getLogger(getName());
+        if (filter != null) {
+            logger.setFilter(filter);
+        }
         start(context, logger);
     }
 
@@ -66,8 +78,16 @@ public abstract class AbstractLoggerService implements Service<Logger> {
         return notNull(getLogger());
     }
 
+    public synchronized void setFilter(final Filter filter) {
+        this.filter = filter;
+        final Logger logger = this.logger;
+        if (logger != null) {
+            logger.setFilter(filter);
+        }
+    }
+
     private static <T> T notNull(T value) {
-        if (value == null) throw new IllegalStateException("Service not started");
+        if (value == null) throw MESSAGES.serviceNotStarted();
         return value;
     }
 }

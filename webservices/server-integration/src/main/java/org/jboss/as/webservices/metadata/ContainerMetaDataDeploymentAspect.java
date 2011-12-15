@@ -21,60 +21,54 @@
  */
 package org.jboss.as.webservices.metadata;
 
+import static org.jboss.as.webservices.WSLogger.ROOT_LOGGER;
+
 import org.jboss.metadata.web.jboss.JBossWebMetaData;
+import org.jboss.ws.common.integration.AbstractDeploymentAspect;
 import org.jboss.ws.common.integration.WSHelper;
 import org.jboss.wsf.spi.deployment.Deployment;
 import org.jboss.wsf.spi.metadata.j2ee.EJBArchiveMetaData;
 import org.jboss.wsf.spi.metadata.j2ee.JSEArchiveMetaData;
-import org.jboss.ws.common.integration.AbstractDeploymentAspect;
 
 /**
  * An aspect that builds container independent meta data.
  *
  * @author <a href="mailto:ropalka@redhat.com">Richard Opalka</a>
- * @author <a href="mailto:tdiesler@redhat.com">Thomas Diesler</a>
  */
 public final class ContainerMetaDataDeploymentAspect extends AbstractDeploymentAspect {
-    /** JSE meta data builder. */
-    private final MetaDataBuilderJSE metaDataBuilderJSE = new MetaDataBuilderJSE();
 
-    /** EJB3 meta data builder. */
-    private final MetaDataBuilderEJB3 metaDataBuilderEJB3 = new MetaDataBuilderEJB3();
-// TODO
-//   /** EJB21 meta data builder. */
-//   private final MetaDataBuilderEJB21 metaDataBuilderEJB21 = new MetaDataBuilderEJB21();
+    private final MetaDataBuilderJAXWS_POJO jaxwsPojoMDBuilder = new MetaDataBuilderJAXWS_POJO();
 
-    /**
-     * Constructor.
-     */
-    public ContainerMetaDataDeploymentAspect() {
-        super();
-    }
+    private final MetaDataBuilderJAXWS_EJB jaxwsEjbMDBuilder = new MetaDataBuilderJAXWS_EJB();
 
-    /**
-     * Build container independent meta data.
-     *
-     * @param dep webservice deployment
-     */
+    private final MetaDataBuilderJAXRPC_POJO jaxrpcPojoMDBuilder = new MetaDataBuilderJAXRPC_POJO();
+
+    private final MetaDataBuilderJAXRPC_EJB jaxrpcEjbMDBuilder = new MetaDataBuilderJAXRPC_EJB();
+
     @Override
     public void start(final Deployment dep) {
-        if (WSHelper.isJseDeployment(dep)) {
-            this.log.debug("Creating JBoss agnostic JSE meta data for deployment: " + dep.getSimpleName());
+        if (WSHelper.isJaxwsJseDeployment(dep)) {
             if (WSHelper.hasAttachment(dep, JBossWebMetaData.class)) {
-                final JSEArchiveMetaData jseMetaData = this.metaDataBuilderJSE.create(dep);
+                ROOT_LOGGER.creatingDeployment("JAXWS", "POJO", dep.getSimpleName());
+                final JSEArchiveMetaData jseMetaData = jaxwsPojoMDBuilder.create(dep);
                 dep.addAttachment(JSEArchiveMetaData.class, jseMetaData);
             }
         }
-        else if (WSHelper.isJaxwsEjbDeployment(dep)) {
-            this.log.debug("Creating JBoss agnostic EJB3 meta data for deployment: " + dep.getSimpleName());
-            final EJBArchiveMetaData ejbMetaData = this.metaDataBuilderEJB3.create(dep);
+        if (WSHelper.isJaxwsEjbDeployment(dep)) {
+            ROOT_LOGGER.creatingDeployment("JAXWS", "EJB", dep.getSimpleName());
+            final EJBArchiveMetaData ejbMetaData = jaxwsEjbMDBuilder.create(dep);
             dep.addAttachment(EJBArchiveMetaData.class, ejbMetaData);
         }
-//      else if (WSHelper.isJaxrpcEjbDeployment(dep))
-//      {
-//         this.log.debug("Creating JBoss agnostic EJB21 meta data for deployment: " + dep.getSimpleName());
-//         final EJBArchiveMetaData ejbMetaData = this.metaDataBuilderEJB21.create(dep);
-//         dep.addAttachment(EJBArchiveMetaData.class, ejbMetaData);
-//      }
-   }
+        else if (WSHelper.isJaxrpcJseDeployment(dep)) {
+            ROOT_LOGGER.creatingDeployment("JAXRPC", "POJO", dep.getSimpleName());
+            final JSEArchiveMetaData jseMetaData = jaxrpcPojoMDBuilder.create(dep);
+            dep.addAttachment(JSEArchiveMetaData.class, jseMetaData);
+        }
+        else if (WSHelper.isJaxrpcEjbDeployment(dep)) {
+            ROOT_LOGGER.creatingDeployment("JAXRPC", "EJB", dep.getSimpleName());
+            final EJBArchiveMetaData ejbMetaData = jaxrpcEjbMDBuilder.create(dep);
+            dep.addAttachment(EJBArchiveMetaData.class, ejbMetaData);
+        }
+    }
+
 }

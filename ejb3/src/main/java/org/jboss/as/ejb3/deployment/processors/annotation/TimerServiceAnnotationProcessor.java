@@ -21,12 +21,15 @@
  */
 package org.jboss.as.ejb3.deployment.processors.annotation;
 
-import org.jboss.as.ee.metadata.AbstractEEAnnotationProcessor;
-import org.jboss.as.ee.metadata.ClassAnnotationInformationFactory;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
+import javax.ejb.Timeout;
+
+import org.jboss.as.ee.component.deployers.BooleanAnnotationInformationFactory;
+import org.jboss.as.ee.metadata.AbstractEEAnnotationProcessor;
+import org.jboss.as.ee.metadata.ClassAnnotationInformationFactory;
 
 /**
  * Processes EJB annotations and attaches them to the {@link org.jboss.as.ee.component.EEModuleClassDescription}
@@ -38,8 +41,8 @@ public class TimerServiceAnnotationProcessor extends AbstractEEAnnotationProcess
     final List<ClassAnnotationInformationFactory> factories;
 
     public TimerServiceAnnotationProcessor() {
-        List<ClassAnnotationInformationFactory> factories = new ArrayList<ClassAnnotationInformationFactory>();
-        factories.add(new TimeoutAnnotationInformationFactory());
+        final List<ClassAnnotationInformationFactory> factories = new ArrayList<ClassAnnotationInformationFactory>();
+        factories.add(new BooleanAnnotationInformationFactory<Timeout>(Timeout.class));
         factories.add(new ScheduleAnnotationInformationFactory());
         this.factories = Collections.unmodifiableList(factories);
     }

@@ -21,6 +21,8 @@
  */
 package org.jboss.as.controller.remote;
 
+import static org.jboss.as.controller.ControllerMessages.MESSAGES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.FAILED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 
 import java.io.BufferedInputStream;
@@ -34,8 +36,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jboss.as.controller.ModelController.OperationTransaction;
 import org.jboss.as.controller.PathAddress;
@@ -45,6 +47,7 @@ import org.jboss.as.controller.client.MessageSeverity;
 import org.jboss.as.controller.client.OperationAttachments;
 import org.jboss.as.controller.client.OperationMessageHandler;
 import org.jboss.as.controller.client.impl.ModelControllerProtocol;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OUTCOME;
 import org.jboss.as.protocol.mgmt.FlushableDataOutput;
 import org.jboss.as.protocol.mgmt.ManagementBatchIdManager;
 import org.jboss.as.protocol.mgmt.ManagementChannel;
@@ -53,13 +56,11 @@ import org.jboss.as.protocol.mgmt.ManagementOperationHandler;
 import org.jboss.as.protocol.mgmt.ManagementRequest;
 import org.jboss.as.protocol.mgmt.ManagementRequestHandler;
 import org.jboss.as.protocol.mgmt.ManagementResponseHandler;
+import org.jboss.as.protocol.mgmt.ProtocolUtils;
 import org.jboss.as.protocol.mgmt.RequestProcessingException;
-import org.jboss.as.protocol.old.ProtocolUtils;
 import org.jboss.dmr.ModelNode;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.CloseHandler;
-import org.jboss.threads.AsyncFuture;
-import org.jboss.threads.AsyncFuture.Status;
 
 /**
  *
@@ -86,7 +87,7 @@ public class RemoteProxyController implements ProxyController, ManagementOperati
                 RemoteProxyController.this.closed.set(true);
                 synchronized (activeRequests) {
                     for (ExecuteRequestContext context : activeRequests.values()) {
-                        context.setError("Channel closed");
+                        context.setError(MESSAGES.channelClosed());
                     }
                     activeRequests.clear();
                 }
@@ -134,6 +135,8 @@ public class RemoteProxyController implements ProxyController, ManagementOperati
     @Override
     public void execute(final ModelNode operation, final OperationMessageHandler handler, final ProxyOperationControl control, final OperationAttachments attachments) {
         final int batchId = ManagementBatchIdManager.DEFAULT.createBatchId();
+        final CountDownLatch prepareOrFailedLatch = new CountDownLatch(1);
+        final AtomicBoolean failed = new AtomicBoolean(false);
         //As per the interface javadoc this method should block until either the operationFailed() or the operationPrepared() methods of the ProxyOperationControl have been called
         ExecuteRequest request = new ExecuteRequest(
             batchId,
@@ -143,11 +146,14 @@ public class RemoteProxyController implements ProxyController, ManagementOperati
                 @Override
                 public void operationPrepared(OperationTransaction transaction, ModelNode result) {
                     control.operationPrepared(transaction, result);
+                    prepareOrFailedLatch.countDown();
                 }
 
                 @Override
                 public void operationFailed(ModelNode response) {
                     control.operationFailed(response);
+                    failed.set(true);
+                    prepareOrFailedLatch.countDown();
                 }
 
                 @Override
@@ -155,9 +161,22 @@ public class RemoteProxyController implements ProxyController, ManagementOperati
                     control.operationCompleted(response);
                 }
             },
-            attachments);
+            attachments) {
+
+            @Override
+            protected void setError(Exception e) {
+                super.setError(e);
+                if(failed.compareAndSet(false, true)) {
+                    control.operationFailed(new ModelNode().get(OUTCOME).set(FAILED));
+                }
+                prepareOrFailedLatch.countDown();
+            }
+        };
         try {
             request.executeForResult(executorService, getChannelStrategy());
+            // Wait until the remote side completed all steps and sends the prepared
+            // result, or there is a failure
+            prepareOrFailedLatch.await();
         } catch (Exception e) {
             try {
                 ManagementBatchIdManager.DEFAULT.freeBatchId(batchId);
@@ -167,23 +186,6 @@ public class RemoteProxyController implements ProxyController, ManagementOperati
             throw new RuntimeException(e);
         }
     }
-
-    //TODO this should be deleted once REM3-121 is available
-    public boolean ping(long timeoutMs) {
-        ManagementClientChannelStrategy channelStrategy = getChannelStrategy();
-        AsyncFuture<Void> future = new PingRequest().execute(executorService, channelStrategy);
-        try {
-            Status status = future.await(timeoutMs, TimeUnit.MILLISECONDS);
-            if (status == Status.WAITING) {
-                return false;
-            }
-            return status == Status.COMPLETE;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Thread was interrupted waiting for ping request");
-        }
-    }
-
 
     private ManagementClientChannelStrategy getChannelStrategy() {
         return ManagementClientChannelStrategy.create(channel);
@@ -198,22 +200,6 @@ public class RemoteProxyController implements ProxyController, ManagementOperati
         final ModelNode proxyOp = op.clone();
         proxyOp.get(OP_ADDR).set(translated.toModelNode());
         return proxyOp;
-    }
-
-    private class PingRequest extends ManagementRequest<Void>{
-
-        @Override
-        protected byte getRequestCode() {
-            return ModelControllerProtocol.TEMP_PING_REQUEST;
-        }
-
-        @Override
-        protected ManagementResponseHandler<Void> getResponseHandler() {
-            //TODO this needs cleaning up once the operation has been executed
-            //activeRequests.remove(currentRequestId);
-            return ManagementResponseHandler.EMPTY_RESPONSE;
-        }
-
     }
 
     /**
@@ -262,8 +248,6 @@ public class RemoteProxyController implements ProxyController, ManagementOperati
 
         @Override
         protected ManagementResponseHandler<Void> getResponseHandler() {
-            //TODO this needs cleaning up once the operation has been executed
-            //activeRequests.remove(currentRequestId);
             return ManagementResponseHandler.EMPTY_RESPONSE;
         }
 
@@ -299,7 +283,7 @@ public class RemoteProxyController implements ProxyController, ManagementOperati
         protected void processRequest() throws RequestProcessingException {
             ExecuteRequestContext requestContext = activeRequests.get(batchId);
             if (requestContext == null) {
-                throw new RequestProcessingException("No active request found for handling report " + batchId);
+                throw MESSAGES.noActiveRequestForHandlingReport(batchId);
             }
             requestContext.getMessageHandler().handleReport(severity, message);
         }
@@ -321,7 +305,7 @@ public class RemoteProxyController implements ProxyController, ManagementOperati
 
             ExecuteRequestContext requestContext = activeRequests.get(batchId);
             if (requestContext == null) {
-                throw new IOException("No active request found for reading inputstream report " + batchId);
+                throw MESSAGES.noActiveRequestForReadingInputStreamReport(batchId);
             }
             InputStream in = requestContext.getAttachments().getInputStreams().get(index);
             attachmentInput = in != null ? new BufferedInputStream(in) : null;
@@ -374,7 +358,7 @@ public class RemoteProxyController implements ProxyController, ManagementOperati
         protected void processRequest() throws RequestProcessingException {
             requestContext = activeRequests.get(batchId);
             if (requestContext == null) {
-                throw new RequestProcessingException("No active request found for proxy operation control " + batchId);
+                throw MESSAGES.noActiveRequestForProxyOperation(batchId);
             }
             handle(batchId, requestContext.getControl(), response);
         }
@@ -457,7 +441,7 @@ public class RemoteProxyController implements ProxyController, ManagementOperati
                         requestContext.awaitControlCompleted();
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
-                        throw new RuntimeException("A timeout occurred waiting for the transaction to " + (commit ? "commit" : "rollback"));
+                        throw MESSAGES.transactionTimeout(commit ? "commit" : "rollback");
                     }
                 }
             }, response);
@@ -506,7 +490,7 @@ public class RemoteProxyController implements ProxyController, ManagementOperati
         CloseHandler<Channel> getRequestCloseHandler(){
             return new CloseHandler<Channel>() {
                 public void handleClose(final Channel closed, final IOException exception) {
-                    setError("Channel Closed");
+                    setError(MESSAGES.channelClosed());
                 }
             };
         }

@@ -116,6 +116,22 @@ public class DomainTestSupport {
         processFutures(futures, timeout);
     }
 
+    public static ModelNode createOperationNode(String address, String operation) {
+        ModelNode op = new ModelNode();
+
+        // set address
+        ModelNode list = op.get("address").setEmptyList();
+        if (address != null) {
+            String [] pathSegments = address.split("/");
+            for (String segment : pathSegments) {
+                String[] elements = segment.split("=");
+                list.add(elements[0], elements[1]);
+            }
+        }
+        op.get("operation").set(operation);
+        return op;
+    }
+
     public static ModelNode validateResponse(ModelNode response) {
 
         if(! SUCCESS.equals(response.get(OUTCOME).asString())) {
@@ -174,6 +190,11 @@ public class DomainTestSupport {
     private final DomainLifecycleUtil domainMasterLifecycleUtil;
     private final DomainLifecycleUtil domainSlaveLifecycleUtil;
 
+
+    public DomainTestSupport(final String testClass, final Configuration configuration) throws Exception {
+        this(testClass, configuration.getDomainConfig(), configuration.getMasterConfig(), configuration.getSlaveConfigs());
+    }
+
     public DomainTestSupport(final String testClass, final String domainConfig, final String masterConfig, final String slaveConfig) throws Exception {
         this.domainConfig = domainConfig;
         this.masterConfig = masterConfig;
@@ -203,6 +224,11 @@ public class DomainTestSupport {
         if (domainSlaveLifecycleUtil != null) {
             domainSlaveLifecycleUtil.start();
         }
+        try {
+            //Thread.sleep(2000);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     public void stop() {
@@ -215,4 +241,36 @@ public class DomainTestSupport {
             domainMasterLifecycleUtil.stop();
         }
     }
+
+    public static class Configuration {
+
+        private String domainConfig;
+        private String masterConfig;
+        private String slaveConfig;
+
+        protected Configuration(final String domainConfig, final String masterConfig, final String slaveConfig) {
+            this.domainConfig = domainConfig;
+            this.masterConfig = masterConfig;
+            this.slaveConfig = slaveConfig;
+        }
+
+        public String getDomainConfig() {
+            return domainConfig;
+        }
+
+        public String getMasterConfig() {
+            return masterConfig;
+        }
+
+        public String getSlaveConfigs() {
+            return slaveConfig;
+        }
+
+        public static Configuration create(final String domainConfig, final String masterConfig, final String slaveConfig) {
+            return new Configuration(domainConfig, masterConfig, slaveConfig);
+        }
+
+    }
+
+
 }

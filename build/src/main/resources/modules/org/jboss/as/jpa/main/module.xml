@@ -22,7 +22,7 @@
   ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
   -->
 
-<module xmlns="urn:jboss:module:1.0" name="org.jboss.as.jpa">
+<module xmlns="urn:jboss:module:1.1" name="org.jboss.as.jpa">
 
     <resources>
         <!-- Insert resources here -->
@@ -43,6 +43,7 @@
         <module name="org.jboss.as.ee"/>
         <module name="org.jboss.as.ejb3"/>
         <module name="org.jboss.as.jpa.spi"/>
+        <module name="org.jboss.as.jpa.util"/>
         <module name="org.jboss.as.naming"/>
         <module name="org.jboss.as.server"/>
         <module name="org.jboss.as.threads"/>

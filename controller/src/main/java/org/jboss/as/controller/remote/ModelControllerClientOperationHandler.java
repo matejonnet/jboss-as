@@ -21,6 +21,8 @@
  */
 package org.jboss.as.controller.remote;
 
+import static org.jboss.as.controller.ControllerLogger.ROOT_LOGGER;
+import static org.jboss.as.controller.ControllerMessages.MESSAGES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.FAILED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.FAILURE_DESCRIPTION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OUTCOME;
@@ -36,12 +38,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
 import org.jboss.as.controller.ModelController;
+import org.jboss.as.controller.ProxyController;
+import org.jboss.as.controller.client.OperationAttachments;
 import org.jboss.as.controller.client.OperationMessageHandler;
 import org.jboss.as.controller.client.impl.ModelControllerProtocol;
 import org.jboss.as.protocol.mgmt.FlushableDataOutput;
 import org.jboss.as.protocol.mgmt.ManagementRequestHandler;
 import org.jboss.as.protocol.mgmt.RequestProcessingException;
-import org.jboss.as.protocol.old.ProtocolUtils;
+import org.jboss.as.protocol.mgmt.ProtocolUtils;
 import org.jboss.dmr.ModelNode;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.CloseHandler;
@@ -79,7 +83,7 @@ public class ModelControllerClientOperationHandler extends AbstractModelControll
     }
 
     /**
-     * Handles incoming {@link _TempNewProxyController#execute(ModelNode, OperationMessageHandler, ProxyOperationControl, org.jboss.as.controller.client._TempNewOperationAttachments)}
+     * Handles incoming {@link RemoteProxyController#execute(ModelNode, OperationMessageHandler, ProxyController.ProxyOperationControl, OperationAttachments)}
      * requests from the remote proxy controller and forwards them to the target model controller
      */
     private class ExecuteRequestHandler extends ManagementRequestHandler {
@@ -132,7 +136,7 @@ public class ModelControllerClientOperationHandler extends AbstractModelControll
                         t.interrupt();
                     }
                     Thread.currentThread().interrupt();
-                    throw new RequestProcessingException("Thread was interrupted waiting for a response for asynch operation");
+                    throw MESSAGES.asynchOperationThreadInterrupted();
                 }
             }
         }
@@ -146,7 +150,7 @@ public class ModelControllerClientOperationHandler extends AbstractModelControll
             OperationAttachmentsProxy attachmentsProxy = new OperationAttachmentsProxy(getChannel(), batchId, attachmentsLength);
             try {
                 try {
-                    log.tracef("Executing client request %d(%d)", batchId, getHeader().getRequestId());
+                    ROOT_LOGGER.tracef("Executing client request %d(%d)", batchId, getHeader().getRequestId());
                     if (asynch) {
                         //register the cancel handler
                         asynchRequests.put(batchId, Thread.currentThread());
@@ -163,7 +167,7 @@ public class ModelControllerClientOperationHandler extends AbstractModelControll
                     result = failure;
                     attachmentsProxy.shutdown(e);
                 } finally {
-                    log.tracef("Executed client request %d", batchId);
+                    ROOT_LOGGER.tracef("Executed client request %d", batchId);
                 }
             } finally {
                 if (asynch) {
@@ -193,7 +197,7 @@ public class ModelControllerClientOperationHandler extends AbstractModelControll
                 t.interrupt();
             }
             else {
-                throw new RequestProcessingException("No asynch request with batch id " + batchId);
+                throw MESSAGES.asynchRequestNotFound(batchId);
             }
         }
     }

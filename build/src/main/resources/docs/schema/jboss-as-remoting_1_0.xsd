@@ -37,12 +37,28 @@
                 The configuration of the Remoting subsystem.
 
                 The nested "connector" element(s) define connectors for this subsystem.
+                
+                The attributes correspond to the following xnio options:
+                  org.xnio.Options#WORKER_READ_THREADS (normally 1 or maybe 2-3 for an exceptionally busy server)
+                  org.xnio.Options#WORKER_WRITE_THREADS (same)
+                  org.xnio.Options#WORKER_ACCEPT_THREADS (we can just leave this at 1, it doesn't have to be tunable for Remoting)
+                  org.xnio.Options#WORKER_TASK_CORE_THREADS (core pool size)
+                  org.xnio.Options#WORKER_TASK_MAX_THREADS (max pool size)
+                  org.xnio.Options#WORKER_TASK_KEEPALIVE (keepalive time in milliseconds)
+                  org.xnio.Options#WORKER_TASK_LIMIT (worker queue length)
             ]]>
             </xs:documentation>
         </xs:annotation>
         <xs:choice minOccurs="0" maxOccurs="unbounded">
             <xs:element name="connector" type="connector"/>
         </xs:choice>
+        <xs:attribute name="worker-read-threads" type="xs:integer" use="optional"/>
+        <xs:attribute name="worker-write-threads" type="xs:integer" use="optional"/>
+        <xs:attribute name="worker-task-core-threads" type="xs:integer" use="optional"/>
+        <xs:attribute name="worker-task-max-threads" type="xs:integer" use="optional"/>
+        <xs:attribute name="worker-task-keepalive" type="xs:integer" use="optional"/>
+        <xs:attribute name="worker-task-limit" type="xs:integer" use="optional"/>
+        
     </xs:complexType>
 
     <xs:complexType name="connector">
@@ -100,8 +116,8 @@
             </xs:documentation>
         </xs:annotation>
         <xs:all>
-            <xs:element name="include-mechanisms" type="name-list" minOccurs="0"/>
-            <xs:element name="qop" type="qop" minOccurs="0"/>
+            <xs:element name="include-mechanisms" type="name-listType" minOccurs="0"/>
+            <xs:element name="qop" type="qop-listType" minOccurs="0"/>
             <xs:element name="strength" type="strength" minOccurs="0"/>
             <xs:element name="reuse-session" type="boolean-element" minOccurs="0"/>
             <xs:element name="server-auth" type="boolean-element" minOccurs="0"/>
@@ -158,6 +174,17 @@
         <xs:attribute name="value" type="xs:boolean" use="required"/>
     </xs:complexType>
 
+    <xs:complexType name="name-listType">
+        <xs:annotation>
+            <xs:documentation>
+            <![CDATA[
+                An element specifying a string list.
+            ]]>
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="value" type="name-list" use="required"/>
+    </xs:complexType>   
+
     <xs:simpleType name="name-list">
         <xs:annotation>
             <xs:documentation>
@@ -169,7 +196,18 @@
         <xs:list itemType="xs:string"/>
     </xs:simpleType>
 
-    <xs:simpleType name="qop">
+    <xs:complexType name="qop-listType">
+        <xs:annotation>
+            <xs:documentation>
+            <![CDATA[
+                An element specifying a qop list.
+            ]]>
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="value" type="qop-list" use="required"/>
+    </xs:complexType>
+
+    <xs:simpleType name="qop-list">
         <xs:annotation>
             <xs:documentation>
             <![CDATA[
@@ -180,7 +218,7 @@
         </xs:annotation>
         <xs:list>
             <xs:simpleType>
-                <xs:restriction base="xs:string">
+                <xs:restriction base="xs:token">
                     <xs:enumeration value="auth"/>
                     <xs:enumeration value="auth-int"/>
                     <xs:enumeration value="auth-conf"/>
@@ -200,7 +238,7 @@
         </xs:annotation>
         <xs:list>
             <xs:simpleType>
-                <xs:restriction base="xs:string">
+                <xs:restriction base="xs:token">
                     <xs:enumeration value="low"/>
                     <xs:enumeration value="medium"/>
                     <xs:enumeration value="high"/>

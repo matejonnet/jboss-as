@@ -21,7 +21,7 @@
   ~ Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
   ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
   -->
-<module xmlns="urn:jboss:module:1.0" name="org.omg.api">
+<module xmlns="urn:jboss:module:1.1" name="org.omg.api">
     <dependencies>
         <module name="org.jacorb" export="false">
             <exports>
@@ -88,8 +88,17 @@
                     <path name="org/omg/SecurityLevel1"/>
                     <path name="org/omg/SecurityLevel2"/>
                     <path name="org/omg/SecurityReplaceable"/>
+                    <path name="org/omg/SendingContext"/>
                     <path name="org/omg/TimeBase"/>
                     <path name="org/omg/dds"/>
+                </include-set>
+            </exports>
+        </module>
+        <module name="org.jboss.jts" export="false">
+            <exports>
+                <include-set>
+                    <path name="org/omg/CosTransactions"/>
+                    <path name="org/omg/XA"/>
                 </include-set>
             </exports>
         </module>

@@ -66,7 +66,7 @@ public class JGroupsExtension implements Extension, DescriptionProvider, XMLElem
     private static final DescriptionProvider stackDescription = new DescriptionProvider() {
         @Override
         public ModelNode getModelDescription(Locale locale) {
-            return LocalDescriptions.getProtocolStackDescription(locale);
+            return JGroupsDescriptions.getProtocolStackDescription(locale);
         }
     };
 
@@ -103,7 +103,7 @@ public class JGroupsExtension implements Extension, DescriptionProvider, XMLElem
      */
     @Override
     public ModelNode getModelDescription(Locale locale) {
-        return LocalDescriptions.getSubsystemDescription(locale);
+        return JGroupsDescriptions.getSubsystemDescription(locale);
     }
 
     /**
@@ -216,7 +216,7 @@ public class JGroupsExtension implements Extension, DescriptionProvider, XMLElem
             switch (attribute) {
                 case TYPE: {
                     try {
-                        this.getClass().getClassLoader().loadClass(org.jgroups.conf.ProtocolConfiguration.protocol_prefix + '.' + value).asSubclass(targetClass).newInstance();
+                        targetClass.getClassLoader().loadClass(org.jgroups.conf.ProtocolConfiguration.protocol_prefix + '.' + value).asSubclass(targetClass).newInstance();
                         protocol.get(ModelKeys.TYPE).set(value);
                     } catch (Exception e) {
                         throw ParseUtils.invalidAttributeValue(reader, i);

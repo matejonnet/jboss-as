@@ -22,17 +22,18 @@
 
 package org.jboss.as.jpa.hibernate3;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Map;
+
 import org.hibernate.cfg.Configuration;
 import org.jboss.as.jpa.spi.JtaManager;
+import org.jboss.as.jpa.spi.ManagementAdaptor;
 import org.jboss.as.jpa.spi.PersistenceProviderAdaptor;
 import org.jboss.as.jpa.spi.PersistenceUnitMetadata;
 import org.jboss.as.naming.deployment.ContextNames;
 import org.jboss.as.naming.deployment.JndiName;
 import org.jboss.msc.service.ServiceName;
-
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Map;
 
 /**
  * Implements the PersistenceProviderAdaptor for Hibernate 3.3.x or higher 3.x
@@ -51,8 +52,8 @@ public class HibernatePersistenceProviderAdaptor implements PersistenceProviderA
 
     @Override
     public void addProviderProperties(Map properties, PersistenceUnitMetadata pu) {
-        properties.put("hibernate.transaction.manager_lookup_class", "org.jboss.as.jpa.hibernate3.JBossAppServerJtaPlatform");
-        properties.put(Configuration.USE_NEW_ID_GENERATOR_MAPPINGS, "true");
+        putPropertyIfAbsent(properties, "hibernate.transaction.manager_lookup_class", "org.jboss.as.jpa.hibernate3.JBossAppServerJtaPlatform");
+        putPropertyIfAbsent(properties, Configuration.USE_NEW_ID_GENERATOR_MAPPINGS, "true");
         addAnnotationScanner(pu);
     }
 
@@ -98,6 +99,12 @@ public class HibernatePersistenceProviderAdaptor implements PersistenceProviderA
         return null;
     }
 
+    private void putPropertyIfAbsent(Map properties, String property, Object value) {
+        if (!properties.containsKey(property)) {
+            properties.put(property, value);
+        }
+    }
+
     private static JndiName toJndiName(String value) {
         return value.startsWith("java:") ? JndiName.of(value) : JndiName.of("java:jboss").append(value.startsWith("/") ? value.substring(1) : value);
     }
@@ -128,6 +135,11 @@ public class HibernatePersistenceProviderAdaptor implements PersistenceProviderA
             } catch (Throwable ignore) {
             }
         }
+    }
+
+    @Override
+    public ManagementAdaptor getManagementAdaptor() {
+        return null;
     }
 
 }

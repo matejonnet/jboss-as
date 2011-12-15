@@ -21,7 +21,6 @@
  */
 package org.jboss.as.webservices.dmr;
 
-import org.jboss.as.controller.descriptions.DescriptionProvider;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIBE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
@@ -35,10 +34,6 @@ import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.SubsystemRegistration;
 import org.jboss.as.controller.parsing.ExtensionParsingContext;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
-import org.jboss.dmr.ModelNode;
-import org.jboss.logging.Logger;
-
-import java.util.Locale;
 
 /**
  * The webservices extension.
@@ -50,13 +45,10 @@ import java.util.Locale;
  */
 public final class WSExtension implements Extension {
 
-    private static final Logger log = Logger.getLogger("org.jboss.as.webservices");
-
     public static final String SUBSYSTEM_NAME = "webservices";
 
     @Override
-    public void initialize(ExtensionContext context) {
-        log.debugf("Activating WebServices Extension");
+    public void initialize(final ExtensionContext context) {
         final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME);
         subsystem.registerXMLElementWriter(WebservicesSubsystemParser.getInstance());
         // ws subsystem
@@ -68,13 +60,7 @@ public final class WSExtension implements Extension {
         epConfigs.registerOperationHandler(ADD, EndpointConfigAdd.INSTANCE, WSSubsystemProviders.ENDPOINTCONFIG_ADD_DESCRIPTION, false);
         epConfigs.registerOperationHandler(REMOVE, EndpointConfigRemove.INSTANCE, WSSubsystemProviders.ENDPOINTCONFIG_REMOVE_DESCRIPTION, false);
 
-
-        final ManagementResourceRegistration deployments = subsystem.registerDeploymentModel(new DescriptionProvider() {
-            @Override
-            public ModelNode getModelDescription(Locale locale) {
-                return new ModelNode();
-            }
-        });
+        final ManagementResourceRegistration deployments = subsystem.registerDeploymentModel(WSSubsystemProviders.DEPLOYMENT_DESCRIPTION);
         // ws endpoint children
         final ManagementResourceRegistration endpoints = deployments.registerSubModel(PathElement.pathElement(ENDPOINT), WSSubsystemProviders.ENDPOINT_DESCRIPTION);
         for (final String attributeName : WSEndpointMetrics.ATTRIBUTES) {

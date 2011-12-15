@@ -22,7 +22,12 @@
 
 package org.jboss.as.ee.component;
 
+import java.util.Set;
+
 import org.jboss.as.server.deployment.AttachmentKey;
+import org.jboss.as.server.deployment.AttachmentList;
+import org.jboss.as.server.deployment.SetupAction;
+import org.jboss.msc.service.ServiceName;
 
 /**
  * @author John Bailey
@@ -39,4 +44,27 @@ public class Attachments {
 
     public static final AttachmentKey<DeploymentDescriptorEnvironment> MODULE_DEPLOYMENT_DESCRIPTOR_ENVIRONMENT = AttachmentKey.create(DeploymentDescriptorEnvironment.class);
 
+    /**
+     * Components that failed during install. This will allow some optional components to be ignored.
+     */
+    public static final AttachmentKey<Set<ServiceName>> FAILED_COMPONENTS = AttachmentKey.create(Set.class);
+
+    /**
+     * A list of actions that should be performed for every EE thread.
+     */
+    public static final AttachmentKey<AttachmentList<SetupAction>> EE_SETUP_ACTIONS = AttachmentKey.createList(SetupAction.class);
+
+    /**
+     * Additional (remote) components that can be resolved but are not installed.
+     */
+    public static final AttachmentKey<AttachmentList<ComponentDescription>> ADDITIONAL_RESOLVABLE_COMPONENTS = AttachmentKey.createList(ComponentDescription.class);
+
+    /**
+     * Unlike the EE spec which says application name is the name of the top level deployment (even if it is just
+     * a jar and not a ear), the EJB spec semantics (for JNDI) expect that the application name is the
+     * .ear name (or any configured value in application.xml). Absence of the .ear is expected to mean
+     * there's no application name. This attachement key, provides the application name which is follows the
+     * EJB spec semantics.
+     */
+    public static final AttachmentKey<String> EAR_APPLICATION_NAME = AttachmentKey.create(String.class);
 }

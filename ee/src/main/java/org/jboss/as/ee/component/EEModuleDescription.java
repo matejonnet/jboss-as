@@ -22,16 +22,17 @@
 
 package org.jboss.as.ee.component;
 
-import org.jboss.as.ee.naming.InjectedEENamespaceContextSelector;
+import static org.jboss.as.ee.EeMessages.MESSAGES;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.jboss.as.ee.component.interceptors.InterceptorClassDescription;
+import org.jboss.as.ee.naming.InjectedEENamespaceContextSelector;
 
 /**
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
@@ -39,23 +40,73 @@ import java.util.Map;
 public final class EEModuleDescription {
     private final String applicationName;
     private volatile String moduleName;
+    private final String earApplicationName;
+    //distinct name defaults to the empty string
+    private volatile String distinctName = "";
     private final Map<String, ComponentDescription> componentsByName = new HashMap<String, ComponentDescription>();
     private final Map<String, List<ComponentDescription>> componentsByClassName = new HashMap<String, List<ComponentDescription>>();
-
+    private final Map<String, EEModuleClassDescription> classDescriptions = new HashMap<String, EEModuleClassDescription>();
+    private final Map<String, InterceptorClassDescription> interceptorClassOverrides = new HashMap<String, InterceptorClassDescription>();
 
     private InjectedEENamespaceContextSelector namespaceContextSelector;
 
-    private final Deque<EEModuleConfigurator> moduleConfigurators = new ArrayDeque<EEModuleConfigurator>();
+    // Module Bindings
+    private final List<BindingConfiguration> bindingConfigurations = new ArrayList<BindingConfiguration>();
+    //injections that have been set in the components deployment descriptor
+    private final Map<String, Map<InjectionTarget, ResourceInjectionConfiguration>> resourceInjections = new HashMap<String, Map<InjectionTarget, ResourceInjectionConfiguration>>();
+
 
     /**
      * Construct a new instance.
      *
-     * @param applicationName the application name
+     * @param applicationName the application name (which is same as the module name if the .ear is absent)
      * @param moduleName      the module name
+     * @param earApplicationName The application name (which is null if the .ear is absent)
      */
-    public EEModuleDescription(final String applicationName, final String moduleName) {
+    public EEModuleDescription(final String applicationName, final String moduleName, final String earApplicationName) {
         this.applicationName = applicationName;
         this.moduleName = moduleName;
+        this.earApplicationName = earApplicationName;
+    }
+
+    /**
+     * Adds or retrieves an existing EEModuleClassDescription for the local module. This method should only be used
+     * for classes that reside within the current deployment unit, usually by annotation scanners that are attaching annotation
+     * information.
+     * <p/>
+     * This
+     *
+     * @param className The class name
+     * @return The new or existing {@link EEModuleClassDescription}
+     */
+    public EEModuleClassDescription addOrGetLocalClassDescription(final String className) {
+        if (className == null) {
+            throw MESSAGES.nullVar("name");
+        }
+        EEModuleClassDescription ret = classDescriptions.get(className);
+        if (ret == null) {
+            classDescriptions.put(className, ret = new EEModuleClassDescription(className));
+        }
+        return ret;
+    }
+
+    /**
+     * Returns a class that is local to this module
+     *
+     * @param className The class
+     * @return The description, or null if not found
+     */
+    EEModuleClassDescription getClassDescription(final String className) {
+        return classDescriptions.get(className);
+    }
+
+    /**
+     * Returns all class descriptions in this module
+     *
+     * @return All class descriptions
+     */
+    public Collection<EEModuleClassDescription> getClassDescriptions() {
+        return classDescriptions.values();
     }
 
     /**
@@ -67,22 +118,29 @@ public final class EEModuleDescription {
         final String componentName = description.getComponentName();
         final String componentClassName = description.getComponentClassName();
         if (componentName == null) {
-            throw new IllegalArgumentException("componentName is null");
+            throw MESSAGES.nullVar("componentName");
         }
         if (componentClassName == null) {
-            throw new IllegalArgumentException("componentClassName is null");
+            throw MESSAGES.nullVar("componentClassName");
         }
         if (componentsByName.containsKey(componentName)) {
-            throw new IllegalArgumentException("A component named '" + componentName + "' is already defined in this module");
+            throw MESSAGES.componentAlreadyDefined(componentName);
         }
         componentsByName.put(componentName, description);
         List<ComponentDescription> list = componentsByClassName.get(componentClassName);
-        if(list == null) {
+        if (list == null) {
             componentsByClassName.put(componentClassName, list = new ArrayList<ComponentDescription>(1));
         }
         list.add(description);
     }
 
+    /**
+     * Returns the application name which can be the same as the module name, in the absence of a .ear top level
+     * deployment
+     *
+     * @return
+     * @see {@link #getEarApplicationName()}
+     */
     public String getApplicationName() {
         return applicationName;
     }
@@ -112,15 +170,77 @@ public final class EEModuleDescription {
         return componentsByName.values();
     }
 
-    public Deque<EEModuleConfigurator> getConfigurators() {
-        return this.moduleConfigurators;
-    }
-
     public InjectedEENamespaceContextSelector getNamespaceContextSelector() {
         return namespaceContextSelector;
     }
 
     public void setNamespaceContextSelector(InjectedEENamespaceContextSelector namespaceContextSelector) {
         this.namespaceContextSelector = namespaceContextSelector;
+    }
+
+    public String getDistinctName() {
+        return distinctName;
+    }
+
+    public void setDistinctName(String distinctName) {
+        if (distinctName == null) {
+            throw MESSAGES.nullVar("distinctName");
+        }
+        this.distinctName = distinctName;
+    }
+
+    /**
+     * Unlike the {@link #getApplicationName()} which follows the Java EE6 spec semantics i.e. application name is the
+     * name of the top level deployment (even if it is just a jar and not a ear), this method returns the
+     * application name which follows the EJB spec semantics i.e. the application name is the
+     * .ear name or any configured value in application.xml. This method returns null in the absence of a .ear
+     *
+     * @return
+     */
+    public String getEarApplicationName() {
+        return this.earApplicationName;
+    }
+
+    /**
+     * Get module level interceptor method overrides that are set up in ejb-jar.xml
+     *
+     * @param className The class name
+     * @return The overrides, or null if no overrides have been set up
+     */
+    public InterceptorClassDescription getInterceptorClassOverride(final String className) {
+        return interceptorClassOverrides.get(className);
+    }
+
+    /**
+     * Adds a module level interceptor class override, it is merged with any existing overrides if they exist
+     *
+     * @param className The class name
+     * @param override  The override
+     */
+    public void addInterceptorMethodOverride(final String className, final InterceptorClassDescription override) {
+        interceptorClassOverrides.put(className, InterceptorClassDescription.merge(interceptorClassOverrides.get(className), override));
+    }
+
+    public List<BindingConfiguration> getBindingConfigurations() {
+        return bindingConfigurations;
+    }
+
+
+    public void addResourceInjection(final ResourceInjectionConfiguration injection) {
+        String className = injection.getTarget().getClassName();
+        Map<InjectionTarget, ResourceInjectionConfiguration> map = resourceInjections.get(className);
+        if(map == null) {
+            resourceInjections.put(className, map = new HashMap<InjectionTarget, ResourceInjectionConfiguration>());
+        }
+        map.put(injection.getTarget(), injection);
+    }
+
+    public Map<InjectionTarget, ResourceInjectionConfiguration> getResourceInjections(final  String className) {
+        Map<InjectionTarget, ResourceInjectionConfiguration> injections = resourceInjections.get(className);
+        if(injections == null) {
+            return Collections.emptyMap();
+        } else {
+            return Collections.unmodifiableMap(injections);
+        }
     }
 }

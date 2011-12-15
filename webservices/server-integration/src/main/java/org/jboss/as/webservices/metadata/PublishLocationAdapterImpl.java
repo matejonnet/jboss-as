@@ -21,9 +21,8 @@
  */
 package org.jboss.as.webservices.metadata;
 
-import org.jboss.metadata.common.jboss.WebserviceDescriptionMetaData;
-import org.jboss.metadata.common.jboss.WebserviceDescriptionsMetaData;
 import org.jboss.wsf.spi.metadata.j2ee.PublishLocationAdapter;
+import org.jboss.wsf.spi.metadata.webservices.JBossWebserviceDescriptionMetaData;
 
 /**
  * Publish location adapter implementation.
@@ -32,35 +31,22 @@ import org.jboss.wsf.spi.metadata.j2ee.PublishLocationAdapter;
  * @author <a href="mailto:tdiesler@redhat.com">Thomas Diesler</a>
  */
 final class PublishLocationAdapterImpl implements PublishLocationAdapter {
-    /** Webservice descriptions meta data. */
-    private final WebserviceDescriptionsMetaData wsDescriptionsMD;
 
-    /**
-     * Constructor.
-     *
-     * @param wsDescriptionsMD webservice descriptions meta data
-     */
-    PublishLocationAdapterImpl(final WebserviceDescriptionsMetaData wsDescriptionsMD) {
-        super();
+    private final JBossWebserviceDescriptionMetaData[] wsDescriptionsMD;
 
+    PublishLocationAdapterImpl(final JBossWebserviceDescriptionMetaData[] wsDescriptionsMD) {
         this.wsDescriptionsMD = wsDescriptionsMD;
     }
 
-    /**
-     * @see org.jboss.wsf.spi.metadata.j2ee.PublishLocationAdapter#getWsdlPublishLocationByName(String)
-     *
-     * @param endpointName endpoint name
-     * @return publish location
-     */
     public String getWsdlPublishLocationByName(final String endpointName) {
-        if (this.wsDescriptionsMD != null) {
-            final WebserviceDescriptionMetaData endpointMD = this.wsDescriptionsMD.get(endpointName);
-
-            if (endpointMD != null) {
-                return endpointMD.getWsdlPublishLocation();
+        if (wsDescriptionsMD != null) {
+            for (final JBossWebserviceDescriptionMetaData wsDescriptionMD : wsDescriptionsMD) {
+                if (endpointName.equals(wsDescriptionMD.getWebserviceDescriptionName()))
+                    return wsDescriptionMD.getWsdlPublishLocation();
             }
         }
 
         return null;
     }
+
 }

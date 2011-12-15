@@ -22,36 +22,55 @@
 
 package org.jboss.as.clustering.infinispan;
 
-import java.security.AccessController;
 import java.util.HashSet;
-import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 import org.infinispan.AbstractDelegatingAdvancedCache;
 import org.infinispan.AdvancedCache;
 import org.infinispan.Cache;
 import org.infinispan.config.Configuration;
-import org.infinispan.config.GlobalConfiguration;
-import org.infinispan.lifecycle.ComponentStatus;
+import org.infinispan.manager.AbstractDelegatingEmbeddedCacheManager;
 import org.infinispan.manager.CacheContainer;
 import org.infinispan.manager.EmbeddedCacheManager;
-import org.infinispan.remoting.transport.Address;
-import org.jboss.util.loading.ContextClassLoaderSwitcher;
-import org.jboss.util.loading.ContextClassLoaderSwitcher.SwitchContext;
 
 /**
  * @author Paul Ferraro
  */
-public class DefaultEmbeddedCacheManager implements EmbeddedCacheManager {
-    @SuppressWarnings("unchecked")
-    private static final ContextClassLoaderSwitcher switcher = (ContextClassLoaderSwitcher) AccessController.doPrivileged(ContextClassLoaderSwitcher.INSTANTIATOR);
-
+public class DefaultEmbeddedCacheManager extends AbstractDelegatingEmbeddedCacheManager {
     private final String defaultCache;
-    private final EmbeddedCacheManager container;
 
     public DefaultEmbeddedCacheManager(EmbeddedCacheManager container, String defaultCache) {
-        this.container = container;
+        super(container);
         this.defaultCache = defaultCache;
+    }
+
+    /**
+     * {@inheritDoc}
+     * @see org.infinispan.manager.EmbeddedCacheManager#defineConfiguration(java.lang.String, org.infinispan.config.Configuration)
+     */
+    @Override
+    public Configuration defineConfiguration(String cacheName, Configuration configurationOverride) {
+        return this.cm.defineConfiguration(this.getCacheName(cacheName), configurationOverride);
+    }
+
+    /**
+     * {@inheritDoc}
+     * @see org.infinispan.manager.EmbeddedCacheManager#defineConfiguration(java.lang.String, java.lang.String, org.infinispan.config.Configuration)
+     */
+    @Override
+    public Configuration defineConfiguration(String cacheName, String templateCacheName, Configuration configurationOverride) {
+        return this.cm.defineConfiguration(this.getCacheName(cacheName), this.getCacheName(templateCacheName), configurationOverride);
+    }
+
+    /**
+     * {@inheritDoc}
+     * @see org.infinispan.manager.EmbeddedCacheManager#defineConfiguration(String, org.infinispan.configuration.cache.Configuration)
+     */
+    @Override
+    public org.infinispan.configuration.cache.Configuration defineConfiguration(String cacheName,
+            org.infinispan.configuration.cache.Configuration configuration) {
+        return this.cm.defineConfiguration(this.getCacheName(cacheName), configuration);
     }
 
     /**
@@ -78,150 +97,8 @@ public class DefaultEmbeddedCacheManager implements EmbeddedCacheManager {
      */
     @Override
     public <K, V> Cache<K, V> getCache(String cacheName, boolean start) {
-        SwitchContext context = start ? switcher.getSwitchContext(DefaultEmbeddedCacheManager.class.getClassLoader()) : null;
-        try {
-            Cache<K, V> cache = this.container.<K, V>getCache(this.getCacheName(cacheName), start);
-            return (cache != null) ? new DelegatingCache<K, V>(cache) : null;
-        } finally {
-            if (context != null) {
-                context.reset();
-            }
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.lifecycle.Lifecycle#start()
-     */
-    @Override
-    public void start() {
-        this.container.start();
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.lifecycle.Lifecycle#stop()
-     */
-    @Override
-    public void stop() {
-        this.container.stop();
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.notifications.Listenable#addListener(java.lang.Object)
-     */
-    @Override
-    public void addListener(Object listener) {
-        this.container.addListener(listener);
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.notifications.Listenable#removeListener(java.lang.Object)
-     */
-    @Override
-    public void removeListener(Object listener) {
-        this.container.removeListener(listener);
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.notifications.Listenable#getListeners()
-     */
-    @Override
-    public Set<Object> getListeners() {
-        return this.container.getListeners();
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.manager.EmbeddedCacheManager#defineConfiguration(java.lang.String, org.infinispan.config.Configuration)
-     */
-    @Override
-    public Configuration defineConfiguration(String cacheName, Configuration configurationOverride) {
-        return this.container.defineConfiguration(this.getCacheName(cacheName), configurationOverride);
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.manager.EmbeddedCacheManager#defineConfiguration(java.lang.String, java.lang.String, org.infinispan.config.Configuration)
-     */
-    @Override
-    public Configuration defineConfiguration(String cacheName, String templateCacheName, Configuration configurationOverride) {
-        return this.container.defineConfiguration(this.getCacheName(cacheName), this.getCacheName(templateCacheName), configurationOverride);
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.manager.EmbeddedCacheManager#getClusterName()
-     */
-    @Override
-    public String getClusterName() {
-        return this.container.getClusterName();
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.manager.EmbeddedCacheManager#getMembers()
-     */
-    @Override
-    public List<Address> getMembers() {
-        return this.container.getMembers();
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.manager.EmbeddedCacheManager#getAddress()
-     */
-    @Override
-    public Address getAddress() {
-        return this.container.getAddress();
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.manager.EmbeddedCacheManager#getCoordinator()
-     */
-    @Override
-    public Address getCoordinator() {
-        return this.container.getCoordinator();
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.manager.EmbeddedCacheManager#isCoordinator()
-     */
-    @Override
-    public boolean isCoordinator() {
-        return this.container.isCoordinator();
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.manager.EmbeddedCacheManager#getStatus()
-     */
-    @Override
-    public ComponentStatus getStatus() {
-        return this.container.getStatus();
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.manager.EmbeddedCacheManager#getGlobalConfiguration()
-     */
-    @Override
-    public GlobalConfiguration getGlobalConfiguration() {
-        return this.container.getGlobalConfiguration();
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.manager.EmbeddedCacheManager#getDefaultConfiguration()
-     */
-    @Override
-    public Configuration getDefaultConfiguration() {
-        return this.container.getDefaultConfiguration();
+        Cache<K, V> cache = this.cm.<K, V>getCache(this.getCacheName(cacheName), start);
+        return (cache != null) ? new DelegatingCache<K, V>(cache) : null;
     }
 
     /**
@@ -230,18 +107,9 @@ public class DefaultEmbeddedCacheManager implements EmbeddedCacheManager {
      */
     @Override
     public Set<String> getCacheNames() {
-        Set<String> names = new HashSet<String>(this.container.getCacheNames());
+        Set<String> names = new HashSet<String>(this.cm.getCacheNames());
         names.add(this.defaultCache);
         return names;
-    }
-
-    /**
-     * {@inheritDoc}
-     * @see org.infinispan.manager.EmbeddedCacheManager#isRunning(java.lang.String)
-     */
-    @Override
-    public boolean isRunning(String cacheName) {
-        return this.container.isRunning(this.getCacheName(cacheName));
     }
 
     /**
@@ -250,7 +118,16 @@ public class DefaultEmbeddedCacheManager implements EmbeddedCacheManager {
      */
     @Override
     public boolean isDefaultRunning() {
-        return this.container.isRunning(this.defaultCache);
+        return this.cm.isRunning(this.defaultCache);
+    }
+
+    /**
+     * {@inheritDoc}
+     * @see org.infinispan.manager.EmbeddedCacheManager#isRunning(String)
+     */
+    @Override
+    public boolean isRunning(String cacheName) {
+        return this.cm.isRunning(this.getCacheName(cacheName));
     }
 
     /**
@@ -259,7 +136,7 @@ public class DefaultEmbeddedCacheManager implements EmbeddedCacheManager {
      */
     @Override
     public boolean cacheExists(String cacheName) {
-        return this.container.cacheExists(this.getCacheName(cacheName));
+        return this.cm.cacheExists(this.getCacheName(cacheName));
     }
 
     /**
@@ -268,7 +145,17 @@ public class DefaultEmbeddedCacheManager implements EmbeddedCacheManager {
      */
     @Override
     public void removeCache(String cacheName) {
-        this.container.removeCache(this.getCacheName(cacheName));
+        this.cm.removeCache(this.getCacheName(cacheName));
+    }
+
+    @Override
+    public EmbeddedCacheManager startCaches(String... names) {
+        Set<String> cacheNames = new LinkedHashSet<String>();
+        for (String name: names) {
+            cacheNames.add(this.getCacheName(name));
+        }
+        this.cm.startCaches(cacheNames.toArray(new String[cacheNames.size()]));
+        return this;
     }
 
     private String getCacheName(String name) {
@@ -290,7 +177,7 @@ public class DefaultEmbeddedCacheManager implements EmbeddedCacheManager {
      */
     @Override
     public String toString() {
-        return this.container.getGlobalConfiguration().getCacheManagerName();
+        return this.cm.getGlobalConfiguration().getCacheManagerName();
     }
 
     class DelegatingCache<K, V> extends AbstractDelegatingAdvancedCache<K, V> {

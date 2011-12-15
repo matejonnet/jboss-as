@@ -24,27 +24,35 @@ package org.jboss.as.connector;
 
 import org.jboss.msc.service.ServiceName;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+
+import static org.jboss.as.connector.ConnectorMessages.MESSAGES;
 
 /**
  * A ConnectorServices.
- * @author <a href="mailto:stefano.maestri@redhat.comdhat.com">Stefano
- *         Maestri</a>
+ *
+ * @author <a href="mailto:stefano.maestri@redhat.comdhat.com">Stefano Maestri</a>
  * @author <a href="mailto:jesper.pedersen@jboss.org">Jesper Pedersen</a>
  */
 public final class ConnectorServices {
 
-    private static Map<String, Set<ServiceName>> resourceAdapterXmlServiceNames = new ConcurrentHashMap<String, Set<ServiceName>>();
+    private static Map<String, Set<ServiceName>> resourceAdapterServiceNames = new HashMap<String, Set<ServiceName>>();
+    private static Map<String, Set<Integer>> resourceAdapterIdentifiers = new HashMap<String, Set<Integer>>();
 
-    private static Map<String, Set<ServiceName>> resourceAdapterServiceNames = new ConcurrentHashMap<String, Set<ServiceName>>();
+    private static Map<String, Set<ServiceName>> deploymentServiceNames = new HashMap<String, Set<ServiceName>>();
+    private static Map<String, Set<Integer>> deploymentIdentifiers = new HashMap<String, Set<Integer>>();
 
     public static final ServiceName CONNECTOR_CONFIG_SERVICE = ServiceName.JBOSS.append("connector", "config");
 
-    public static final ServiceName DEFAULT_BOOTSTRAP_CONTEXT_SERVICE = ServiceName.JBOSS.append("connector",
-            "defaultbootstrapcontext");
+    public static final ServiceName BEAN_VALIDATION_CONFIG_SERVICE = ServiceName.JBOSS.append("connector", "bean_validation", "config");
+
+    public static final ServiceName ARCHIVE_VALIDATION_CONFIG_SERVICE = ServiceName.JBOSS.append("connector", "archive_validation", "config");
+
+    public static final ServiceName BOOTSTRAP_CONTEXT_SERVICE = ServiceName.JBOSS.append("connector",
+            "bootstrapcontext");
 
     public static final ServiceName TRANSACTION_INTEGRATION_SERVICE = ServiceName.JBOSS.append("connector",
             "transactionintegration");
@@ -53,13 +61,17 @@ public final class ConnectorServices {
 
     public static final ServiceName RESOURCE_ADAPTER_SERVICE_PREFIX = ServiceName.JBOSS.append("ra");
 
-    public static final ServiceName RESOURCE_ADAPTER_XML_SERVICE_PREFIX = ServiceName.JBOSS.append("raxml");
+    public static final ServiceName RESOURCE_ADAPTER_DEPLOYMENT_SERVICE_PREFIX = RESOURCE_ADAPTER_SERVICE_PREFIX.append("deployment");
+
+    public static final ServiceName RESOURCE_ADAPTER_DEPLOYER_SERVICE_PREFIX = RESOURCE_ADAPTER_SERVICE_PREFIX.append("deployer");
 
     public static final ServiceName RESOURCE_ADAPTER_REGISTRY_SERVICE = ServiceName.JBOSS.append("raregistry");
 
     public static final ServiceName RESOURCE_ADAPTER_ACTIVATOR_SERVICE = ServiceName.JBOSS.append("raactivator");
 
-    /** MDR service name **/
+    /**
+     * MDR service name *
+     */
     public static final ServiceName IRONJACAMAR_MDR = ServiceName.JBOSS.append("ironjacamar", "mdr");
 
     public static final ServiceName RA_REPOSISTORY_SERVICE = ServiceName.JBOSS.append("rarepository");
@@ -67,6 +79,8 @@ public final class ConnectorServices {
     public static final ServiceName MANAGEMENT_REPOSISTORY_SERVICE = ServiceName.JBOSS.append("management_repository");
 
     public static final ServiceName RESOURCEADAPTERS_SERVICE = ServiceName.JBOSS.append("resourceadapters");
+
+    public static final ServiceName RA_SERVICE = ServiceName.JBOSS.append("resourceadapters", "ra");
 
     public static final ServiceName DATASOURCES_SERVICE = ServiceName.JBOSS.append("datasources");
 
@@ -79,52 +93,168 @@ public final class ConnectorServices {
 
     /**
      * convenient method to check notNull of value
-     * @param <T> type of the value
+     *
+     * @param <T>   type of the value
      * @param value the value
-     * @return the value or throw an {@link IllegalStateException} if value is
-     *         null (a.k.a. service not started)
+     * @return the value or throw an {@link IllegalStateException} if value is null (a.k.a. service not started)
      */
     public static <T> T notNull(T value) {
         if (value == null)
-            throw new IllegalStateException("Service not started");
+            throw MESSAGES.serviceNotStarted();
         return value;
     }
 
-    public static synchronized ServiceName getNextValidResourceAdapterXmlServiceName(String raName) {
-        ServiceName serviceName = null;
-       if(resourceAdapterXmlServiceNames.get(raName) == null) {
-           serviceName =  RESOURCE_ADAPTER_XML_SERVICE_PREFIX.append( raName + "_1");
-           Set<ServiceName> serviceNames = new HashSet<ServiceName>(1);
-           serviceNames.add(serviceName);
-           resourceAdapterXmlServiceNames.put(raName,serviceNames);
-       } else {
-           serviceName =  RESOURCE_ADAPTER_XML_SERVICE_PREFIX.append( raName + "_" + String.valueOf(resourceAdapterXmlServiceNames.get(raName).size() +1));
-           resourceAdapterXmlServiceNames.get(raName).add(serviceName);
-       }
-       return serviceName;
+    // DEPLOYMENTS
+
+    private static Integer getDeploymentIdentifier(String raName) {
+        Set<Integer> entries = deploymentIdentifiers.get(raName);
+
+        if (entries == null) {
+            Integer identifier = Integer.valueOf(1);
+
+            entries = new HashSet<Integer>();
+            deploymentIdentifiers.put(raName, entries);
+
+            entries.add(identifier);
+            return identifier;
+        }
+
+        Integer identifier = Integer.valueOf(1);
+        for (;;) {
+            if (!entries.contains(identifier)) {
+                entries.add(identifier);
+                return identifier;
+            }
+
+            identifier = Integer.valueOf(identifier.intValue() + 1);
+        }
     }
 
-    public static Set<ServiceName> getResourceAdapterXmlServiceName(String raName) {
-        return resourceAdapterXmlServiceNames.get(raName);
+    public static synchronized ServiceName registerDeployment(String raName) {
+        if (raName == null)
+            throw MESSAGES.undefinedVar("RaName");
 
+        Integer identifier = getDeploymentIdentifier(raName);
+        ServiceName serviceName = RESOURCE_ADAPTER_DEPLOYMENT_SERVICE_PREFIX.append(raName + "_" + identifier);
+
+        Set<ServiceName> entries = deploymentServiceNames.get(raName);
+
+        if (entries == null) {
+            entries = new HashSet<ServiceName>(1);
+            deploymentServiceNames.put(raName, entries);
+        }
+
+        if (entries.contains(serviceName)) {
+            deploymentIdentifiers.get(raName).remove(identifier);
+            throw MESSAGES.serviceAlreadyRegistered(serviceName.getCanonicalName());
+        }
+
+        entries.add(serviceName);
+
+        return serviceName;
     }
 
-    public static synchronized ServiceName getNextValidResourceAdapterServiceName(String raName) {
-        ServiceName serviceName = null;
-       if(resourceAdapterServiceNames.get(raName) == null) {
-           serviceName =  RESOURCE_ADAPTER_SERVICE_PREFIX.append( raName + "_1");
-           Set<ServiceName> serviceNames = new HashSet<ServiceName>(1);
-           serviceNames.add(serviceName);
-           resourceAdapterServiceNames.put(raName,serviceNames);
-       } else {
-           serviceName =  RESOURCE_ADAPTER_SERVICE_PREFIX.append( raName + "_" + String.valueOf(resourceAdapterXmlServiceNames.get(raName).size() +1));
-           resourceAdapterServiceNames.get(raName).add(serviceName);
-       }
-       return serviceName;
+    public static synchronized void unregisterDeployment(String raName, ServiceName serviceName) {
+        if (raName == null)
+            throw MESSAGES.undefinedVar("RaName");
+
+        if (serviceName == null)
+            throw MESSAGES.undefinedVar("ServiceName");
+
+        Set<ServiceName> entries = deploymentServiceNames.get(raName);
+
+        if (entries != null) {
+            if (!entries.contains(serviceName))
+                throw MESSAGES.serviceIsntRegistered(serviceName.getCanonicalName());
+
+            Integer identifier = Integer.valueOf(serviceName.getSimpleName().substring(serviceName.getSimpleName().lastIndexOf("_") + 1));
+            deploymentIdentifiers.get(raName).remove(identifier);
+
+            entries.remove(serviceName);
+
+            if (entries.size() == 0) {
+                deploymentServiceNames.remove(raName);
+                deploymentIdentifiers.remove(raName);
+            }
+        }
     }
 
-    public static Set<ServiceName> getResourceAdapteServiceName(String raName) {
+    // RESOURCE ADAPTERS
+
+    private static Integer getResourceAdapterIdentifier(String raName) {
+        Set<Integer> entries = resourceAdapterIdentifiers.get(raName);
+
+        if (entries == null) {
+            Integer identifier = Integer.valueOf(1);
+
+            entries = new HashSet<Integer>();
+            resourceAdapterIdentifiers.put(raName, entries);
+
+            entries.add(identifier);
+            return identifier;
+        }
+
+        Integer identifier = Integer.valueOf(1);
+        for (;;) {
+            if (!entries.contains(identifier)) {
+                entries.add(identifier);
+                return identifier;
+            }
+
+            identifier = Integer.valueOf(identifier.intValue() + 1);
+        }
+    }
+
+    public static synchronized ServiceName registerResourceAdapter(String raName) {
+        if (raName == null)
+            throw MESSAGES.undefinedVar("RaName");
+
+        Integer identifier = getResourceAdapterIdentifier(raName);
+        ServiceName serviceName = RESOURCE_ADAPTER_SERVICE_PREFIX.append(raName + "_" + identifier);
+
+        Set<ServiceName> entries = resourceAdapterServiceNames.get(raName);
+
+        if (entries == null) {
+            entries = new HashSet<ServiceName>(1);
+            resourceAdapterServiceNames.put(raName, entries);
+        }
+
+        if (entries.contains(serviceName)) {
+            resourceAdapterIdentifiers.get(raName).remove(identifier);
+            throw MESSAGES.serviceAlreadyRegistered(serviceName.getCanonicalName());
+        }
+
+        entries.add(serviceName);
+
+        return serviceName;
+    }
+
+    public static synchronized void unregisterResourceAdapter(String raName, ServiceName serviceName) {
+        if (raName == null)
+            throw MESSAGES.undefinedVar("RaName");
+
+        if (serviceName == null)
+            throw MESSAGES.undefinedVar("ServiceName");
+
+        Set<ServiceName> entries = resourceAdapterServiceNames.get(raName);
+
+        if (entries != null) {
+            if (!entries.contains(serviceName))
+                throw MESSAGES.serviceIsntRegistered(serviceName.getCanonicalName());
+
+            Integer identifier = Integer.valueOf(serviceName.getSimpleName().substring(serviceName.getSimpleName().lastIndexOf("_") + 1));
+            resourceAdapterIdentifiers.get(raName).remove(identifier);
+
+            entries.remove(serviceName);
+
+            if (entries.size() == 0) {
+                resourceAdapterServiceNames.remove(raName);
+                resourceAdapterIdentifiers.remove(raName);
+            }
+        }
+    }
+
+    public static synchronized Set<ServiceName> getResourceAdapterServiceNames(String raName) {
         return resourceAdapterServiceNames.get(raName);
-
     }
 }

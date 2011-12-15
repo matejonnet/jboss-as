@@ -22,29 +22,33 @@
 
 package org.jboss.as.connector.pool;
 
-import java.util.ArrayList;
-import java.util.List;
-import org.jboss.as.connector.ConnectorServices;
+import static org.jboss.as.connector.ConnectorMessages.MESSAGES;
 import static org.jboss.as.connector.pool.Constants.BACKGROUNDVALIDATION;
 import static org.jboss.as.connector.pool.Constants.BACKGROUNDVALIDATIONMILLIS;
-import static org.jboss.as.connector.pool.Constants.BACKGROUNDVALIDATIONMINUTES_REMOVE;
 import static org.jboss.as.connector.pool.Constants.BLOCKING_TIMEOUT_WAIT_MILLIS;
 import static org.jboss.as.connector.pool.Constants.IDLETIMEOUTMINUTES;
 import static org.jboss.as.connector.pool.Constants.MAX_POOL_SIZE;
 import static org.jboss.as.connector.pool.Constants.MIN_POOL_SIZE;
+import static org.jboss.as.connector.pool.Constants.POOL_FLUSH_STRATEGY;
 import static org.jboss.as.connector.pool.Constants.POOL_PREFILL;
 import static org.jboss.as.connector.pool.Constants.POOL_USE_STRICT_MIN;
 import static org.jboss.as.connector.pool.Constants.USE_FAST_FAIL;
-import static org.jboss.as.connector.pool.Constants.USE_FAST_FAIL_REMOVE;
-import org.jboss.as.controller.OperationContext;
-import org.jboss.as.controller.OperationStepHandler;
-import org.jboss.as.controller.OperationFailedException;
-import org.jboss.as.controller.PathAddress;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.jboss.as.connector.ConnectorServices;
+import org.jboss.as.controller.AbstractWriteAttributeHandler;
+import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.OperationStepHandler;
+import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.operations.validation.ModelTypeValidator;
 import org.jboss.as.controller.operations.validation.ParameterValidator;
-import org.jboss.as.server.operations.ServerWriteAttributeOperationHandler;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 import org.jboss.jca.core.api.connectionmanager.pool.PoolConfiguration;
@@ -61,9 +65,9 @@ public class PoolConfigurationRWHandler {
 
     static final String[] NO_LOCATION = new String[0];
 
-    public static final String[] ATTRIBUTES = new String[]{MAX_POOL_SIZE, MIN_POOL_SIZE, BLOCKING_TIMEOUT_WAIT_MILLIS,
-            IDLETIMEOUTMINUTES, BACKGROUNDVALIDATION, BACKGROUNDVALIDATIONMILLIS, BACKGROUNDVALIDATIONMINUTES_REMOVE,
-            POOL_PREFILL, POOL_USE_STRICT_MIN, USE_FAST_FAIL, USE_FAST_FAIL_REMOVE};
+    public static final List<String> ATTRIBUTES = Arrays.asList(MAX_POOL_SIZE.getName(), MIN_POOL_SIZE.getName(), BLOCKING_TIMEOUT_WAIT_MILLIS.getName(),
+            IDLETIMEOUTMINUTES.getName(), BACKGROUNDVALIDATION.getName(), BACKGROUNDVALIDATIONMILLIS.getName(),
+            POOL_PREFILL.getName(), POOL_USE_STRICT_MIN.getName(), POOL_FLUSH_STRATEGY.getName());
 
     // TODO this seems to just do what the default handler does, so registering it is probably unnecessary
     public static class PoolConfigurationReadHandler implements OperationStepHandler {
@@ -81,68 +85,104 @@ public class PoolConfigurationRWHandler {
         }
     }
 
-    public abstract static class PoolConfigurationWriteHandler extends ServerWriteAttributeOperationHandler {
+    public abstract static class PoolConfigurationWriteHandler extends AbstractWriteAttributeHandler<List<PoolConfiguration>> {
 
-        protected PoolConfigurationWriteHandler(ParameterValidator validator) {
-            super(validator);
+        static final ModelTypeValidator intValidator = new ModelTypeValidator(ModelType.INT);
+        static final ModelTypeValidator longValidator = new ModelTypeValidator(ModelType.LONG);
+        static final ModelTypeValidator boolValidator = new ModelTypeValidator(ModelType.BOOLEAN);
+
+        private static ParameterValidator getValidator(String attributeName) throws OperationFailedException {
+
+            if (MAX_POOL_SIZE.getName().equals(attributeName)) {
+                return intValidator;
+            } else if ( MIN_POOL_SIZE.getName().equals(attributeName)) {
+                return intValidator;
+            } else if ( BLOCKING_TIMEOUT_WAIT_MILLIS.getName().equals(attributeName)) {
+                return longValidator;
+            } else if ( IDLETIMEOUTMINUTES.getName().equals(attributeName)) {
+                return longValidator;
+            } else if ( BACKGROUNDVALIDATION.getName().equals(attributeName)) {
+                return boolValidator;
+            } else if ( BACKGROUNDVALIDATIONMILLIS.getName().equals(attributeName)) {
+                return longValidator;
+            } else if ( POOL_PREFILL.getName().equals(attributeName)) {
+                return boolValidator;
+            } else if ( POOL_USE_STRICT_MIN.getName().equals(attributeName)) {
+                return boolValidator;
+            } else if ( USE_FAST_FAIL.getName().equals(attributeName)) {
+                return boolValidator;
+            } else {
+                throw new OperationFailedException(new ModelNode().set(MESSAGES.invalidParameterName(attributeName)));
+            }
+
+        }
+
+        protected PoolConfigurationWriteHandler() {
+            super();
         }
 
         @Override
         protected boolean applyUpdateToRuntime(final OperationContext context, final ModelNode operation,
                final String parameterName, final ModelNode newValue,
-               final ModelNode currentValue) throws OperationFailedException {
+               final ModelNode currentValue, final HandbackHolder<List<PoolConfiguration>> handbackHolder) throws OperationFailedException {
 
-            if (context.getType() == OperationContext.Type.SERVER) {
-                context.addStep(new OperationStepHandler() {
-                    public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-                        final PathAddress address = PathAddress.pathAddress(operation.require(OP_ADDR));
-                        final String jndiName = address.getLastElement().getValue();
+            final PathAddress address = PathAddress.pathAddress(operation.require(OP_ADDR));
+            final String jndiName = address.getLastElement().getValue();
 
-                        final ServiceController<?> managementRepoService = context.getServiceRegistry(false).getService(
-                                ConnectorServices.MANAGEMENT_REPOSISTORY_SERVICE);
-                        List<PoolConfiguration> poolConfigs = null;
-                        if (managementRepoService != null) {
-                            try {
-                                final ManagementRepository repository = (ManagementRepository) managementRepoService.getValue();
-                                poolConfigs = getMatchingPoolConfigs(jndiName, repository);
-                                updatePoolConfigs(poolConfigs, parameterName, newValue);
-                            } catch (Exception e) {
-                                throw new OperationFailedException(new ModelNode().set("failed to set attribute" + e.getMessage()));
-                            }
-                        }
-
-                        if (context.completeStep() == OperationContext.ResultAction.ROLLBACK && poolConfigs != null) {
-                            updatePoolConfigs(poolConfigs, parameterName, currentValue);
-                        }
-
-                    }
-                }, OperationContext.Stage.RUNTIME);
+            final ServiceController<?> managementRepoService = context.getServiceRegistry(false).getService(
+                    ConnectorServices.MANAGEMENT_REPOSISTORY_SERVICE);
+            List<PoolConfiguration> poolConfigs = null;
+            if (managementRepoService != null) {
+                try {
+                    final ManagementRepository repository = (ManagementRepository) managementRepoService.getValue();
+                    poolConfigs = getMatchingPoolConfigs(jndiName, repository);
+                    updatePoolConfigs(poolConfigs, parameterName, newValue);
+                    handbackHolder.setHandback(poolConfigs);
+                } catch (Exception e) {
+                    throw new OperationFailedException(new ModelNode().set(MESSAGES.failedToSetAttribute(e.getLocalizedMessage())));
+                }
             }
 
-            return (IDLETIMEOUTMINUTES.equals(parameterName) || BACKGROUNDVALIDATION.equals(parameterName)
-                    || BACKGROUNDVALIDATIONMILLIS.equals(parameterName) || BACKGROUNDVALIDATIONMINUTES_REMOVE.equals(parameterName)
-                    || POOL_PREFILL.equals(parameterName));
+            return ( IDLETIMEOUTMINUTES.getName().equals(parameterName) ||  BACKGROUNDVALIDATION.getName().equals(parameterName)
+                    ||  BACKGROUNDVALIDATIONMILLIS.getName().equals(parameterName)
+                    ||  POOL_PREFILL.getName().equals(parameterName));
 
+        }
+
+        @Override
+        protected void revertUpdateToRuntime(OperationContext context, ModelNode operation, String parameterName,
+                                             ModelNode valueToRestore, ModelNode valueToRevert,
+                                             List<PoolConfiguration> handback) throws OperationFailedException {
+            if (handback != null) {
+                updatePoolConfigs(handback, parameterName, valueToRestore.resolve());
+            }
+        }
+
+        @Override
+        protected void validateUnresolvedValue(String attributeName, ModelNode unresolvedValue) throws OperationFailedException {
+            getValidator(attributeName).validateParameter(VALUE, unresolvedValue);
+        }
+
+        @Override
+        protected void validateResolvedValue(String attributeName, ModelNode resolvedValue) throws OperationFailedException {
+            getValidator(attributeName).validateResolvedParameter(VALUE, resolvedValue);
         }
 
         private void updatePoolConfigs(List<PoolConfiguration> poolConfigs, String parameterName, ModelNode newValue) {
             for (PoolConfiguration pc : poolConfigs) {
-                if (MAX_POOL_SIZE.equals(parameterName)) {
+                if (MAX_POOL_SIZE.getName().equals(parameterName)) {
                     pc.setMaxSize(newValue.asInt());
                 }
-                if (MIN_POOL_SIZE.equals(parameterName)) {
+                if ( MIN_POOL_SIZE.getName().equals(parameterName)) {
                     pc.setMinSize(newValue.asInt());
                 }
-                if (BLOCKING_TIMEOUT_WAIT_MILLIS.equals(parameterName)) {
+                if ( BLOCKING_TIMEOUT_WAIT_MILLIS.getName().equals(parameterName)) {
                     pc.setBlockingTimeout(newValue.asLong());
                 }
-                if (POOL_USE_STRICT_MIN.equals(parameterName)) {
+                if ( POOL_USE_STRICT_MIN.getName().equals(parameterName)) {
                     pc.setStrictMin(newValue.asBoolean());
                 }
-                if (USE_FAST_FAIL_REMOVE.equals(parameterName)) {
-                    pc.setUseFastFail(newValue.asBoolean());
-                }
-                if (USE_FAST_FAIL.equals(parameterName)) {
+                if ( USE_FAST_FAIL.getName().equals(parameterName)) {
                     pc.setUseFastFail(newValue.asBoolean());
                 }
             }
@@ -152,11 +192,10 @@ public class PoolConfigurationRWHandler {
     }
 
     public static class LocalAndXaDataSourcePoolConfigurationWriteHandler extends PoolConfigurationWriteHandler {
-        public static LocalAndXaDataSourcePoolConfigurationWriteHandler INSTANCE = new LocalAndXaDataSourcePoolConfigurationWriteHandler(
-                new PoolConfigurationValidator());
+        public static LocalAndXaDataSourcePoolConfigurationWriteHandler INSTANCE = new LocalAndXaDataSourcePoolConfigurationWriteHandler();
 
-        protected LocalAndXaDataSourcePoolConfigurationWriteHandler(ParameterValidator validator) {
-            super(validator);
+        protected LocalAndXaDataSourcePoolConfigurationWriteHandler() {
+            super();
         }
 
         protected List<PoolConfiguration> getMatchingPoolConfigs(String jndiName, ManagementRepository repository) {
@@ -173,14 +212,15 @@ public class PoolConfigurationRWHandler {
             return result;
         }
 
+
+
     }
 
     public static class RaPoolConfigurationWriteHandler extends PoolConfigurationWriteHandler {
-        public static RaPoolConfigurationWriteHandler INSTANCE = new RaPoolConfigurationWriteHandler(
-                new PoolConfigurationValidator());
+        public static RaPoolConfigurationWriteHandler INSTANCE = new RaPoolConfigurationWriteHandler();
 
-        protected RaPoolConfigurationWriteHandler(ParameterValidator validator) {
-            super(validator);
+        protected RaPoolConfigurationWriteHandler() {
+            super();
         }
 
         protected List<PoolConfiguration> getMatchingPoolConfigs(String jndiName, ManagementRepository repository) {
@@ -198,50 +238,6 @@ public class PoolConfigurationRWHandler {
             }
             result.trimToSize();
             return result;
-        }
-
-    }
-
-    static class PoolConfigurationValidator implements ParameterValidator {
-
-        static final ModelTypeValidator intValidator = new ModelTypeValidator(ModelType.INT);
-        static final ModelTypeValidator longValidator = new ModelTypeValidator(ModelType.LONG);
-        static final ModelTypeValidator boolValidator = new ModelTypeValidator(ModelType.BOOLEAN);
-
-        @Override
-        public void validateParameter(String parameterName, ModelNode value) throws OperationFailedException {
-
-            if (MAX_POOL_SIZE.equals(parameterName)) {
-                intValidator.validateParameter(parameterName, value);
-            } else if (MIN_POOL_SIZE.equals(parameterName)) {
-                intValidator.validateParameter(parameterName, value);
-            } else if (BLOCKING_TIMEOUT_WAIT_MILLIS.equals(parameterName)) {
-                longValidator.validateParameter(parameterName, value);
-            } else if (IDLETIMEOUTMINUTES.equals(parameterName)) {
-                longValidator.validateParameter(parameterName, value);
-            } else if (BACKGROUNDVALIDATION.equals(parameterName)) {
-                boolValidator.validateParameter(parameterName, value);
-            } else if (BACKGROUNDVALIDATIONMINUTES_REMOVE.equals(parameterName)) {
-                longValidator.validateParameter(parameterName, value);
-            } else if (BACKGROUNDVALIDATIONMILLIS.equals(parameterName)) {
-                longValidator.validateParameter(parameterName, value);
-            } else if (POOL_PREFILL.equals(parameterName)) {
-                boolValidator.validateParameter(parameterName, value);
-            } else if (POOL_USE_STRICT_MIN.equals(parameterName)) {
-                boolValidator.validateParameter(parameterName, value);
-            } else if (USE_FAST_FAIL.equals(parameterName)) {
-                boolValidator.validateParameter(parameterName, value);
-            } else if (USE_FAST_FAIL_REMOVE.equals(parameterName)) {
-                boolValidator.validateParameter(parameterName, value);
-            } else {
-                throw new OperationFailedException(new ModelNode().set("Wrong parameter name for " + parameterName));
-            }
-
-        }
-
-        @Override
-        public void validateResolvedParameter(String parameterName, ModelNode value) throws OperationFailedException {
-            validateParameter(parameterName, value.resolve());
         }
 
     }

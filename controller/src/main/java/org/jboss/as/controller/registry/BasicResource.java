@@ -22,17 +22,18 @@
 
 package org.jboss.as.controller.registry;
 
-import org.jboss.as.controller.PathAddress;
-import org.jboss.as.controller.PathElement;
-import org.jboss.dmr.ModelNode;
-
-import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
+
+import org.jboss.as.controller.PathAddress;
+import org.jboss.as.controller.PathElement;
+import org.jboss.dmr.ModelNode;
+
+import static org.jboss.as.controller.ControllerMessages.MESSAGES;
 
 /**
  * Standard {@link Resource} implementation.
@@ -193,7 +194,7 @@ class BasicResource implements Resource {
     protected void registerResourceProvider(final String type, final ResourceProvider provider) {
         synchronized (children) {
             if (children.containsKey(type)) {
-                throw new IllegalStateException("duplicate resource type " + type);
+                throw MESSAGES.duplicateResourceType(type);
             }
             children.put(type, provider);
         }
@@ -255,7 +256,7 @@ class BasicResource implements Resource {
         public void register(String name, Resource resource) {
             synchronized (children) {
                 if (children.containsKey(name)) {
-                    throw new IllegalStateException("duplicate resource" + name);
+                    throw MESSAGES.duplicateResource(name);
                 }
                 children.put(name, resource);
             }

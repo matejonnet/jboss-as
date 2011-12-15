@@ -35,19 +35,40 @@ import org.jboss.staxmapper.XMLElementWriter;
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
 public interface SubsystemRegistration {
+
     /**
      * Get the model node registration for this subsystem.
+     *
+     * @param descriptionProvider provider of the description of the subsystem's root management resource
      *
      * @return the subsystem-level model node registration
      */
     ManagementResourceRegistration registerSubsystemModel(DescriptionProvider descriptionProvider);
 
     /**
+     * Get the model node registration for this subsystem.
+     *
+     * @param resourceDefinition  factory for the provider of the description of the subsystem's root management resource
+     * @return the subsystem-level model node registration
+     */
+    ManagementResourceRegistration registerSubsystemModel(ResourceDefinition resourceDefinition);
+
+    /**
      * Get the deployment model node registration for this subsystem.
      *
+     * @param descriptionProvider  provider of the description of the subsystem's root deployment-level management resource
      * @return the deployment-level model node registration
      */
     ManagementResourceRegistration registerDeploymentModel(DescriptionProvider descriptionProvider);
+
+    /**
+     * Get the deployment model node registration for this subsystem.
+     *
+     * @param resourceDefinition factory for the provider of the description of the subsystem's root deployment-level management resource
+     * @return the deployment-level model node registration
+     */
+    ManagementResourceRegistration registerDeploymentModel(ResourceDefinition resourceDefinition);
+
 
     /**
      * Registers the {@link XMLElementWriter} that can handle marshalling

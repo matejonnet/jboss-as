@@ -21,11 +21,14 @@
  */
 package org.jboss.as.webservices.service;
 
+import static org.jboss.as.webservices.WSLogger.ROOT_LOGGER;
+
+import java.util.Map;
+
 import org.jboss.as.web.VirtualHost;
 import org.jboss.as.web.WebSubsystemServices;
 import org.jboss.as.webservices.publish.EndpointPublisherImpl;
 import org.jboss.as.webservices.util.WSServices;
-import org.jboss.logging.Logger;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceBuilder.DependencyType;
@@ -38,8 +41,6 @@ import org.jboss.msc.service.StopContext;
 import org.jboss.msc.value.InjectedValue;
 import org.jboss.wsf.spi.publish.Context;
 
-import java.util.Map;
-
 /**
  * WS endpoint publish service, allows for publishing a WS endpoint on AS 7
  *
@@ -48,7 +49,6 @@ import java.util.Map;
  */
 public final class EndpointPublishService implements Service<Context> {
 
-    private static final Logger log = Logger.getLogger(EndpointPublishService.class);
     private final ServiceName name;
     private volatile Context wsctx;
 
@@ -81,7 +81,7 @@ public final class EndpointPublishService implements Service<Context> {
 
     @Override
     public void start(final StartContext ctx) throws StartException {
-        log.infof("Starting %s", name);
+        ROOT_LOGGER.starting(name);
         try {
             EndpointPublisherImpl publisher = new EndpointPublisherImpl(hostInjector.getValue().getHost());
             wsctx = publisher.publish(context, loader, urlPatternToClassName);
@@ -92,7 +92,7 @@ public final class EndpointPublishService implements Service<Context> {
 
     @Override
     public void stop(final StopContext ctx) {
-        log.infof("Stopping %s", name);
+        ROOT_LOGGER.stopping(name);
         try {
             EndpointPublisherImpl publisher = new EndpointPublisherImpl(hostInjector.getValue().getHost());
             publisher.destroy(wsctx);

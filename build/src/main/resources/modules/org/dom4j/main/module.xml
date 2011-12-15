@@ -22,14 +22,15 @@
   ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
   -->
 
-<module xmlns="urn:jboss:module:1.0" name="org.dom4j">
+<module xmlns="urn:jboss:module:1.1" name="org.dom4j">
   <resources>
     <!-- Insert resources here -->
   </resources>
 
   <dependencies>
-      <module name="javax.api" export="false"/>
+      <module name="javax.api"/>
       <module name="com.sun.xml.bind"/>
       <module name="javax.xml.bind.api"/>
+      <module name="org.jaxen"/>
   </dependencies>
 </module>

@@ -21,15 +21,17 @@
  */
 package org.jboss.as.ejb3.deployment.processors.dd;
 
+import java.lang.reflect.Method;
+import java.util.Collection;
+import java.util.Collections;
+
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.reflect.ClassReflectionIndex;
 import org.jboss.as.server.deployment.reflect.DeploymentReflectionIndex;
+import org.jboss.metadata.ejb.spec.MethodMetaData;
 import org.jboss.metadata.ejb.spec.MethodParametersMetaData;
 import org.jboss.metadata.ejb.spec.NamedMethodMetaData;
-
-import java.lang.reflect.Method;
-import java.util.Collection;
-
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * @author Stuart Douglas
  */
@@ -40,22 +42,32 @@ public class MethodResolutionUtils {
         return resolveMethod(methodData.getMethodName(), methodData.getMethodParams(), componentClass, reflectionIndex);
     }
 
+    public static Method resolveMethod(final MethodMetaData methodData, final Class<?> componentClass, final DeploymentReflectionIndex reflectionIndex) throws DeploymentUnitProcessingException {
+        return resolveMethod(methodData.getMethodName(), methodData.getMethodParams(), componentClass, reflectionIndex);
+    }
+
+    public static Collection<Method> resolveMethods(final NamedMethodMetaData methodData, final Class<?> componentClass, final DeploymentReflectionIndex reflectionIndex) throws DeploymentUnitProcessingException {
+        return resolveMethods(methodData.getMethodName(), methodData.getMethodParams(), componentClass, reflectionIndex);
+    }
+
     public static Method resolveMethod(final String methodName, final MethodParametersMetaData parameters, final Class<?> componentClass, final DeploymentReflectionIndex reflectionIndex) throws DeploymentUnitProcessingException {
+        final Collection<Method> method = resolveMethods(methodName, parameters, componentClass, reflectionIndex);
+
+        if(method.size() >1) {
+            throw new DeploymentUnitProcessingException("More than one method found with name " + methodName + " on " + componentClass);
+        }
+        return method.iterator().next();
+    }
+
+    public static Collection<Method> resolveMethods(final String methodName, final MethodParametersMetaData parameters, final Class<?> componentClass, final DeploymentReflectionIndex reflectionIndex) throws DeploymentUnitProcessingException {
+
         Class<?> clazz = componentClass;
         while (clazz != Object.class && clazz != null) {
             final ClassReflectionIndex<?> classIndex = reflectionIndex.getClassIndex(clazz);
             if (parameters == null) {
                 final Collection<Method> methods = classIndex.getAllMethods(methodName);
-                if (methods.size() > 1) {
-                    //if we have a duplicate we match the method with no parameters
-                    for(final Method method : methods) {
-                        if(method.getParameterTypes().length == 0) {
-                            return method;
-                        }
-                    }
-                    throw new DeploymentUnitProcessingException("More than one method " + methodName + "found on class" + componentClass.getName() + " referenced in ejb-jar.xml. Specify the parameter types to resolve the ambiguity");
-                } else if (methods.size() == 1) {
-                    return methods.iterator().next();
+                if(!methods.isEmpty()) {
+                    return methods;
                 }
             } else {
                 final Collection<Method> methods = classIndex.getAllMethods(methodName, parameters.size());
@@ -68,13 +80,13 @@ public class MethodResolutionUtils {
                         }
                     }
                     if (match) {
-                        return method;
+                        return Collections.singleton(method);
                     }
                 }
             }
             clazz = clazz.getSuperclass();
         }
-        throw new DeploymentUnitProcessingException("Could not find method" + componentClass.getName() + "." + methodName + " referenced in ejb-jar.xml");
+        throw MESSAGES.failToFindMethodInEjbJarXml(componentClass.getName(),methodName);
 
     }
 }

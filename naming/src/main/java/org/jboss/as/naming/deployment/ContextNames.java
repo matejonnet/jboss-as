@@ -24,6 +24,8 @@ package org.jboss.as.naming.deployment;
 
 import org.jboss.msc.service.ServiceName;
 
+import static org.jboss.as.naming.NamingMessages.MESSAGES;
+
 /**
  * @author John Bailey
  */
@@ -273,12 +275,12 @@ public class ContextNames {
             bindName = bindName.substring(6);
         } else if (bindName.startsWith("global/")) {
             parentContextName = GLOBAL_CONTEXT_SERVICE_NAME;
-            bindName = bindName.substring(6);
+            bindName = bindName.substring(7);
         } else if (bindName.startsWith("/")) {
             parentContextName = JAVA_CONTEXT_SERVICE_NAME;
             bindName = bindName.substring(1);
         } else {
-            throw new RuntimeException("Illegal context in name: " + jndiName);
+            throw MESSAGES.illegalContextInName(jndiName);
         }
         return new BindInfo(parentContextName, bindName);
     }

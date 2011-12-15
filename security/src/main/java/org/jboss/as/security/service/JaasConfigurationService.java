@@ -22,6 +22,8 @@
 
 package org.jboss.as.security.service;
 
+import javax.security.auth.login.Configuration;
+
 import org.jboss.as.security.SecurityExtension;
 import org.jboss.logging.Logger;
 import org.jboss.msc.service.Service;
@@ -29,8 +31,6 @@ import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
-
-import javax.security.auth.login.Configuration;
 
 /**
  * Jaas service to install a {@code Configuration}
@@ -51,9 +51,8 @@ public class JaasConfigurationService implements Service<Configuration> {
 
     /** {@inheritDoc} */
     @Override
-    public void start(StartContext arg0) throws StartException {
-        if (log.isDebugEnabled())
-            log.debug("Starting JaasConfigurationService");
+    public void start(StartContext context) throws StartException {
+        log.debugf("Starting JaasConfigurationService");
 
         // set new configuration
         Configuration.setConfiguration(configuration);
@@ -61,7 +60,7 @@ public class JaasConfigurationService implements Service<Configuration> {
 
     /** {@inheritDoc} */
     @Override
-    public void stop(StopContext arg0) {
+    public void stop(StopContext context) {
         // restore configuration to null
         Configuration.setConfiguration(null);
     }

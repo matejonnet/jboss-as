@@ -21,13 +21,16 @@
  */
 package org.jboss.as.webservices.deployers.deployment;
 
-import java.util.HashMap;
-import java.util.Map;
+import static org.jboss.as.webservices.WSLogger.ROOT_LOGGER;
+import static org.jboss.as.webservices.util.ASHelper.getJaxrpcEjbs;
+import static org.jboss.as.webservices.util.ASHelper.getJaxrpcPojos;
+import static org.jboss.as.webservices.util.ASHelper.getJaxwsEjbs;
+import static org.jboss.as.webservices.util.ASHelper.getJaxwsPojos;
+import static org.jboss.as.webservices.util.ASHelper.getOptionalAttachment;
+import static org.jboss.as.webservices.util.WSAttachmentKeys.JMS_ENDPOINT_METADATA_KEY;
 
 import org.jboss.as.server.deployment.DeploymentUnit;
-import org.jboss.as.webservices.util.ASHelper;
-import org.jboss.as.webservices.util.WSAttachmentKeys;
-import org.jboss.wsf.spi.deployment.Deployment.DeploymentType;
+import org.jboss.wsf.spi.metadata.jms.JMSEndpointsMetaData;
 
 /**
  * JBossWS deployment model builder.
@@ -35,45 +38,71 @@ import org.jboss.wsf.spi.deployment.Deployment.DeploymentType;
  * @author <a href="mailto:ropalka@redhat.com">Richard Opalka</a>
  */
 public final class WSDeploymentBuilder {
-    /** Builder instance. */
+
     private static final WSDeploymentBuilder SINGLETON = new WSDeploymentBuilder();
+    private static final DeploymentModelBuilder JAXWS_JSE = new DeploymentModelBuilderJAXWS_POJO();
+    private static final DeploymentModelBuilder JAXWS_EJB = new DeploymentModelBuilderJAXWS_EJB();
+    private static final DeploymentModelBuilder JAXWS_JMS = new DeploymentModelBuilderJAXWS_JMS();
+    private static final DeploymentModelBuilder JAXRPC_JSE = new DeploymentModelBuilderJAXRPC_POJO();
+    private static final DeploymentModelBuilder JAXRPC_EJB = new DeploymentModelBuilderJAXRPC_EJB();
 
-    /** Builders registry. */
-    private static final Map<DeploymentType, DeploymentModelBuilder> builders = new HashMap<DeploymentType, DeploymentModelBuilder>();;
-
-    static {
-        WSDeploymentBuilder.builders.put(DeploymentType.JAXWS_JSE, new DeploymentModelBuilderJAXWS_JSE());
-        WSDeploymentBuilder.builders.put(DeploymentType.JAXRPC_JSE, new DeploymentModelBuilderJAXRPC_JSE());
-        WSDeploymentBuilder.builders.put(DeploymentType.JAXWS_EJB3, new DeploymentModelBuilderJAXWS_EJB3());
-        WSDeploymentBuilder.builders.put(DeploymentType.JAXRPC_EJB21, new DeploymentModelBuilderJAXRPC_EJB21());
-    }
-
-    /**
-     * Constructor.
-     */
     private WSDeploymentBuilder() {
         super();
     }
 
-    /**
-     * Factory method for obtaining builder instance.
-     *
-     * @return builder instance
-     */
     public static WSDeploymentBuilder getInstance() {
         return WSDeploymentBuilder.SINGLETON;
     }
 
-    /**
-     * Builds JBossWS deployment model if web service deployment is detected.
-     *
-     * @param unit deployment unit
-     */
     public void build(final DeploymentUnit unit) {
-        final DeploymentType deploymentType = ASHelper.getOptionalAttachment(unit, WSAttachmentKeys.DEPLOYMENT_TYPE_KEY);
-
-        if (deploymentType != null) {
-            WSDeploymentBuilder.builders.get(deploymentType).newDeploymentModel(unit);
+        boolean isJaxwsDeployment = false;
+        if (isJaxwsPojoDeployment(unit)) {
+            ROOT_LOGGER.detectedDeployment("JAXWS", "POJO");
+            JAXWS_JSE.newDeploymentModel(unit);
+            isJaxwsDeployment = true;
+        }
+        if (isJaxwsJmsDeployment(unit)) {
+            ROOT_LOGGER.detectedDeployment("JAXWS", "JMS");
+            JAXWS_JMS.newDeploymentModel(unit);
+            isJaxwsDeployment = true;
+        }
+        if (isJaxwsEjbDeployment(unit)) {
+            ROOT_LOGGER.detectedDeployment("JAXWS", "EJB");
+            JAXWS_EJB.newDeploymentModel(unit);
+            isJaxwsDeployment = true;
+        }
+        if (!isJaxwsDeployment && isJaxrpcPojoDeployment(unit)) {
+            ROOT_LOGGER.detectedDeployment("JAXRPC", "POJO");
+            JAXRPC_JSE.newDeploymentModel(unit);
+        }
+        if (!isJaxwsDeployment && isJaxrpcEjbDeployment(unit)) {
+            ROOT_LOGGER.detectedDeployment("JAXRPC", "EJB");
+            JAXRPC_EJB.newDeploymentModel(unit);
         }
     }
+
+    private static boolean isJaxwsPojoDeployment(final DeploymentUnit unit) {
+        return getJaxwsPojos(unit).size() > 0;
+    }
+
+    private static boolean isJaxwsEjbDeployment(final DeploymentUnit unit) {
+        return getJaxwsEjbs(unit).size() > 0;
+    }
+
+    private static boolean isJaxrpcPojoDeployment(final DeploymentUnit unit) {
+        return getJaxrpcPojos(unit).size() > 0;
+    }
+
+    private static boolean isJaxrpcEjbDeployment(final DeploymentUnit unit) {
+        return getJaxrpcEjbs(unit).size() > 0;
+    }
+
+    private static boolean isJaxwsJmsDeployment(final DeploymentUnit unit) {
+        final JMSEndpointsMetaData jmsEndpointsMD = getOptionalAttachment(unit, JMS_ENDPOINT_METADATA_KEY);
+        if (jmsEndpointsMD != null) {
+            return jmsEndpointsMD.getEndpointsMetaData().size() > 0;
+        }
+        return false;
+    }
+
 }

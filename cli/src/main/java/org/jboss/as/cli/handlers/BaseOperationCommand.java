@@ -109,11 +109,11 @@ public abstract class BaseOperationCommand extends CommandHandlerWithHelp implem
             return true;
         }
         ModelNode request = new ModelNode();
-        ModelNode address = request.get("address");
+        ModelNode address = request.get(Util.ADDRESS);
         for(OperationRequestAddress.Node node : requiredAddress) {
             address.add(node.getType(), node.getName());
         }
-        request.get("operation").set("validate-address");
+        request.get(Util.OPERATION).set(Util.VALIDATE_ADDRESS);
         ModelNode result;
         try {
             result = ctx.getModelControllerClient().execute(request);
@@ -150,7 +150,10 @@ public abstract class BaseOperationCommand extends CommandHandlerWithHelp implem
             ctx.printLine("Failed to perform operation: " + e.getLocalizedMessage());
             return;
         }
+        handleResponse(ctx, result, Util.COMPOSITE.equals(request.get(Util.OPERATION).asString()));
+    }
 
+    protected void handleResponse(CommandContext ctx, ModelNode result, boolean composite) {
         if (!Util.isSuccess(result)) {
             ctx.printLine(Util.getFailureDescription(result));
             return;

@@ -22,9 +22,10 @@
 
 package org.jboss.as.naming.service;
 
+import static org.jboss.as.naming.NamingLogger.ROOT_LOGGER;
+
 import org.jboss.as.naming.ManagedReferenceFactory;
 import org.jboss.as.naming.ServiceBasedNamingStore;
-import org.jboss.logging.Logger;
 import org.jboss.msc.inject.Injector;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceController;
@@ -40,8 +41,6 @@ import org.jboss.msc.value.InjectedValue;
  * @author John E. Bailey
  */
 public class BinderService implements Service<ManagedReferenceFactory> {
-
-    private static final Logger logger = Logger.getLogger(BinderService.class);
 
     private final InjectedValue<ServiceBasedNamingStore> namingStoreValue = new InjectedValue<ServiceBasedNamingStore>();
     private final String name;
@@ -93,7 +92,7 @@ public class BinderService implements Service<ManagedReferenceFactory> {
         ServiceController<?> controller = context.getController();
         this.controller = controller;
         namingStore.add(controller.getName());
-        logger.tracef("Bound resource %s into naming store %s", name, namingStore);
+        ROOT_LOGGER.tracef("Bound resource %s into naming store %s (service name %s)", name, namingStore, controller.getName());
     }
 
     /**
@@ -133,5 +132,10 @@ public class BinderService implements Service<ManagedReferenceFactory> {
      */
     public Injector<ServiceBasedNamingStore> getNamingStoreInjector() {
         return namingStoreValue;
+    }
+
+    @Override
+    public String toString() {
+        return "BinderService[name=" + name + ",source=" + source + "]";
     }
 }

@@ -22,7 +22,18 @@
 
 package org.jboss.as.jpa.processor;
 
-import org.jboss.as.ee.component.deployers.AbstractDeploymentDescriptorBindingsProcessor;
+import static org.jboss.as.jpa.JpaMessages.MESSAGES;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import javax.persistence.EntityManager;
+import javax.persistence.EntityManagerFactory;
+import javax.persistence.PersistenceContextType;
+import javax.persistence.spi.PersistenceUnitTransactionType;
+
 import org.jboss.as.ee.component.Attachments;
 import org.jboss.as.ee.component.BindingConfiguration;
 import org.jboss.as.ee.component.ComponentDescription;
@@ -31,31 +42,25 @@ import org.jboss.as.ee.component.EEApplicationClasses;
 import org.jboss.as.ee.component.EEModuleDescription;
 import org.jboss.as.ee.component.InjectionSource;
 import org.jboss.as.ee.component.LookupInjectionSource;
+import org.jboss.as.ee.component.deployers.AbstractDeploymentDescriptorBindingsProcessor;
 import org.jboss.as.jpa.container.PersistenceUnitSearch;
 import org.jboss.as.jpa.container.SFSBXPCMap;
 import org.jboss.as.jpa.injectors.PersistenceContextInjectionSource;
 import org.jboss.as.jpa.injectors.PersistenceUnitInjectionSource;
-import org.jboss.as.jpa.service.PersistenceUnitService;
+import org.jboss.as.jpa.service.PersistenceUnitServiceImpl;
 import org.jboss.as.jpa.spi.PersistenceUnitMetadata;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.reflect.DeploymentReflectionIndex;
+import org.jboss.metadata.javaee.spec.Environment;
 import org.jboss.metadata.javaee.spec.PersistenceContextReferenceMetaData;
 import org.jboss.metadata.javaee.spec.PersistenceContextReferencesMetaData;
 import org.jboss.metadata.javaee.spec.PersistenceUnitReferenceMetaData;
 import org.jboss.metadata.javaee.spec.PersistenceUnitReferencesMetaData;
 import org.jboss.metadata.javaee.spec.PropertiesMetaData;
 import org.jboss.metadata.javaee.spec.PropertyMetaData;
+import org.jboss.metadata.javaee.spec.RemoteEnvironment;
 import org.jboss.msc.service.ServiceName;
-
-import javax.persistence.EntityManager;
-import javax.persistence.EntityManagerFactory;
-import javax.persistence.PersistenceContextType;
-import javax.persistence.spi.PersistenceUnitTransactionType;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Deployment processor responsible for processing persistence unit / context references from deployment descriptors.
@@ -103,7 +108,7 @@ public class PersistenceRefProcessor extends AbstractDeploymentDescriptorBinding
                 String lookup = puRef.getLookupName();
 
                 if (!isEmpty(lookup) && !isEmpty(persistenceUnitName)) {
-                    throw new DeploymentUnitProcessingException("Cannot specify both <lookup-name> (" + lookup + ") and persistence-unit-name (" + persistenceUnitName + ") in <persistence-unit-ref/> for " + componentDescription);
+                    throw MESSAGES.cannotSpecifyBoth("<lookup-name>", lookup, "persistence-unit-name", persistenceUnitName, "<persistence-unit-ref/>", componentDescription);
                 }
                 if (!name.startsWith("java:")) {
                     name = environment.getDefaultContext() + name;
@@ -113,16 +118,14 @@ public class PersistenceRefProcessor extends AbstractDeploymentDescriptorBinding
                 LookupInjectionSource injectionSource = new LookupInjectionSource(name);
 
                 //add any injection targets
-                processInjectionTargets(moduleDescription, applicationClasses, injectionSource, classLoader, deploymentReflectionIndex, puRef, EntityManagerFactory.class);
+                processInjectionTargets(moduleDescription, componentDescription, applicationClasses, injectionSource, classLoader, deploymentReflectionIndex, puRef, EntityManagerFactory.class);
 
                 BindingConfiguration bindingConfiguration = null;
                 if (!isEmpty(lookup)) {
                     bindingConfiguration = new BindingConfiguration(name, new LookupInjectionSource(lookup));
-                } else if (!isEmpty(persistenceUnitName)) {
+                } else {
                     InjectionSource puBindingSource = this.getPersistenceUnitBindingSource(deploymentUnit, persistenceUnitName);
                     bindingConfiguration = new BindingConfiguration(name, puBindingSource);
-                } else {
-                    throw new RuntimeException("Support for persistence-unit-ref without a lookup or persistence-unit-name, isn't yet implemented");
                 }
                 bindingConfigurations.add(bindingConfiguration);
             }
@@ -144,71 +147,74 @@ public class PersistenceRefProcessor extends AbstractDeploymentDescriptorBinding
         final EEApplicationClasses applicationClasses = deploymentUnit.getAttachment(Attachments.EE_APPLICATION_CLASSES_DESCRIPTION);
 
         List<BindingConfiguration> bindingConfigurations = new ArrayList<BindingConfiguration>();
-        if (environment.getEnvironment() == null) {
+        final RemoteEnvironment remoteEnvironment = environment.getEnvironment();
+        if (remoteEnvironment == null) {
             return bindingConfigurations;
         }
-        PersistenceContextReferencesMetaData persistenceUnitRefs = environment.getEnvironment().getPersistenceContextRefs();
 
-        if (persistenceUnitRefs != null) {
-            for (PersistenceContextReferenceMetaData puRef : persistenceUnitRefs) {
-                String name = puRef.getName();
-                String persistenceUnitName = puRef.getPersistenceUnitName();
-                String lookup = puRef.getLookupName();
+        if (remoteEnvironment instanceof Environment) {
+            PersistenceContextReferencesMetaData persistenceUnitRefs = ((Environment) remoteEnvironment).getPersistenceContextRefs();
 
-                if (!isEmpty(lookup) && !isEmpty(persistenceUnitName)) {
-                    throw new DeploymentUnitProcessingException("Cannot specify both <lookup-name> (" + lookup + ") and persistence-unit-name (" + persistenceUnitName + ") in <persistence-context-ref/> for " + componentDescription);
-                }
-                if (!name.startsWith("java:")) {
-                    name = environment.getDefaultContext() + name;
-                }
+            if (persistenceUnitRefs != null) {
+                for (PersistenceContextReferenceMetaData puRef : persistenceUnitRefs) {
+                    String name = puRef.getName();
+                    String persistenceUnitName = puRef.getPersistenceUnitName();
+                    String lookup = puRef.getLookupName();
 
-                // our injection (source) comes from the local (ENC) lookup, no matter what.
-                LookupInjectionSource injectionSource = new LookupInjectionSource(name);
-                //add any injection targets
-                processInjectionTargets(moduleDescription, applicationClasses, injectionSource, classLoader, deploymentReflectionIndex, puRef, EntityManager.class);
-
-                BindingConfiguration bindingConfiguration = null;
-                if (!isEmpty(lookup)) {
-                    bindingConfiguration = new BindingConfiguration(name, new LookupInjectionSource(lookup));
-                } else if (!isEmpty(persistenceUnitName)) {
-                    PropertiesMetaData properties = puRef.getProperties();
-                    Map map = new HashMap();
-                    if (properties != null) {
-                        for (PropertyMetaData prop : properties) {
-                            map.put(prop.getKey(), prop.getValue());
-                        }
+                    if (!isEmpty(lookup) && !isEmpty(persistenceUnitName)) {
+                        throw MESSAGES.cannotSpecifyBoth("<lookup-name>", lookup, "persistence-unit-name", persistenceUnitName, "<persistence-context-ref/>", componentDescription);
                     }
-                    PersistenceContextType type = puRef.getPersistenceContextType() == null ? PersistenceContextType.TRANSACTION : puRef.getPersistenceContextType();
-                    InjectionSource pcBindingSource = this.getPersistenceContextBindingSource(deploymentUnit, persistenceUnitName, type, map);
-                    bindingConfiguration = new BindingConfiguration(name, pcBindingSource);
-                } else {
-                    throw new RuntimeException("Support for persistence-context-ref without a lookup or persistence-unit-name, isn't yet implemented");
+                    if (!name.startsWith("java:")) {
+                        name = environment.getDefaultContext() + name;
+                    }
+
+                    // our injection (source) comes from the local (ENC) lookup, no matter what.
+                    LookupInjectionSource injectionSource = new LookupInjectionSource(name);
+                    //add any injection targets
+                    processInjectionTargets(moduleDescription, componentDescription, applicationClasses, injectionSource, classLoader, deploymentReflectionIndex, puRef, EntityManager.class);
+
+                    BindingConfiguration bindingConfiguration = null;
+                    if (!isEmpty(lookup)) {
+                        bindingConfiguration = new BindingConfiguration(name, new LookupInjectionSource(lookup));
+                    } else if (!isEmpty(persistenceUnitName)) {
+                        PropertiesMetaData properties = puRef.getProperties();
+                        Map map = new HashMap();
+                        if (properties != null) {
+                            for (PropertyMetaData prop : properties) {
+                                map.put(prop.getKey(), prop.getValue());
+                            }
+                        }
+                        PersistenceContextType type = puRef.getPersistenceContextType() == null ? PersistenceContextType.TRANSACTION : puRef.getPersistenceContextType();
+                        InjectionSource pcBindingSource = this.getPersistenceContextBindingSource(deploymentUnit, persistenceUnitName, type, map);
+                        bindingConfiguration = new BindingConfiguration(name, pcBindingSource);
+                    }
+                    bindingConfigurations.add(bindingConfiguration);
                 }
-                bindingConfigurations.add(bindingConfiguration);
             }
         }
         return bindingConfigurations;
     }
 
 
-    private InjectionSource getPersistenceUnitBindingSource(
-        final DeploymentUnit deploymentUnit,
-        final String unitName)
-        throws DeploymentUnitProcessingException {
-
-        PersistenceUnitMetadata pu = getPersistenceUnit(deploymentUnit, unitName);
+    private InjectionSource getPersistenceUnitBindingSource(final DeploymentUnit deploymentUnit, final String unitName) throws
+        DeploymentUnitProcessingException {
+        final String searchName;
+        if (isEmpty(unitName)) {
+            searchName = null;
+        } else {
+            searchName = unitName;
+        }
+        final PersistenceUnitMetadata pu = PersistenceUnitSearch.resolvePersistenceUnitSupplier(deploymentUnit, searchName);
         String scopedPuName = pu.getScopedPersistenceUnitName();
         ServiceName puServiceName = getPuServiceName(scopedPuName);
         return new PersistenceUnitInjectionSource(puServiceName, deploymentUnit, EntityManagerFactory.class.getName(), pu);
     }
 
-    private InjectionSource getPersistenceContextBindingSource(
-        final DeploymentUnit deploymentUnit,
-        final String unitName, PersistenceContextType type, Map properties)
-        throws DeploymentUnitProcessingException {
+    private InjectionSource getPersistenceContextBindingSource(final DeploymentUnit deploymentUnit, final String unitName, PersistenceContextType type, Map properties) throws
+        DeploymentUnitProcessingException {
         PersistenceUnitMetadata pu = getPersistenceUnit(deploymentUnit, unitName);
-        if(pu.getTransactionType() == PersistenceUnitTransactionType.RESOURCE_LOCAL) {
-            throw new DeploymentUnitProcessingException("Cannot inject RESOURCE_LOCAL entity manager " + unitName + " using " + "<persistence-context-ref>");
+        if (pu.getTransactionType() == PersistenceUnitTransactionType.RESOURCE_LOCAL) {
+            throw MESSAGES.cannotInjectResourceLocalEntityManager(unitName);
         }
         String scopedPuName = pu.getScopedPersistenceUnitName();
         ServiceName puServiceName = getPuServiceName(scopedPuName);
@@ -220,7 +226,7 @@ public class PersistenceRefProcessor extends AbstractDeploymentDescriptorBinding
 
         PersistenceUnitMetadata pu = PersistenceUnitSearch.resolvePersistenceUnitSupplier(deploymentUnit, puName);
         if (null == pu) {
-            throw new DeploymentUnitProcessingException("Can't find a deployment unit named " + puName + " at " + deploymentUnit);
+            throw new DeploymentUnitProcessingException(MESSAGES.deploymentUnitNotFound(puName, deploymentUnit));
         }
         return pu;
     }
@@ -228,7 +234,7 @@ public class PersistenceRefProcessor extends AbstractDeploymentDescriptorBinding
     private ServiceName getPuServiceName(String scopedPuName)
         throws DeploymentUnitProcessingException {
 
-        return PersistenceUnitService.getPUServiceName(scopedPuName);
+        return PersistenceUnitServiceImpl.getPUServiceName(scopedPuName);
     }
 
     private boolean isEmpty(String string) {

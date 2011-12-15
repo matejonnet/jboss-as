@@ -39,14 +39,16 @@ public class OperationRequestState extends DefaultParsingState {
     public static final OperationRequestState INSTANCE = new OperationRequestState();
 
     public OperationRequestState() {
-        this(NodeState.INSTANCE, AddressOperationSeparatorState.INSTANCE, PropertyListState.INSTANCE, OutputTargetState.INSTANCE);
+        this(NodeState.INSTANCE, AddressOperationSeparatorState.INSTANCE, PropertyListState.INSTANCE, HeaderListState.INSTANCE, OutputTargetState.INSTANCE);
     }
 
-    public OperationRequestState(final NodeState nodeState, final AddressOperationSeparatorState addrOpSep, final PropertyListState propList, final OutputTargetState outRedirect) {
+    public OperationRequestState(final NodeState nodeState, final AddressOperationSeparatorState addrOpSep, final PropertyListState propList,
+            final HeaderListState headerList, final OutputTargetState outRedirect) {
         super(ID);
         setDefaultHandler(new EnterStateCharacterHandler(nodeState));
         enterState(':', addrOpSep);
         enterState('(', propList);
+        enterState('{', headerList);
         enterState(OutputTargetState.OUTPUT_REDIRECT_CHAR, outRedirect);
         setReturnHandler(new CharacterHandler(){
             @Override

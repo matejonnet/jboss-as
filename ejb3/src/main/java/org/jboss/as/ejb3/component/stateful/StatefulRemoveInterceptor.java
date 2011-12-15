@@ -22,14 +22,15 @@
 
 package org.jboss.as.ejb3.component.stateful;
 
+import java.lang.reflect.Method;
+
 import org.jboss.as.ee.component.Component;
 import org.jboss.as.ee.component.ComponentInstance;
 import org.jboss.as.ejb3.component.EJBComponent;
+import org.jboss.ejb.client.SessionID;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
-
-import java.io.Serializable;
-import java.lang.reflect.Method;
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 
 /**
  * An interceptor which handles a invocation on a {@link javax.ejb.Remove} method of a stateful session bean. This interceptor
@@ -52,8 +53,7 @@ public class StatefulRemoveInterceptor implements Interceptor {
         final Component component = context.getPrivateData(Component.class);
         // just log a WARN and throw back the original exception
         if (component instanceof StatefulSessionComponent == false) {
-            throw new RuntimeException("Unexpected component: " + component + " in interceptor context: " + context +
-                    " Expected an instance of " + StatefulSessionComponent.class);
+            throw MESSAGES.unexpectedComponent(component,StatefulSessionComponent.class);
         }
         final StatefulSessionComponent statefulComponent = (StatefulSessionComponent) component;
         Object invocationResult = null;
@@ -70,12 +70,12 @@ public class StatefulRemoveInterceptor implements Interceptor {
             }
             // otherwise, just remove it and throw back the original exception
             final StatefulSessionComponentInstance statefulComponentInstance = (StatefulSessionComponentInstance) context.getPrivateData(ComponentInstance.class);
-            final Serializable sessionId = statefulComponentInstance.getId();
+            final SessionID sessionId = statefulComponentInstance.getId();
             statefulComponent.removeSession(sessionId);
             throw e;
         }
         final StatefulSessionComponentInstance statefulComponentInstance = (StatefulSessionComponentInstance) context.getPrivateData(ComponentInstance.class);
-        final Serializable sessionId = statefulComponentInstance.getId();
+        final SessionID sessionId = statefulComponentInstance.getId();
         // just remove the session because of a call to @Remove method
         statefulComponent.removeSession(sessionId);
         // return the invocation result

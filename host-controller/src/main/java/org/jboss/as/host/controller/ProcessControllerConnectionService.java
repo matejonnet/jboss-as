@@ -33,8 +33,8 @@ import java.util.concurrent.ThreadFactory;
 import org.jboss.as.process.ProcessControllerClient;
 import org.jboss.as.process.ProcessInfo;
 import org.jboss.as.process.ProcessMessageHandler;
-import org.jboss.as.protocol.old.ProtocolClient;
-import org.jboss.as.protocol.old.StreamUtils;
+import org.jboss.as.process.protocol.ProtocolClient;
+import org.jboss.as.protocol.StreamUtils;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.StartContext;
@@ -75,7 +75,7 @@ class ProcessControllerConnectionService implements Service<ProcessControllerCon
             final ProtocolClient.Configuration configuration = new ProtocolClient.Configuration();
             configuration.setReadExecutor(Executors.newCachedThreadPool());
             configuration.setServerAddress(new InetSocketAddress(environment.getProcessControllerAddress(), environment.getProcessControllerPort().intValue()));
-
+            configuration.setBindAddress(new InetSocketAddress(environment.getHostControllerAddress(), environment.getHostControllerPort()));
             final ThreadFactory threadFactory = new JBossThreadFactory(new ThreadGroup("ProcessControllerConnection-threads"), Boolean.FALSE, null, "%G - %t", null, null, AccessController.getContext());
             configuration.setThreadFactory(threadFactory);
             configuration.setSocketFactory(SocketFactory.getDefault());

@@ -22,7 +22,8 @@
 
 package org.jboss.as.protocol.mgmt;
 
-import static org.jboss.as.protocol.old.ProtocolUtils.expectHeader;
+import static org.jboss.as.protocol.ProtocolMessages.MESSAGES;
+import static org.jboss.as.protocol.mgmt.ProtocolUtils.expectHeader;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -89,7 +90,7 @@ abstract class ManagementProtocolHeader {
         final byte[] signatureBytes = new byte[4];
         input.readFully(signatureBytes);
         if (!Arrays.equals(ManagementProtocol.SIGNATURE, signatureBytes)) {
-            throw new IOException("Invalid signature [" + Arrays.toString(signatureBytes) + "]");
+            throw MESSAGES.invalidSignature(Arrays.toString(signatureBytes));
         }
     }
 
@@ -116,7 +117,7 @@ abstract class ManagementProtocolHeader {
             case ManagementProtocol.TYPE_PONG:
                 return new ManagementPongHeader(version);
             default:
-                throw new IOException("Invalid type: 0x" + Integer.toHexString(type));
+                throw MESSAGES.invalidType("0x" + Integer.toHexString(type));
         }
     }
 }

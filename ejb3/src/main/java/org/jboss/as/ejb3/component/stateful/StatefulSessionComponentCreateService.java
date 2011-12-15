@@ -22,97 +22,77 @@
 
 package org.jboss.as.ejb3.component.stateful;
 
+import java.lang.reflect.Method;
+
 import org.jboss.as.ee.component.BasicComponent;
 import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ee.component.TCCLInterceptor;
-import org.jboss.as.ejb3.PrimitiveClassLoaderUtil;
+import org.jboss.as.ejb3.component.DefaultAccessTimeoutService;
+import org.jboss.as.ejb3.component.InvokeMethodOnTargetInterceptor;
+import org.jboss.as.ejb3.component.interceptors.CurrentInvocationContextInterceptor;
 import org.jboss.as.ejb3.component.session.SessionBeanComponentCreateService;
-import org.jboss.as.ejb3.component.session.SessionInvocationContextInterceptor;
-import org.jboss.as.ejb3.deployment.EjbJarConfiguration;
+import org.jboss.as.ejb3.deployment.ApplicationExceptions;
 import org.jboss.invocation.ImmediateInterceptorFactory;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.Interceptors;
-
-import java.lang.reflect.Method;
-import java.util.Arrays;
+import org.jboss.msc.inject.Injector;
+import org.jboss.msc.value.InjectedValue;
 
 /**
  * @author Stuart Douglas
  */
 public class StatefulSessionComponentCreateService extends SessionBeanComponentCreateService {
     private final InterceptorFactory afterBegin;
+    private final Method afterBeginMethod;
     private final InterceptorFactory afterCompletion;
+    private final Method afterCompletionMethod;
     private final InterceptorFactory beforeCompletion;
+    private final Method beforeCompletionMethod;
     private final StatefulTimeoutInfo statefulTimeout;
+    private final InjectedValue<DefaultAccessTimeoutService> defaultAccessTimeoutService = new InjectedValue<DefaultAccessTimeoutService>();
 
     /**
      * Construct a new instance.
      *
      * @param componentConfiguration the component configuration
      */
-    public StatefulSessionComponentCreateService(final ComponentConfiguration componentConfiguration, final EjbJarConfiguration ejbJarConfiguration) {
+    public StatefulSessionComponentCreateService(final ComponentConfiguration componentConfiguration, final ApplicationExceptions ejbJarConfiguration) {
         super(componentConfiguration, ejbJarConfiguration);
 
         final StatefulComponentDescription componentDescription = (StatefulComponentDescription) componentConfiguration.getComponentDescription();
-        final InterceptorFactory tcclInterceptorFactory = new ImmediateInterceptorFactory(new TCCLInterceptor(componentConfiguration.getComponentClass().getClassLoader()));
+        final InterceptorFactory tcclInterceptorFactory = new ImmediateInterceptorFactory(new TCCLInterceptor(componentConfiguration.getModuleClassLoder()));
         final InterceptorFactory namespaceContextInterceptorFactory = componentConfiguration.getNamespaceContextInterceptorFactory();
-        final Class<?> beanClass = componentConfiguration.getComponentClass();
-        this.afterBegin = interceptorFactoryChain(tcclInterceptorFactory, namespaceContextInterceptorFactory, SessionInvocationContextInterceptor.FACTORY, invokeMethodOnTarget(beanClass, componentDescription.getAfterBegin()));
-        this.afterCompletion = interceptorFactoryChain(tcclInterceptorFactory, namespaceContextInterceptorFactory, SessionInvocationContextInterceptor.FACTORY, invokeMethodOnTarget(beanClass, componentDescription.getAfterCompletion()));
-        this.beforeCompletion = interceptorFactoryChain(tcclInterceptorFactory, namespaceContextInterceptorFactory, SessionInvocationContextInterceptor.FACTORY, invokeMethodOnTarget(beanClass, componentDescription.getBeforeCompletion()));
+
+        this.afterBeginMethod = componentDescription.getAfterBegin();
+        if (componentDescription.getAfterBegin() != null) {
+            this.afterBegin = Interceptors.getChainedInterceptorFactory(tcclInterceptorFactory, namespaceContextInterceptorFactory, CurrentInvocationContextInterceptor.FACTORY, invokeMethodOnTarget(componentDescription.getAfterBegin()));
+        } else {
+            this.afterBegin = null;
+        }
+        this.afterCompletionMethod = componentDescription.getAfterCompletion();
+        if (componentDescription.getAfterCompletion() != null) {
+            this.afterCompletion = Interceptors.getChainedInterceptorFactory(tcclInterceptorFactory, namespaceContextInterceptorFactory, CurrentInvocationContextInterceptor.FACTORY, invokeMethodOnTarget(componentDescription.getAfterCompletion()));
+        } else {
+            this.afterCompletion = null;
+        }
+        this.beforeCompletionMethod = componentDescription.getBeforeCompletion();
+        if (componentDescription.getBeforeCompletion() != null) {
+            this.beforeCompletion = Interceptors.getChainedInterceptorFactory(tcclInterceptorFactory, namespaceContextInterceptorFactory, CurrentInvocationContextInterceptor.FACTORY, invokeMethodOnTarget(componentDescription.getBeforeCompletion()));
+        } else {
+            this.beforeCompletion = null;
+        }
         this.statefulTimeout = componentDescription.getStatefulTimeout();
     }
 
-    private static InterceptorFactory invokeMethodOnTarget(Class<?> beanClass, MethodDescription methodDescription) {
-        final Method method = methodOf(beanClass, methodDescription);
-        if (method == null)
-            return null;
+    private static InterceptorFactory invokeMethodOnTarget(final Method method) {
         method.setAccessible(true);
         return InvokeMethodOnTargetInterceptor.factory(method);
     }
 
-    private static InterceptorFactory interceptorFactoryChain(final InterceptorFactory... factories) {
-        // a little bit of magic
-        if (factories[factories.length - 1] == null)
-            return null;
-        return Interceptors.getChainedInterceptorFactory(factories);
-    }
 
     @Override
     protected BasicComponent createComponent() {
         return new StatefulSessionComponent(this);
-    }
-
-    private static Method declaredMethodOfHierarchy(final Class<?> cls, final String name, final Class<?>[] parameterTypes) {
-        if (cls == null)
-            throw new RuntimeException("Unable to find method " + name + " " + Arrays.toString(parameterTypes));
-        try {
-            return cls.getDeclaredMethod(name, parameterTypes);
-        } catch (NoSuchMethodException e) {
-            return declaredMethodOfHierarchy(cls.getSuperclass(), name, parameterTypes);
-        }
-    }
-
-    private static Method methodOf(Class<?> cls, MethodDescription methodDescription) {
-        if (methodDescription == null)
-            return null;
-        try {
-            final ClassLoader classLoader = cls.getClassLoader();
-            final String[] types = methodDescription.params;
-            final Class<?>[] paramTypes = new Class<?>[types.length];
-            for (int i = 0; i < types.length; i++) {
-                paramTypes[i] = PrimitiveClassLoaderUtil.loadClass(types[i], classLoader);
-            }
-            if (methodDescription.className != null) {
-                final Class<?> declaringClass = Class.forName(methodDescription.className, false, classLoader);
-                return declaringClass.getDeclaredMethod(methodDescription.methodName, paramTypes);
-            }
-            return declaredMethodOfHierarchy(cls, methodDescription.methodName, paramTypes);
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException(e);
-        } catch (NoSuchMethodException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     public InterceptorFactory getAfterBegin() {
@@ -127,7 +107,27 @@ public class StatefulSessionComponentCreateService extends SessionBeanComponentC
         return beforeCompletion;
     }
 
+    public Method getAfterBeginMethod() {
+        return afterBeginMethod;
+    }
+
+    public Method getAfterCompletionMethod() {
+        return afterCompletionMethod;
+    }
+
+    public Method getBeforeCompletionMethod() {
+        return beforeCompletionMethod;
+    }
+
     public StatefulTimeoutInfo getStatefulTimeout() {
         return statefulTimeout;
+    }
+
+    public DefaultAccessTimeoutService getDefaultAccessTimeoutService() {
+        return defaultAccessTimeoutService.getValue();
+    }
+
+    Injector<DefaultAccessTimeoutService> getDefaultAccessTimeoutInjector() {
+        return this.defaultAccessTimeoutService;
     }
 }

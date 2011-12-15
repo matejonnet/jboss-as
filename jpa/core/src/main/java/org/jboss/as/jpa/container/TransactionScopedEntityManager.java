@@ -22,11 +22,14 @@
 
 package org.jboss.as.jpa.container;
 
-import org.jboss.as.jpa.transaction.TransactionUtil;
+import static org.jboss.as.jpa.JpaMessages.MESSAGES;
+
+import java.util.Map;
 
 import javax.persistence.EntityManager;
 import javax.persistence.EntityManagerFactory;
-import java.util.Map;
+
+import org.jboss.as.jpa.transaction.TransactionUtil;
 
 /**
  * Transaction scoped entity manager will be injected into SLSB or SFSB beans.  At bean invocation time, they
@@ -85,9 +88,7 @@ public class TransactionScopedEntityManager extends AbstractEntityManager {
     @Override
     public void close() {
         // Transaction scoped entity manager will be closed when the (owning) component invocation completes
-        throw new IllegalStateException("Container managed entity manager can only be closed by the container " +
-            "(auto-cleared at tx/invocation end and closed when owning component is closed.)");
-
+        throw MESSAGES.cannotCloseTransactionContainerEntityManger();
     }
 
 }

@@ -26,7 +26,6 @@ import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.DeploymentUnitProcessor;
 import org.jboss.as.webservices.deployers.deployment.WSDeploymentBuilder;
-import org.jboss.as.webservices.util.ASHelper;
 
 /**
  * This deployer initializes JBossWS deployment meta data.
@@ -37,16 +36,14 @@ import org.jboss.as.webservices.util.ASHelper;
 public final class WSModelDeploymentProcessor extends TCCLDeploymentProcessor implements DeploymentUnitProcessor {
 
     @Override
-    public void internalDeploy(DeploymentPhaseContext phaseContext) throws DeploymentUnitProcessingException {
+    public void internalDeploy(final DeploymentPhaseContext phaseContext) throws DeploymentUnitProcessingException {
         final DeploymentUnit unit = phaseContext.getDeploymentUnit();
-        if (ASHelper.isWebServiceDeployment(unit)) {
-            //create new Web Service deployment and register it with deployment unit
-            WSDeploymentBuilder.getInstance().build(unit);
-        }
+        WSDeploymentBuilder.getInstance().build(unit);
     }
 
     @Override
-    public void internalUndeploy(org.jboss.as.server.deployment.DeploymentUnit context) {
-        //NOOP
+    public void internalUndeploy(final org.jboss.as.server.deployment.DeploymentUnit context) {
+        // does nothing
     }
+
 }

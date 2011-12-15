@@ -24,8 +24,7 @@ package org.jboss.as.messaging;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_ATTRIBUTE_OPERATION;
-import static org.jboss.as.messaging.CommonAttributes.STARTED;
-import static org.jboss.as.messaging.CommonAttributes.VERSION;
+import static org.jboss.as.messaging.MessagingMessages.MESSAGES;
 
 import java.util.EnumSet;
 import java.util.Locale;
@@ -33,8 +32,11 @@ import java.util.Locale;
 import org.hornetq.api.core.management.HornetQServerControl;
 import org.hornetq.core.server.HornetQServer;
 import org.jboss.as.controller.AbstractRuntimeOnlyHandler;
+import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.PathAddress;
+import org.jboss.as.controller.SimpleAttributeDefinition;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.operations.validation.ParametersValidator;
@@ -45,6 +47,7 @@ import org.jboss.as.controller.registry.OperationEntry;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 import org.jboss.msc.service.ServiceController;
+import org.jboss.msc.service.ServiceName;
 
 /**
  * Handles operations and attribute reads supported by a HornetQ {@link org.hornetq.api.core.management.HornetQServerControl}.
@@ -55,7 +58,13 @@ public class HornetQServerControlHandler extends AbstractRuntimeOnlyHandler {
 
     public static HornetQServerControlHandler INSTANCE = new HornetQServerControlHandler();
 
-    public static final String[] ATTRIBUTES = { STARTED, VERSION };
+    public static final AttributeDefinition STARTED = new SimpleAttributeDefinition(CommonAttributes.STARTED, ModelType.BOOLEAN,
+            false, AttributeAccess.Flag.STORAGE_RUNTIME);
+
+    public static final AttributeDefinition VERSION = new SimpleAttributeDefinition(CommonAttributes.VERSION, ModelType.STRING,
+            false, AttributeAccess.Flag.STORAGE_RUNTIME);
+
+    private static final AttributeDefinition[] ATTRIBUTES = { STARTED, VERSION };
     public static final String GET_CONNECTORS_AS_JSON = "get-connectors-as-json";
 //    public static final String ENABLE_MESSAGE_COUNTERS = "enable-message-counters";
 //    public static final String DISABLE_MESSAGE_COUNTERS = "disable-message-counters";
@@ -85,7 +94,7 @@ public class HornetQServerControlHandler extends AbstractRuntimeOnlyHandler {
         // listProducersInfoAsJSON, listSessions, getRoles, getRolesAsJSON, getAddressSettingsAsJSON,
         // forceFailover
 
-    public static final String HQ_SERVER = "hq-server";
+    public static final String HQ_SERVER = "hornetq-server";
     public static final String TRANSACTION_AS_BASE_64 = "transaction-as-base-64";
     public static final String ADDRESS_MATCH = "address-match";
     public static final String CONNECTION_ID = "connection-id";
@@ -190,22 +199,25 @@ public class HornetQServerControlHandler extends AbstractRuntimeOnlyHandler {
                 context.getResult();
             } else {
                 // Bug
-                throw new IllegalStateException(String.format("Support for operation %s was not properly implemented", operationName));
+                throw MESSAGES.unsupportedOperation(operationName);
             }
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            context.getFailureDescription().set(e.toString());
+            context.getFailureDescription().set(e.getLocalizedMessage());
         }
 
         context.completeStep();
     }
 
-    public void register(final ManagementResourceRegistration registry) {
+    public void registerAttributes(final ManagementResourceRegistration registry) {
 
-        for (String attr : ATTRIBUTES) {
-            registry.registerReadOnlyAttribute(attr, this, AttributeAccess.Storage.RUNTIME);
+        for (AttributeDefinition attr : ATTRIBUTES) {
+            registry.registerReadOnlyAttribute(attr, this);
         }
+    }
+
+    public void registerOperations(final ManagementResourceRegistration registry) {
 
         final EnumSet<OperationEntry.Flag> readOnly = EnumSet.of(OperationEntry.Flag.READ_ONLY);
 
@@ -353,23 +365,21 @@ public class HornetQServerControlHandler extends AbstractRuntimeOnlyHandler {
     private void handleReadAttribute(OperationContext context, ModelNode operation, final HornetQServerControl serverControl) {
         final String name = operation.require(ModelDescriptionConstants.NAME).asString();
 
-        if (STARTED.equals(name)) {
+        if (STARTED.getName().equals(name)) {
             boolean started = serverControl.isStarted();
             context.getResult().set(started);
-        } else if (STARTED.equals(name)) {
-            boolean started = serverControl.isStarted();
-            context.getResult().set(started);
-        } else if (VERSION.equals(name)) {
+        } else if (VERSION.getName().equals(name)) {
             String version = serverControl.getVersion();
             context.getResult().set(version);
         } else {
             // Bug
-            throw new IllegalStateException(String.format("Read support for attribute %s was not properly implemented", name));
+            throw MESSAGES.unsupportedAttribute(name);
         }
     }
 
-    private HornetQServerControl getServerControl(final OperationContext context, final ModelNode operation) {
-        ServiceController<?> hqService = context.getServiceRegistry(false).getService(MessagingServices.JBOSS_MESSAGING);
+    private HornetQServerControl getServerControl(final OperationContext context, ModelNode operation) {
+        final ServiceName hqServiceName = MessagingServices.getHornetQServiceName(PathAddress.pathAddress(operation.get(ModelDescriptionConstants.OP_ADDR)));
+        ServiceController<?> hqService = context.getServiceRegistry(false).getService(hqServiceName);
         HornetQServer hqServer = HornetQServer.class.cast(hqService.getValue());
         return hqServer.getHornetQServerControl();
     }

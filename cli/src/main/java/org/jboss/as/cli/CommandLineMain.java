@@ -49,6 +49,7 @@ import javax.security.auth.callback.PasswordCallback;
 import javax.security.auth.callback.UnsupportedCallbackException;
 import javax.security.sasl.RealmCallback;
 import javax.security.sasl.RealmChoiceCallback;
+import javax.security.sasl.SaslException;
 
 import org.jboss.as.cli.batch.Batch;
 import org.jboss.as.cli.batch.BatchManager;
@@ -101,12 +102,14 @@ import org.jboss.as.cli.operation.PrefixFormatter;
 import org.jboss.as.cli.operation.impl.DefaultCallbackHandler;
 import org.jboss.as.cli.operation.impl.DefaultOperationCandidatesProvider;
 import org.jboss.as.cli.operation.impl.DefaultOperationRequestAddress;
+import org.jboss.as.cli.operation.impl.DefaultOperationRequestBuilder;
 import org.jboss.as.cli.operation.impl.DefaultOperationRequestParser;
 import org.jboss.as.cli.operation.impl.DefaultPrefixFormatter;
 import org.jboss.as.controller.client.ModelControllerClient;
-import org.jboss.as.protocol.old.StreamUtils;
+import org.jboss.as.protocol.StreamUtils;
 import org.jboss.dmr.ModelNode;
 import org.jboss.sasl.JBossSaslProvider;
+import org.jboss.sasl.callback.DigestHashCallback;
 
 /**
 *
@@ -127,15 +130,6 @@ public class CommandLineMain {
         cmdRegistry.registerHandler(new UndeployHandler(), "undeploy");
         cmdRegistry.registerHandler(new PrintWorkingNodeHandler(), "pwd", "pwn");
 
-        cmdRegistry.registerHandler(new JmsQueueAddHandler(), "add-jms-queue");
-        cmdRegistry.registerHandler(new JmsQueueRemoveHandler(), "remove-jms-queue");
-        cmdRegistry.registerHandler(new JmsTopicAddHandler(), "add-jms-topic");
-        cmdRegistry.registerHandler(new JmsTopicRemoveHandler(), "remove-jms-topic");
-        cmdRegistry.registerHandler(new JmsCFAddHandler(), "add-jms-cf");
-        cmdRegistry.registerHandler(new JmsCFRemoveHandler(), "remove-jms-cf");
-        cmdRegistry.registerHandler(new CreateJmsResourceHandler(), false, "create-jms-resource");
-        cmdRegistry.registerHandler(new DeleteJmsResourceHandler(), false, "delete-jms-resource");
-
         cmdRegistry.registerHandler(new BatchHandler(), "batch");
         cmdRegistry.registerHandler(new BatchDiscardHandler(), "discard-batch");
         cmdRegistry.registerHandler(new BatchListHandler(), "list-batch");
@@ -148,6 +142,12 @@ public class CommandLineMain {
 
         cmdRegistry.registerHandler(new VersionHandler(), "version");
 
+        cmdRegistry.registerHandler(new CommandCommandHandler(cmdRegistry), "command");
+
+        // data-source
+        cmdRegistry.registerHandler(new GenericTypeOperationHandler("/subsystem=datasources/data-source", "jndi-name"), "data-source");
+        cmdRegistry.registerHandler(new GenericTypeOperationHandler("/subsystem=datasources/xa-data-source", "jndi-name"), "xa-data-source");
+        // supported but hidden from the tab-completion
         cmdRegistry.registerHandler(new DataSourceAddHandler(), false, "add-data-source");
         cmdRegistry.registerHandler(new DataSourceModifyHandler(), false, "modify-data-source");
         cmdRegistry.registerHandler(new DataSourceRemoveHandler(), false, "remove-data-source");
@@ -155,11 +155,20 @@ public class CommandLineMain {
         cmdRegistry.registerHandler(new XADataSourceRemoveHandler(), false, "remove-xa-data-source");
         cmdRegistry.registerHandler(new XADataSourceModifyHandler(), false, "modify-xa-data-source");
 
-        cmdRegistry.registerHandler(new CommandCommandHandler(cmdRegistry), "command");
-
-        // data-source
-        cmdRegistry.registerHandler(new GenericTypeOperationHandler("/subsystem=datasources/data-source", "jndi-name"), "data-source");
-        cmdRegistry.registerHandler(new GenericTypeOperationHandler("/subsystem=datasources/xa-data-source", "jndi-name"), "xa-data-source");
+        // JMS
+        cmdRegistry.registerHandler(new GenericTypeOperationHandler("/subsystem=messaging/hornetq-server=default/jms-queue", "queue-address"), "jms-queue");
+        cmdRegistry.registerHandler(new GenericTypeOperationHandler("/subsystem=messaging/hornetq-server=default/jms-topic", "topic-address"), "jms-topic");
+        cmdRegistry.registerHandler(new GenericTypeOperationHandler("/subsystem=messaging/hornetq-server=default/connection-factory", null), "connection-factory");
+        // supported but hidden from the tab-completion
+        cmdRegistry.registerHandler(new JmsQueueAddHandler(), false, "add-jms-queue");
+        cmdRegistry.registerHandler(new JmsQueueRemoveHandler(), false, "remove-jms-queue");
+        cmdRegistry.registerHandler(new JmsTopicAddHandler(), false, "add-jms-topic");
+        cmdRegistry.registerHandler(new JmsTopicRemoveHandler(), false, "remove-jms-topic");
+        cmdRegistry.registerHandler(new JmsCFAddHandler(), false, "add-jms-cf");
+        cmdRegistry.registerHandler(new JmsCFRemoveHandler(), false, "remove-jms-cf");
+        // these are used for the cts setup
+        cmdRegistry.registerHandler(new CreateJmsResourceHandler(), false, "create-jms-resource");
+        cmdRegistry.registerHandler(new DeleteJmsResourceHandler(), false, "delete-jms-resource");
     }
 
     public static void main(String[] args) throws Exception {
@@ -177,6 +186,8 @@ public class CommandLineMain {
             String defaultControllerHost = null;
             int defaultControllerPort = -1;
             boolean version = false;
+            String username = null;
+            char[] password = null;
             for(String arg : args) {
                 if(arg.startsWith("--controller=") || arg.startsWith("controller=")) {
                     final String value;
@@ -258,8 +269,13 @@ public class CommandLineMain {
                     }
                     final String value = arg.startsWith("--") ? arg.substring(10) : arg.substring(8);
                     commands = new String[]{value};
-                }
-                else {
+                } else if (arg.startsWith("--user=")) {
+                    username = arg.startsWith("--") ? arg.substring(7) : arg.substring(5);
+                } else if (arg.startsWith("--password=")) {
+                    password = (arg.startsWith("--") ? arg.substring(11) : arg.substring(9)).toCharArray();
+                } else if (arg.equals("--help") || arg.equals("-h")) {
+                    commands = new String[]{"help"};
+                } else {
                     // assume it's commands
                     if(file != null) {
                         argError = "Only one of '--file', '--commands' or '--command' can appear as the argument at a time.";
@@ -285,12 +301,12 @@ public class CommandLineMain {
             }
 
             if(file != null) {
-                processFile(file, defaultControllerHost, defaultControllerPort, connect);
+                processFile(file, defaultControllerHost, defaultControllerPort, connect, username, password);
                 return;
             }
 
             if(commands != null) {
-                processCommands(commands, defaultControllerHost, defaultControllerPort, connect);
+                processCommands(commands, defaultControllerHost, defaultControllerPort, connect, username, password);
                 return;
             }
 
@@ -306,6 +322,8 @@ public class CommandLineMain {
             }));
             console.addCompletor(cmdCtx.cmdCompleter);
 
+            cmdCtx.username = username;
+            cmdCtx.password = password;
             if(defaultControllerHost != null) {
                 cmdCtx.defaultControllerHost = defaultControllerHost;
             }
@@ -341,17 +359,19 @@ public class CommandLineMain {
         System.exit(0);
     }
 
-    private static void processCommands(String[] commands, String defaultControllerHost, int defaultControllerPort, final boolean connect) {
+    private static void processCommands(String[] commands, String defaultControllerHost, int defaultControllerPort, final boolean connect, final String username, final char[] password) {
 
         final CommandContextImpl cmdCtx = new CommandContextImpl();
         SecurityActions.addShutdownHook(new Thread(new Runnable() {
             @Override
             public void run() {
-                cmdCtx.disconnectController(!connect);
+                cmdCtx.disconnectController();
             }
         }));
 
-        if(defaultControllerHost != null) {
+        cmdCtx.username = username;
+        cmdCtx.password = password;
+        if (defaultControllerHost != null) {
             cmdCtx.defaultControllerHost = defaultControllerHost;
         }
         if(defaultControllerPort != -1) {
@@ -359,7 +379,7 @@ public class CommandLineMain {
         }
 
         if(connect) {
-            cmdCtx.connectController(null, -1, false);
+            cmdCtx.connectController(null, -1);
         }
 
         try {
@@ -372,21 +392,23 @@ public class CommandLineMain {
             if (!cmdCtx.terminate) {
                 cmdCtx.terminateSession();
             }
-            cmdCtx.disconnectController(!connect);
+            cmdCtx.disconnectController();
         }
     }
 
-    private static void processFile(File file, String defaultControllerHost, int defaultControllerPort, final boolean connect) {
+    private static void processFile(File file, String defaultControllerHost, int defaultControllerPort, final boolean connect, final String username, final char[] password) {
 
         final CommandContextImpl cmdCtx = new CommandContextImpl();
         SecurityActions.addShutdownHook(new Thread(new Runnable() {
             @Override
             public void run() {
-                cmdCtx.disconnectController(!connect);
+                cmdCtx.disconnectController();
             }
         }));
 
-        if(defaultControllerHost != null) {
+        cmdCtx.username = username;
+        cmdCtx.password = password;
+        if (defaultControllerHost != null) {
             cmdCtx.defaultControllerHost = defaultControllerHost;
         }
         if(defaultControllerPort != -1) {
@@ -394,7 +416,7 @@ public class CommandLineMain {
         }
 
         if(connect) {
-            cmdCtx.connectController(null, -1, false);
+            cmdCtx.connectController(null, -1);
         }
 
         BufferedReader reader = null;
@@ -413,7 +435,7 @@ public class CommandLineMain {
             if (!cmdCtx.terminate) {
                 cmdCtx.terminateSession();
             }
-            cmdCtx.disconnectController(!connect);
+            cmdCtx.disconnectController();
         }
     }
 
@@ -542,7 +564,7 @@ public class CommandLineMain {
 
     static class CommandContextImpl implements CommandContext {
 
-        private final jline.ConsoleReader console;
+        private jline.ConsoleReader console;
         private final CommandHistory history;
 
         /** whether the session should be terminated*/
@@ -551,7 +573,7 @@ public class CommandLineMain {
         /** current command line */
         private String cmdLine;
         /** parsed command arguments */
-        private DefaultCallbackHandler parsedCmd = new DefaultCallbackHandler();
+        private DefaultCallbackHandler parsedCmd = new DefaultCallbackHandler(true);
 
         /** domain or standalone mode*/
         private boolean domainMode;
@@ -565,6 +587,10 @@ public class CommandLineMain {
         private String controllerHost;
         /** the port of the controller */
         private int controllerPort = -1;
+        /** the command line specified username */
+        private String username;
+        /** the command line specified password */
+        private char[] password;
         /** various key/value pairs */
         private Map<String, Object> map = new HashMap<String, Object>();
         /** operation request address prefix */
@@ -660,6 +686,29 @@ public class CommandLineMain {
             }
         }
 
+        private String readLine(String prompt, boolean password, boolean disableHistory) throws IOException {
+            if (console == null) {
+                console = initConsoleReader();
+            }
+
+            boolean useHistory = console.getUseHistory();
+            if (useHistory && disableHistory) {
+                console.setUseHistory(false);
+            }
+            try {
+                if (password) {
+                    return console.readLine(prompt, (char) 0x00);
+                } else {
+                    return console.readLine(prompt);
+                }
+
+            } finally {
+                if (disableHistory && useHistory) {
+                    console.setUseHistory(true);
+                }
+            }
+        }
+
         @Override
         public void printColumns(Collection<String> col) {
             if(outputTarget != null) {
@@ -723,8 +772,8 @@ public class CommandLineMain {
             return operationCandidatesProvider;
         }
 
-        private void connectController(String host, int port, boolean loggingEnabled) {
-
+        @Override
+        public void connectController(String host, int port) {
             if(host == null) {
                 host = defaultControllerHost;
             }
@@ -734,53 +783,78 @@ public class CommandLineMain {
             }
 
             try {
-                CallbackHandler cbh = new AuthenticationCallbackHandler();
-                ModelControllerClient newClient = ModelControllerClient.Factory.create(host, port, cbh);
-                if(this.client != null) {
-                    disconnectController();
+                ModelControllerClient newClient = null;
+
+                CallbackHandler cbh = new AuthenticationCallbackHandler(username, password);
+                ModelControllerClient tempClient = ModelControllerClient.Factory.create(host, port, cbh);
+                switch (initialConnection(tempClient)) {
+                    case SUCCESS:
+                        newClient = tempClient;
+                        break;
+                    case CONNECTION_FAILURE:
+                        printLine("The controller is not available at " + host + ":" + port);
+                        break;
+                    case AUTHENTICATION_FAILURE:
+                        printLine("Unable to authenticate against controller at " + host + ":" + port);
+                        break;
                 }
 
-                client = newClient;
-                this.controllerHost = host;
-                this.controllerPort = port;
+                if (newClient != null) {
+                    if (this.client != null) {
+                        disconnectController();
+                    }
 
-                List<String> nodeTypes = Util.getNodeTypes(newClient, new DefaultOperationRequestAddress());
-                if (!nodeTypes.isEmpty()) {
+                    client = newClient;
+                    this.controllerHost = host;
+                    this.controllerPort = port;
+
+                    List<String> nodeTypes = Util.getNodeTypes(newClient, new DefaultOperationRequestAddress());
                     domainMode = nodeTypes.contains("server-group");
-                    printLine("Connected to "
-                            + (domainMode ? "domain controller at " : "standalone controller at ")
-                            + host + ":" + port);
-                } else {
-                    printLine("The controller is not available at " + host + ":" + port);
-                    disconnectController(false);
                 }
             } catch (UnknownHostException e) {
                 printLine("Failed to resolve host '" + host + "': " + e.getLocalizedMessage());
             }
         }
 
-        @Override
-        public void connectController(String host, int port) {
-            connectController(host, port, true);
+        /**
+         * Used to make a call to the server to verify that it is possible to connect.
+         */
+        private ConnectStatus initialConnection(final ModelControllerClient client) {
+            try {
+                DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
+                builder.setOperationName("read-attribute");
+                builder.addProperty("name", "name");
+
+                client.execute(builder.buildRequest());
+                // We don't actually care what the response is we just want to be sure the ModelControllerClient
+                // does not throw an Exception.
+                return ConnectStatus.SUCCESS;
+            } catch (Exception e) {
+                boolean authenticationFailure = false;
+
+                Throwable current = e;
+                while (current != null && authenticationFailure == false) {
+                    if (current instanceof SaslException) {
+                        authenticationFailure = true;
+                    }
+                    current = current.getCause();
+                }
+
+                StreamUtils.safeClose(client);
+                return authenticationFailure ? ConnectStatus.AUTHENTICATION_FAILURE : ConnectStatus.CONNECTION_FAILURE;
+            }
         }
 
-        private void disconnectController(boolean loggingEnabled) {
+        @Override
+        public void disconnectController() {
             if(this.client != null) {
                 StreamUtils.safeClose(client);
-                if(loggingEnabled) {
-                    printLine("Closed connection to " + this.controllerHost + ':' + this.controllerPort);
-                }
                 client = null;
                 this.controllerHost = null;
                 this.controllerPort = -1;
                 domainMode = false;
             }
             promptConnectPart = null;
-        }
-
-        @Override
-        public void disconnectController() {
-            disconnectController(true);
         }
 
         @Override
@@ -949,21 +1023,39 @@ public class CommandLineMain {
             this.outputTarget = new BufferedWriter(writer);
         }
 
+        private enum ConnectStatus {
+            SUCCESS, AUTHENTICATION_FAILURE, CONNECTION_FAILURE
+        }
+
         private class AuthenticationCallbackHandler implements CallbackHandler {
 
             // After the CLI has connected the physical connection may be re-established numerous times.
             // for this reason we cache the entered values to allow for re-use without pestering the end
             // user.
 
+            private String realm = null;
             private boolean realmShown = false;
 
-            private String userName = null;
-            private char[] password = null;
+            private String username;
+            private char[] password;
+            private String digest;
+
+            private AuthenticationCallbackHandler(String username, char[] password) {
+                // A local cache is used for scenarios where no values are specified on the command line
+                // and the user wishes to use the connect command to establish a new connection.
+                this.username = username;
+                this.password = password;
+            }
+
+            private AuthenticationCallbackHandler(String username, String digest) {
+                this.username = username;
+                this.digest = digest;
+            }
 
             public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
                 // Special case for anonymous authentication to avoid prompting user for their name.
                 if (callbacks.length == 1 && callbacks[0] instanceof NameCallback) {
-                    ((NameCallback)callbacks[0]).setName("anonymous CLI user");
+                    ((NameCallback) callbacks[0]).setName("anonymous CLI user");
                     return;
                 }
 
@@ -971,32 +1063,46 @@ public class CommandLineMain {
                     if (current instanceof RealmCallback) {
                         RealmCallback rcb = (RealmCallback) current;
                         String defaultText = rcb.getDefaultText();
+                        realm = defaultText;
                         rcb.setText(defaultText); // For now just use the realm suggested.
-                        if (realmShown == false) {
-                            realmShown = true;
-                            printLine("Authenticating against security realm: " + defaultText);
-                        }
                     } else if (current instanceof RealmChoiceCallback) {
                         throw new UnsupportedCallbackException(current, "Realm choice not currently supported.");
                     } else if (current instanceof NameCallback) {
                         NameCallback ncb = (NameCallback) current;
-                        if (userName == null) {
-                            userName = console.readLine("Username:");
+                        if (username == null) {
+                            showRealm();
+                            username = readLine("Username: ", false, true);
+                            if (username == null || username.length() == 0) {
+                                throw new SaslException("No username supplied.");
+                            }
                         }
-                        ncb.setName(userName);
-                    } else if (current instanceof PasswordCallback) {
+                        ncb.setName(username);
+                    } else if (current instanceof PasswordCallback && digest == null) {
+                        // If a digest had been set support for PasswordCallback is disabled.
                         PasswordCallback pcb = (PasswordCallback) current;
                         if (password == null) {
-                            String temp = console.readLine("Password:", '*');
+                            showRealm();
+                            String temp = readLine("Password: ", true, false);
                             if (temp != null) {
                                 password = temp.toCharArray();
                             }
                         }
                         pcb.setPassword(password);
+                    } else if (current instanceof DigestHashCallback && digest != null) {
+                        // We don't support an interactive use of this callback so it must have been set in advance.
+                        DigestHashCallback dhc = (DigestHashCallback) current;
+                        dhc.setHexHash(digest);
                     } else {
                         printLine("Unexpected Callback " + current.getClass().getName());
                         throw new UnsupportedCallbackException(current);
                     }
+                }
+            }
+
+            private void showRealm() {
+                if (realmShown == false && realm != null) {
+                    realmShown = true;
+                    printLine("Authenticating against security realm: " + realm);
                 }
             }
 

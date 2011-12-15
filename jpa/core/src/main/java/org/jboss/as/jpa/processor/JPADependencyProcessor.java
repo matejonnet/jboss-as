@@ -22,6 +22,18 @@
 
 package org.jboss.as.jpa.processor;
 
+import static org.jboss.as.jpa.JpaLogger.ROOT_LOGGER;
+import static org.jboss.as.jpa.JpaMessages.MESSAGES;
+
+import java.io.IOException;
+import java.net.JarURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLConnection;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.jar.JarFile;
+
 import org.jboss.as.jpa.config.Configuration;
 import org.jboss.as.jpa.config.PersistenceUnitMetadataHolder;
 import org.jboss.as.jpa.spi.PersistenceUnitMetadata;
@@ -34,22 +46,12 @@ import org.jboss.as.server.deployment.DeploymentUtils;
 import org.jboss.as.server.deployment.module.ModuleDependency;
 import org.jboss.as.server.deployment.module.ModuleSpecification;
 import org.jboss.as.server.deployment.module.ResourceRoot;
-import org.jboss.logging.Logger;
 import org.jboss.modules.Module;
 import org.jboss.modules.ModuleIdentifier;
 import org.jboss.modules.ModuleLoadException;
 import org.jboss.modules.ModuleLoader;
 import org.jboss.modules.ResourceLoaderSpec;
 import org.jboss.modules.ResourceLoaders;
-
-import java.io.IOException;
-import java.net.JarURLConnection;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLConnection;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.jar.JarFile;
 
 /**
  * Deployment processor which adds a module dependencies for modules needed for JPA deployments.
@@ -58,17 +60,15 @@ import java.util.jar.JarFile;
  */
 public class JPADependencyProcessor implements DeploymentUnitProcessor {
 
-    private static final Logger log = Logger.getLogger("org.jboss.as.jpa");
-
     private static final ModuleIdentifier JAVAX_PERSISTENCE_API_ID = ModuleIdentifier.create("javax.persistence.api");
     private static final ModuleIdentifier JAVAEE_API_ID = ModuleIdentifier.create("javaee.api");
     private static final ModuleIdentifier JBOSS_AS_JPA_ID = ModuleIdentifier.create("org.jboss.as.jpa");
     private static final ModuleIdentifier JBOSS_AS_JPA_SPI_ID = ModuleIdentifier.create("org.jboss.as.jpa.spi");
     private static final ModuleIdentifier JAVASSIST_ID = ModuleIdentifier.create("org.javassist");
 
-    private static final ModuleIdentifier HIBERNATE_3_PROVIDER = ModuleIdentifier.create("org.jboss.as.jpa.hibernate","3");
+    private static final ModuleIdentifier HIBERNATE_3_PROVIDER = ModuleIdentifier.create("org.jboss.as.jpa.hibernate", "3");
     private static final String HIBERNATE3_PROVIDER_ADAPTOR = "org.jboss.as.jpa.hibernate3.HibernatePersistenceProviderAdaptor";
-    private static final ModuleIdentifier HIBERNATE_ENVERS_ID = ModuleIdentifier.create( "org.hibernate.envers" );
+    private static final ModuleIdentifier HIBERNATE_ENVERS_ID = ModuleIdentifier.create("org.hibernate.envers");
     // module dependencies for hibernate3
     private static final ModuleIdentifier JBOSS_AS_NAMING_ID = ModuleIdentifier.create("org.jboss.as.naming");
     private static final ModuleIdentifier JBOSS_JANDEX_ID = ModuleIdentifier.create("org.jboss.jandex");
@@ -83,14 +83,14 @@ public class JPADependencyProcessor implements DeploymentUnitProcessor {
         addDependency(moduleSpecification, moduleLoader, JAVAX_PERSISTENCE_API_ID);
 
         if (!JPADeploymentMarker.isJPADeployment(deploymentUnit)) {
-            log.infof("added javax.persistence.api dependency to %s", deploymentUnit.getName());
+            ROOT_LOGGER.debugf("added javax.persistence.api dependency to %s", deploymentUnit.getName());
             return; // Skip if there are no persistence use in the deployment
         }
         addDependency(moduleSpecification, moduleLoader, JAVAEE_API_ID);
         addDependency(moduleSpecification, moduleLoader, JBOSS_AS_JPA_ID);
         addDependency(moduleSpecification, moduleLoader, JBOSS_AS_JPA_SPI_ID);  // cover when adapter jar is in app
         addDependency(moduleSpecification, moduleLoader, JAVASSIST_ID);
-        log.infof("added javax.persistence.api, javaee.api, org.jboss.as.jpa, org.javassist dependencies to %s", deploymentUnit.getName());
+        ROOT_LOGGER.debugf("added javax.persistence.api, javaee.api, org.jboss.as.jpa, org.javassist dependencies to %s", deploymentUnit.getName());
         addPersistenceProviderModuleDependencies(phaseContext, moduleSpecification, moduleLoader);
     }
 
@@ -105,7 +105,7 @@ public class JPADependencyProcessor implements DeploymentUnitProcessor {
     }
 
     private void addPersistenceProviderModuleDependencies(DeploymentPhaseContext phaseContext, ModuleSpecification moduleSpecification, ModuleLoader moduleLoader) throws
-            DeploymentUnitProcessingException {
+        DeploymentUnitProcessingException {
 
         final DeploymentUnit deploymentUnit = phaseContext.getDeploymentUnit();
 
@@ -118,28 +118,29 @@ public class JPADependencyProcessor implements DeploymentUnitProcessor {
         // add dependencies for the default persistence provider module
         if (defaultProviderCount > 0) {
             moduleDependencies.add(Configuration.PROVIDER_MODULE_DEFAULT);
-            log.info("added (default provider) " + Configuration.PROVIDER_MODULE_DEFAULT +
-                    " dependency to application deployment (since " + defaultProviderCount + " PU(s) didn't specify " + Configuration.PROVIDER_MODULE + ")");
+            ROOT_LOGGER.debugf("added (default provider) %s dependency to application deployment (since %d PU(s) didn't specify %s",
+                Configuration.PROVIDER_MODULE_DEFAULT, defaultProviderCount, Configuration.PROVIDER_MODULE + ")");
             //only inject envers module as long as org.hibernate is injected.
-            addDependency( moduleSpecification, moduleLoader, HIBERNATE_ENVERS_ID );
+            addDependency(moduleSpecification, moduleLoader, HIBERNATE_ENVERS_ID);
         }
 
         // add persistence provider dependency
         for (String dependency : moduleDependencies) {
 
             addDependency(moduleSpecification, moduleLoader, ModuleIdentifier.fromString(dependency));
-            log.info("added " + dependency + " dependency to application deployment");
+            ROOT_LOGGER.debugf("added %s dependency to application deployment", dependency);
         }
     }
 
-    private int loadPersistenceUnits(final ModuleLoader moduleLoader, final DeploymentUnit deploymentUnit, final Set<String> moduleDependencies, final PersistenceUnitMetadataHolder holder) throws DeploymentUnitProcessingException {
+    private int loadPersistenceUnits(final ModuleLoader moduleLoader, final DeploymentUnit deploymentUnit, final Set<String> moduleDependencies, final PersistenceUnitMetadataHolder holder) throws
+        DeploymentUnitProcessingException {
         int defaultProviderCount = 0;
         if (holder != null) {
             for (PersistenceUnitMetadata pu : holder.getPersistenceUnits()) {
                 String providerModule = pu.getProperties().getProperty(Configuration.PROVIDER_MODULE);
                 String adapterModule = pu.getProperties().getProperty(Configuration.ADAPTER_MODULE);
                 String adapterClass = pu.getProperties().getProperty(Configuration.ADAPTER_CLASS);
-                if(providerModule != null) {
+                if (providerModule != null) {
                     if (providerModule.equals(Configuration.PROVIDER_MODULE_HIBERNATE3_BUNDLED)) {
                         //in this case we add the persistence provider to the deployment as a resource root
                         adapterClass = HIBERNATE3_PROVIDER_ADAPTOR;
@@ -158,9 +159,7 @@ public class JPADependencyProcessor implements DeploymentUnitProcessor {
                     }
                 }
                 if (adapterModule != null) {
-                    log.info(pu.getPersistenceUnitName() + " is configured to use adapter module '" + adapterModule + "'");
-                    String persistenceProvider = pu.getPersistenceProviderClassName() != null ? pu.getPersistenceProviderClassName() : Configuration.PROVIDER_CLASS_DEFAULT;
-                    // load persistence provider adapter if not loaded yet
+                    ROOT_LOGGER.debugf("%s is configured to use adapter module '%s'", pu.getPersistenceUnitName(), adapterModule);
                     moduleDependencies.add(adapterModule);
                 }
                 deploymentUnit.putAttachment(JpaAttachments.ADAPTOR_CLASS_NAME, adapterClass);
@@ -168,12 +167,22 @@ public class JPADependencyProcessor implements DeploymentUnitProcessor {
                 String provider = pu.getProperties().getProperty(Configuration.PROVIDER_MODULE);
                 if (provider != null) {
                     if (provider.equals(Configuration.PROVIDER_MODULE_APPLICATION_SUPPLIED)) {
-                        log.info(pu.getPersistenceUnitName() + " is configured to use application supplied persistence provider");
+                        ROOT_LOGGER.debugf("%s is configured to use application supplied persistence provider", pu.getPersistenceUnitName());
                     } else {
                         moduleDependencies.add(provider);
+                        ROOT_LOGGER.debugf("%s is configured to use provider module '%s'", pu.getPersistenceUnitName(), provider);
                     }
-                } else {
+                } else if (Configuration.PROVIDER_CLASS_DEFAULT.equals(pu.getPersistenceProviderClassName())) {
                     defaultProviderCount++;  // track number of references to default provider module
+                } else {
+                    // inject other provider modules into application
+                    // in case its not obvious, everything but hibernate3 can end up here.  For Hibernate3, the Configuration.PROVIDER_MODULE
+                    // should of been specified.
+                    String providerModuleName = Configuration.getProviderModuleNameFromProviderClassName(pu.getPersistenceProviderClassName());
+                    if (providerModuleName != null) {
+                        moduleDependencies.add(providerModuleName);
+                        ROOT_LOGGER.debugf("%s is configured to use provider module '%s'", pu.getPersistenceUnitName(), providerModuleName);
+                    }
                 }
             }
         }
@@ -185,11 +194,11 @@ public class JPADependencyProcessor implements DeploymentUnitProcessor {
         try {
             final Module module = moduleLoader.loadModule(HIBERNATE_3_PROVIDER);
             //use a trick to get to the root of the class loader
-            final URL url = module.getClassLoader().getResource(HIBERNATE3_PROVIDER_ADAPTOR.replace('.','/') + ".class");
+            final URL url = module.getClassLoader().getResource(HIBERNATE3_PROVIDER_ADAPTOR.replace('.', '/') + ".class");
 
             final URLConnection connection = url.openConnection();
-            if(!(connection  instanceof JarURLConnection)) {
-                throw new RuntimeException("Could not add hibernate 3 integration module to deployment, did not get expected JarUrlConnection, got " + connection);
+            if (!(connection instanceof JarURLConnection)) {
+                throw MESSAGES.invalidUrlConnection("hibernate 3", connection);
             }
 
             final JarFile jarFile = ((JarURLConnection) connection).getJarFile();
@@ -201,9 +210,9 @@ public class JPADependencyProcessor implements DeploymentUnitProcessor {
             addDependency(moduleSpecification, moduleLoader, JBOSS_AS_NAMING_ID);
             addDependency(moduleSpecification, moduleLoader, JBOSS_JANDEX_ID);
         } catch (ModuleLoadException e) {
-            throw new RuntimeException("Could not load module " + HIBERNATE_3_PROVIDER + " to add hibernate 3 adaptor to deployment", e);
+            throw MESSAGES.cannotLoadModule(e, HIBERNATE_3_PROVIDER, "hibernate 3");
         } catch (MalformedURLException e) {
-            throw new RuntimeException("Could not add hibernate 3 integration module to deployment", e);
+            throw MESSAGES.cannotAddIntegration(e, "hibernate 3");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

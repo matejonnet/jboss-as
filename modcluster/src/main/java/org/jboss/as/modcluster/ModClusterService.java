@@ -21,6 +21,8 @@
  */
 package org.jboss.as.modcluster;
 
+import static org.jboss.as.modcluster.ModClusterLogger.ROOT_LOGGER;
+
 import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
@@ -39,7 +41,6 @@ import org.jboss.as.network.SocketBinding;
 import org.jboss.as.network.SocketBindingManager;
 import org.jboss.as.web.WebServer;
 import org.jboss.dmr.ModelNode;
-import org.jboss.logging.Logger;
 import org.jboss.modcluster.catalina.CatalinaEventHandlerAdapter;
 import org.jboss.modcluster.config.ModClusterConfig;
 import org.jboss.modcluster.load.LoadBalanceFactorProvider;
@@ -71,10 +72,9 @@ import org.jboss.msc.value.InjectedValue;
  */
 class ModClusterService implements ModCluster, Service<ModCluster> {
 
-    private static final Logger log = Logger.getLogger("org.jboss.as.modcluster");
-
     static final ServiceName NAME = ServiceName.JBOSS.append("mod-cluster");
 
+    private final String unmaskedPassword;
     private final ModelNode modelconf;
 
     private CatalinaEventHandlerAdapter adapter;
@@ -87,14 +87,15 @@ class ModClusterService implements ModCluster, Service<ModCluster> {
     /* Depending on configuration we use one of the other */
     private org.jboss.modcluster.ModClusterService service;
     private ModClusterConfig config;
-    public ModClusterService(ModelNode modelconf) {
+    public ModClusterService(final String unmaskedPassword, final ModelNode modelconf) {
+        this.unmaskedPassword = unmaskedPassword;
         this.modelconf = modelconf;
     }
 
     /** {@inheritDoc} */
     @Override
     public synchronized void start(StartContext context) throws StartException {
-        log.debugf("Starting Mod_cluster Extension");
+        ROOT_LOGGER.debugf("Starting Mod_cluster Extension");
 
         config = new ModClusterConfig();
         // Set the configuration.
@@ -132,7 +133,7 @@ class ModClusterService implements ModCluster, Service<ModCluster> {
                 config.setAdvertiseGroupAddress(binding.getMulticastSocketAddress().getHostName());
                 config.setAdvertiseInterface(binding.getSocketAddress().getAddress().getHostAddress());
                 if (!defaultavert)
-                    log.error("Mod_cluster requires Advertise but Multicast interface is not available");
+                    ROOT_LOGGER.multicastInterfaceNotAvailable();
                 config.setAdvertise(true);
             }
         }
@@ -143,8 +144,8 @@ class ModClusterService implements ModCluster, Service<ModCluster> {
             if (ssl.has(CommonAttributes.KEY_ALIAS))
                 config.setSslKeyAlias(ssl.get(CommonAttributes.KEY_ALIAS).asString());
             if (ssl.has(CommonAttributes.PASSWORD)) {
-                config.setSslTrustStorePassword(ssl.get(CommonAttributes.PASSWORD).asString());
-                config.setSslKeyStorePassword(ssl.get(CommonAttributes.PASSWORD).asString());
+                config.setSslTrustStorePassword(unmaskedPassword);
+                config.setSslKeyStorePassword(unmaskedPassword);
             }
             if (ssl.has(CommonAttributes.CERTIFICATE_KEY_FILE))
                 config.setSslKeyStore(ssl.get(CommonAttributes.CERTIFICATE_KEY_FILE).asString());
@@ -175,8 +176,10 @@ class ModClusterService implements ModCluster, Service<ModCluster> {
             config.setStopContextTimeout(modelconf.get(CommonAttributes.SOCKET_TIMEOUT).asInt());
             config.setStopContextTimeoutUnit(TimeUnit.SECONDS);
         }
-        if (modelconf.hasDefined(CommonAttributes.SOCKET_TIMEOUT))
-            config.setSocketTimeout(modelconf.get(CommonAttributes.SOCKET_TIMEOUT).asInt());
+        if (modelconf.hasDefined(CommonAttributes.SOCKET_TIMEOUT)) {
+            // the default value is 20000 = 20 seconds.
+            config.setSocketTimeout(modelconf.get(CommonAttributes.SOCKET_TIMEOUT).asInt()*1000);
+        }
 
         if (modelconf.hasDefined(CommonAttributes.STICKY_SESSION))
             config.setStickySession(modelconf.get(CommonAttributes.STICKY_SESSION).asBoolean());
@@ -237,7 +240,7 @@ class ModClusterService implements ModCluster, Service<ModCluster> {
 
         if (load == null) {
             // Use a default one...
-            log.info("Mod_cluster uses default load balancer provider");
+            ROOT_LOGGER.useDefaultLoadBalancer();
             SimpleLoadBalanceFactorProvider myload = new SimpleLoadBalanceFactorProvider();
             myload.setLoadBalanceFactor(1);
             load = myload;
@@ -247,8 +250,7 @@ class ModClusterService implements ModCluster, Service<ModCluster> {
         try {
             adapter.start();
         } catch (JMException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+            ROOT_LOGGER.startFailure(e, "ModClusterService");
         }
     }
 
@@ -260,8 +262,7 @@ class ModClusterService implements ModCluster, Service<ModCluster> {
             try {
                 adapter.stop();
             } catch (JMException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+                ROOT_LOGGER.stopFailure(e, "ModClusterService");
             }
         adapter = null;
     }
@@ -310,8 +311,7 @@ class ModClusterService implements ModCluster, Service<ModCluster> {
                 try {
                     loadMetricClass = (Class<? extends LoadMetric>) this.getClass().getClassLoader().loadClass(className);
                 } catch (ClassNotFoundException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
+                    ROOT_LOGGER.errorAddingMetrics(e);
                 }
             }
 
@@ -322,11 +322,9 @@ class ModClusterService implements ModCluster, Service<ModCluster> {
                     metric.setWeight(weight);
                     metrics.add(metric);
                 } catch (InstantiationException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
+                    ROOT_LOGGER.errorAddingMetrics(e);
                 } catch (IllegalAccessException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
+                    ROOT_LOGGER.errorAddingMetrics(e);
                 }
             }
         }

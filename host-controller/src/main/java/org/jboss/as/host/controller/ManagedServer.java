@@ -173,7 +173,7 @@ class ManagedServer {
             final List<ModelNode> bootUpdates = bootConfiguration.getBootUpdates();
 
             processControllerClient.startProcess(serverProcessName);
-            ServiceActivator hostControllerCommActivator = HostCommunicationServices.createServerCommuncationActivator(managementSocket, serverName, serverProcessName, authKey);
+            ServiceActivator hostControllerCommActivator = HostCommunicationServices.createServerCommuncationActivator(managementSocket, serverName, serverProcessName, authKey, bootConfiguration.isManagementSubsystemEndpoint());
             ServerStartTask startTask = new ServerStartTask(serverName, 0, Collections.<ServiceActivator>singletonList(hostControllerCommActivator), bootUpdates);
             final Marshaller marshaller = MARSHALLER_FACTORY.createMarshaller(CONFIG);
             final OutputStream os = processControllerClient.sendStdin(serverProcessName);
@@ -187,9 +187,9 @@ class ManagedServer {
         }
     }
 
-    void reconnectServerProcess(int port) throws IOException {
+    void reconnectServerProcess() throws IOException {
         synchronized (lock){
-            processControllerClient.reconnectProcess(serverProcessName, managementSocket.getAddress().getHostName(), managementSocket.getPort());
+            processControllerClient.reconnectProcess(serverProcessName, managementSocket.getAddress().getHostName(), managementSocket.getPort(), bootConfiguration.isManagementSubsystemEndpoint(), authKey);
         }
     }
 
@@ -236,6 +236,11 @@ class ManagedServer {
          * @return the host controller environment
          */
         HostControllerEnvironment getHostControllerEnvironment();
+
+        /**
+         * Get whether the native management remoting connector should use the endpoint set up by
+         */
+        boolean isManagementSubsystemEndpoint();
     }
 
 }

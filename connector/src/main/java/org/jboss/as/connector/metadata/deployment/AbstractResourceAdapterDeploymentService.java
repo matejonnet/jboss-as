@@ -41,12 +41,14 @@ import org.jboss.jca.core.api.connectionmanager.ccm.CachedConnectionManager;
 import org.jboss.jca.core.api.management.ManagementRepository;
 import org.jboss.jca.core.spi.mdr.AlreadyExistsException;
 import org.jboss.jca.core.spi.mdr.MetadataRepository;
+import org.jboss.jca.core.connectionmanager.ConnectionManager;
 import org.jboss.jca.core.spi.rar.ResourceAdapterRepository;
 import org.jboss.jca.core.spi.transaction.TransactionIntegration;
+import org.jboss.jca.core.spi.transaction.recovery.XAResourceRecovery;
+import org.jboss.jca.core.spi.transaction.recovery.XAResourceRecoveryRegistry;
 import org.jboss.jca.deployers.common.AbstractResourceAdapterDeployer;
 import org.jboss.jca.deployers.common.CommonDeployment;
 import org.jboss.jca.deployers.common.DeployException;
-import org.jboss.logging.Logger;
 import org.jboss.msc.inject.Injector;
 import org.jboss.msc.service.AbstractServiceListener;
 import org.jboss.msc.service.ServiceController;
@@ -66,14 +68,15 @@ import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.List;
 
+import static org.jboss.as.connector.ConnectorLogger.DEPLOYMENT_CONNECTOR_LOGGER;
+import static org.jboss.as.connector.ConnectorMessages.MESSAGES;
+
 /**
  * A ResourceAdapterDeploymentService.
  * @author <a href="mailto:stefano.maestri@redhat.com">Stefano Maestri</a>
  * @author <a href="mailto:jesper.pedersen@jboss.org">Jesper Pedersen</a>
  */
 public abstract class AbstractResourceAdapterDeploymentService {
-
-    private static final Logger log = Logger.getLogger("org.jboss.as.deployment.connector");
 
     // Must be set by the start method
     protected ResourceAdapterDeployment value;
@@ -100,17 +103,22 @@ public abstract class AbstractResourceAdapterDeploymentService {
      */
     public void stop(StopContext context) {
         if (value != null) {
-            log.debugf("Undeploying: %s", value.getDeployment() != null ? value.getDeployment().getDeploymentName() : "");
+            DEPLOYMENT_CONNECTOR_LOGGER.debugf("Undeploying: %s", value.getDeployment() != null ? value.getDeployment().getDeploymentName() : "");
 
             if (registry != null && registry.getValue() != null) {
                 registry.getValue().unregisterResourceAdapterDeployment(value);
+            }
+
+            if (managementRepository != null && managementRepository.getValue() != null &&
+                value.getDeployment() != null && value.getDeployment().getConnector() != null) {
+                managementRepository.getValue().getConnectors().remove(value.getDeployment().getConnector());
             }
 
             if (mdr != null && mdr.getValue() != null) {
                 try {
                     mdr.getValue().unregisterResourceAdapter(value.getDeployment().getDeploymentName());
                 } catch (Throwable t) {
-                    log.debug("Exception during unregistering deployment", t);
+                    DEPLOYMENT_CONNECTOR_LOGGER.debug("Exception during unregistering deployment", t);
                 }
             }
 
@@ -123,7 +131,7 @@ public abstract class AbstractResourceAdapterDeploymentService {
 
                         mdr.getValue().unregisterJndiMapping(value.getDeployment().getURL().toExternalForm(), cf, jndi);
                     } catch (Throwable nfe) {
-                        log.debug("Exception during JNDI unbinding", nfe);
+                        DEPLOYMENT_CONNECTOR_LOGGER.debug("Exception during JNDI unbinding", nfe);
                     }
                 }
             }
@@ -137,8 +145,33 @@ public abstract class AbstractResourceAdapterDeploymentService {
 
                         mdr.getValue().unregisterJndiMapping(value.getDeployment().getURL().toExternalForm(), ao, jndi);
                     } catch (Throwable nfe) {
-                        log.debug("Exception during JNDI unbinding", nfe);
+                        DEPLOYMENT_CONNECTOR_LOGGER.debug("Exception during JNDI unbinding", nfe);
                     }
+                }
+            }
+
+            if (value.getDeployment() != null && value.getDeployment().getRecovery() != null && txInt.getValue() != null) {
+                XAResourceRecoveryRegistry rr = txInt.getValue().getRecoveryRegistry();
+
+                if (rr != null) {
+                    for (XAResourceRecovery recovery : value.getDeployment().getRecovery()) {
+                        rr.removeXAResourceRecovery(recovery);
+                    }
+                }
+            }
+
+            if (value.getDeployment() != null && value.getDeployment().getConnectionManagers() != null) {
+                for (ConnectionManager cm : value.getDeployment().getConnectionManagers()) {
+                    cm.shutdown();
+                }
+            }
+
+            if (value.getDeployment() != null && value.getDeployment().getResourceAdapterKey() != null &&
+                raRepository != null && raRepository.getValue() != null) {
+                try {
+                    raRepository.getValue().unregisterResourceAdapter(value.getDeployment().getResourceAdapterKey());
+                } catch (Throwable t) {
+                    // Ignore
                 }
             }
 
@@ -212,7 +245,7 @@ public abstract class AbstractResourceAdapterDeploymentService {
 
         @Override
         public String[] bindConnectionFactory(URL url, String deployment, Object cf) throws Throwable {
-            throw new IllegalStateException("Non-explicit JNDI bindings not supported");
+            throw MESSAGES.jndiBindingsNotSupported();
         }
 
         @Override
@@ -220,7 +253,7 @@ public abstract class AbstractResourceAdapterDeploymentService {
 
             mdr.getValue().registerJndiMapping(url.toExternalForm(), cf.getClass().getName(), jndi);
 
-            log.infof("Registered connection factory %s", jndi);
+            DEPLOYMENT_CONNECTOR_LOGGER.registeredConnectionFactory(jndi);
 
             final ConnectionFactoryService connectionFactoryService = new ConnectionFactoryService(cf);
 
@@ -236,28 +269,29 @@ public abstract class AbstractResourceAdapterDeploymentService {
                     .setInitialMode(ServiceController.Mode.ACTIVE).install();
 
             final ContextNames.BindInfo bindInfo = ContextNames.bindInfoFor(jndi);
-
             final BinderService binderService = new BinderService(bindInfo.getBindName());
-
             serviceTarget
                     .addService(bindInfo.getBinderServiceName(), binderService)
                     .addDependency(referenceFactoryServiceName, ManagedReferenceFactory.class,
                             binderService.getManagedObjectInjector())
                     .addDependency(bindInfo.getParentContextServiceName(), ServiceBasedNamingStore.class,
                             binderService.getNamingStoreInjector())
-                    .addDependency(ConnectorServices.RESOURCE_ADAPTER_SERVICE_PREFIX.append(deploymentName))
+                    .addDependency(ConnectorServices.RESOURCE_ADAPTER_DEPLOYER_SERVICE_PREFIX.append(deploymentName))
                     .addListener(new AbstractServiceListener<Object>() {
-                        public void serviceStarted(ServiceController<?> controller) {
-                            log.infof("Bound JCA ConnectionFactory [%s]", jndi);
-                        }
-
-                        public void serviceStopped(ServiceController<?> serviceController) {
-                            log.infof("Unbound JCA ConnectionFactory [%s]", jndi);
-                        }
-
-                        public void serviceRemoved(ServiceController<?> serviceController) {
-                            log.debugf("Removed JCA ConnectionFactory [%s]", jndi);
-                            serviceController.removeListener(this);
+                         public void transition(final ServiceController<? extends Object> controller, final ServiceController.Transition transition) {
+                            switch (transition) {
+                                case STARTING_to_UP: {
+                                    DEPLOYMENT_CONNECTOR_LOGGER.boundJca("ConnectionFactory", jndi);
+                                    break;
+                                }
+                                case STOPPING_to_DOWN: {
+                                    DEPLOYMENT_CONNECTOR_LOGGER.unboundJca("ConnectionFactory", jndi);
+                                    break;
+                                }
+                                case REMOVING_to_REMOVED: {
+                                    DEPLOYMENT_CONNECTOR_LOGGER.debugf("Removed JCA ConnectionFactory [%s]", jndi);
+                                }
+                            }
                         }
                     }).setInitialMode(ServiceController.Mode.ACTIVE).install();
 
@@ -266,7 +300,7 @@ public abstract class AbstractResourceAdapterDeploymentService {
 
         @Override
         public String[] bindAdminObject(URL url, String deployment, Object ao) throws Throwable {
-            throw new IllegalStateException("Non-explicit JNDI bindings not supported");
+            throw MESSAGES.jndiBindingsNotSupported();
         }
 
         @Override
@@ -274,7 +308,7 @@ public abstract class AbstractResourceAdapterDeploymentService {
 
             mdr.getValue().registerJndiMapping(url.toExternalForm(), ao.getClass().getName(), jndi);
 
-            log.infof("Registerred admin object at %s", jndi);
+            DEPLOYMENT_CONNECTOR_LOGGER.registeredAdminObject(jndi);
 
             final AdminObjectService adminObjectService = new AdminObjectService(ao);
 
@@ -301,15 +335,15 @@ public abstract class AbstractResourceAdapterDeploymentService {
                         public void transition(final ServiceController<? extends Object> controller, final ServiceController.Transition transition) {
                             switch (transition) {
                                 case STARTING_to_UP: {
-                                    log.infof("Bound JCA AdminObject [%s]", jndi);
+                                    DEPLOYMENT_CONNECTOR_LOGGER.boundJca("AdminObject", jndi);
                                     break;
                                 }
                                 case STOPPING_to_DOWN: {
-                                    log.infof("Unbound JCA AdminObject [%s]", jndi);
+                                    DEPLOYMENT_CONNECTOR_LOGGER.unboundJca("AdminObject", jndi);
                                     break;
                                 }
                                 case REMOVING_to_REMOVED: {
-                                    log.debugf("Removed JCA AdminObject [%s]", jndi);
+                                    DEPLOYMENT_CONNECTOR_LOGGER.debugf("Removed JCA AdminObject [%s]", jndi);
                                 }
                             }
                         }
@@ -378,14 +412,14 @@ public abstract class AbstractResourceAdapterDeploymentService {
 
                 return o;
             } catch (Throwable t) {
-                throw new DeployException("Deployment " + className + " failed", t);
+                throw MESSAGES.deploymentFailed(t, className);
             }
         }
 
         @Override
         protected void registerResourceAdapterToMDR(URL url, File file, Connector connector, IronJacamar ij)
                 throws AlreadyExistsException {
-            log.debugf("Registering ResourceAdapter %s", deploymentName);
+            DEPLOYMENT_CONNECTOR_LOGGER.debugf("Registering ResourceAdapter %s", deploymentName);
             mdr.getValue().registerResourceAdapter(deploymentName, file, connector, ij);
         }
 

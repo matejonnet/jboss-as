@@ -29,20 +29,19 @@ import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.security.Provider;
 import java.security.Security;
-import java.util.concurrent.ExecutorService;
+import java.util.Map;
 
 import javax.security.auth.callback.CallbackHandler;
 
 import org.jboss.as.protocol.ProtocolChannelClient;
-import org.jboss.as.protocol.ProtocolChannelClient.Configuration;
 import org.jboss.remoting3.Endpoint;
 import org.jboss.sasl.JBossSaslProvider;
 import org.xnio.IoUtils;
 
 /**
+ * Strategy {@link ManagementChannel} clients can use for controlling the lifecycle of the channel.
  *
  * @author <a href="kabir.khan@jboss.com">Kabir Khan</a>
- * @version $Revision: 1.1 $
  */
 public abstract class ManagementClientChannelStrategy {
 
@@ -54,12 +53,11 @@ public abstract class ManagementClientChannelStrategy {
         return new Existing(channel);
     }
 
-    public static ManagementClientChannelStrategy create(String hostName, int port, final ExecutorService executorService, final ManagementOperationHandler handler, final CallbackHandler cbHandler) throws URISyntaxException, IOException {
-        return new EstablishingWithNewEndpoint(hostName, port, executorService, handler, cbHandler);
-    }
-
-    public static ManagementClientChannelStrategy create(String hostName, int port, final Endpoint endpoint, final ManagementOperationHandler handler, final CallbackHandler cbHandler) throws URISyntaxException, IOException {
-        return new EstablishingWithExistingEndpoint(hostName, port, endpoint, handler, cbHandler);
+    public static ManagementClientChannelStrategy create(String hostName, int port, final Endpoint endpoint,
+                                                         final ManagementOperationHandler handler,
+                                                         final CallbackHandler cbHandler,
+                                                         final Map<String, String> saslOptions) throws URISyntaxException, IOException {
+        return new Establishing(hostName, port, endpoint, handler, cbHandler, saslOptions);
     }
 
     private static class Existing extends ManagementClientChannelStrategy {
@@ -79,22 +77,27 @@ public abstract class ManagementClientChannelStrategy {
         }
     }
 
-    private abstract static class Establishing extends ManagementClientChannelStrategy {
+    private static class Establishing extends ManagementClientChannelStrategy {
 
-        private static final String CONNECT_TIME_OUT_PROPERTY = "org.jboss.as.client.connect.timeout";
         private static final Provider saslProvider = new JBossSaslProvider();
+        private final Endpoint endpoint;
         private final String hostName;
         private final int port;
         private final ManagementOperationHandler handler;
         private volatile ProtocolChannelClient<ManagementChannel> client;
         private volatile ManagementChannel channel;
         private final CallbackHandler callbackHandler;
+        private final Map<String,String> saslOptions;
 
-        public Establishing(String hostName, int port, final ManagementOperationHandler handler, final CallbackHandler callbackHandler) {
+        public Establishing(final String hostName, final int port, final Endpoint endpoint,
+                            final ManagementOperationHandler handler, final CallbackHandler callbackHandler,
+                            final Map<String, String> saslOptions) {
             this.hostName = hostName;
             this.port = port;
+            this.endpoint = endpoint;
             this.handler = handler;
             this.callbackHandler = callbackHandler;
+            this.saslOptions = saslOptions;
         }
 
         @Override
@@ -111,10 +114,9 @@ public abstract class ManagementClientChannelStrategy {
 
             final ProtocolChannelClient.Configuration<ManagementChannel> configuration = new ProtocolChannelClient.Configuration<ManagementChannel>();
             try {
-                addConfigurationProperties(configuration);
+                configuration.setEndpoint(endpoint);
                 configuration.setUri(new URI("remote://" + hostName +  ":" + port));
                 configuration.setChannelFactory(new ManagementChannelFactory());
-                configuration.setConnectTimeoutProperty(CONNECT_TIME_OUT_PROPERTY);
                 client = ProtocolChannelClient.create(configuration);
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -123,10 +125,9 @@ public abstract class ManagementClientChannelStrategy {
             boolean ok = false;
             try {
                 try {
-                    client.connect(callbackHandler);
+                    client.connect(callbackHandler, saslOptions);
                 } catch (ConnectException e) {
-                    throw new ConnectException("Could not connect to " + configuration.getUri() + " in " + configuration.getConnectTimeout() + "ms. " +
-                              "Make sure the server is running and/or consider setting a longer timeout by setting -D" + CONNECT_TIME_OUT_PROPERTY + "=<timeout in ms>.");
+                    throw e;
                 }
                 channel = client.openChannel("management");
                 channel.setOperationHandler(handler);
@@ -144,39 +145,6 @@ public abstract class ManagementClientChannelStrategy {
         @Override
         public void requestDone() {
             IoUtils.safeClose(client);
-        }
-
-        abstract void addConfigurationProperties(ProtocolChannelClient.Configuration<ManagementChannel> configuration);
-    }
-
-    private static class EstablishingWithNewEndpoint extends Establishing {
-        private final ExecutorService executorService;
-
-        public EstablishingWithNewEndpoint(String hostName, int port, ExecutorService executorService, ManagementOperationHandler handler, CallbackHandler cbHandler) {
-            super(hostName, port, handler, cbHandler);
-            this.executorService = executorService;
-        }
-
-        @Override
-        void addConfigurationProperties(Configuration<ManagementChannel> configuration) {
-            configuration.setUriScheme("remote");
-            configuration.setEndpointName("endpoint");
-            configuration.setExecutor(executorService);
-        }
-
-    }
-
-    private static class EstablishingWithExistingEndpoint extends Establishing {
-        private final Endpoint endpoint;
-
-        public EstablishingWithExistingEndpoint(String hostName, int port, Endpoint endpoint, ManagementOperationHandler handler, CallbackHandler cbHandler) {
-            super(hostName, port, handler, cbHandler);
-            this.endpoint = endpoint;
-        }
-
-        @Override
-        void addConfigurationProperties(Configuration<ManagementChannel> configuration) {
-            configuration.setEndpoint(endpoint);
         }
     }
 }

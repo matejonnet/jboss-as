@@ -4,7 +4,6 @@
 package org.jboss.as.messaging;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.messaging.CommonAttributes.DURABLE;
 import static org.jboss.as.messaging.CommonAttributes.FILTER;
@@ -23,10 +22,12 @@ import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.ServiceVerificationHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
+import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceController.Mode;
+import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceRegistry;
 
 /**
@@ -61,14 +62,15 @@ public class QueueAdd extends AbstractAddStepHandler implements DescriptionProvi
     protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) throws OperationFailedException {
 
         ServiceRegistry registry = context.getServiceRegistry(true);
-        ServiceController<?> hqService = registry.getService(MessagingServices.JBOSS_MESSAGING);
+        final ServiceName hqServiceName = MessagingServices.getHornetQServiceName(PathAddress.pathAddress(operation.get(ModelDescriptionConstants.OP_ADDR)));
+        ServiceController<?> hqService = registry.getService(hqServiceName);
         if (hqService != null) {
             PathAddress address = PathAddress.pathAddress(operation.get(OP_ADDR));
             final String queueName = address.getLastElement().getValue();
-            final CoreQueueConfiguration queueConfiguration = createCoreQueueConfiguration(queueName, model);
+            final CoreQueueConfiguration queueConfiguration = createCoreQueueConfiguration(context, queueName, model);
             final QueueService service = new QueueService(queueConfiguration, false);
-            newControllers.add(context.getServiceTarget().addService(MessagingServices.CORE_QUEUE_BASE.append(queueName), service)
-                    .addDependency(MessagingServices.JBOSS_MESSAGING, HornetQServer.class, service.getHornetQService())
+            newControllers.add(context.getServiceTarget().addService(hqServiceName.append(MessagingServices.getQueueBaseServiceName(hqServiceName)).append(queueName), service)
+                    .addDependency(hqServiceName, HornetQServer.class, service.getHornetQService())
                     .addListener(verificationHandler)
                     .setInitialMode(Mode.ACTIVE)
                     .install());
@@ -83,21 +85,21 @@ public class QueueAdd extends AbstractAddStepHandler implements DescriptionProvi
         return MessagingDescriptions.getQueueAdd(locale);
     }
 
-    static void addQueueConfigs(final Configuration configuration, final ModelNode model)  throws OperationFailedException {
+    static void addQueueConfigs(final OperationContext context, final Configuration configuration, final ModelNode model)  throws OperationFailedException {
         if (model.hasDefined(CommonAttributes.QUEUE)) {
             final List<CoreQueueConfiguration> configs = configuration.getQueueConfigurations();
             for (Property prop : model.get(CommonAttributes.QUEUE).asPropertyList()) {
-                configs.add(createCoreQueueConfiguration(prop.getName(), prop.getValue()));
+                configs.add(createCoreQueueConfiguration(context, prop.getName(), prop.getValue()));
 
             }
         }
     }
 
-    private static CoreQueueConfiguration createCoreQueueConfiguration(String name, ModelNode model) throws OperationFailedException {
-        final String queueAddress = QUEUE_ADDRESS.validateResolvedOperation(model).asString();
-        final ModelNode filterNode =  FILTER.validateResolvedOperation(model);
+    private static CoreQueueConfiguration createCoreQueueConfiguration(final OperationContext context, String name, ModelNode model) throws OperationFailedException {
+        final String queueAddress = QUEUE_ADDRESS.resolveModelAttribute(context, model).asString();
+        final ModelNode filterNode =  FILTER.resolveModelAttribute(context, model);
         final String filter = filterNode.isDefined() ? filterNode.asString() : null;
-        final boolean durable = DURABLE.validateResolvedOperation(model).asBoolean();
+        final boolean durable = DURABLE.resolveModelAttribute(context, model).asBoolean();
 
         return new CoreQueueConfiguration(queueAddress, name, filter, durable);
     }

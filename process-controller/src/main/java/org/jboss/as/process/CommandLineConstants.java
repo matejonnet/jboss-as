@@ -27,15 +27,6 @@ package org.jboss.as.process;
  */
 public class CommandLineConstants {
 
-    /** The ProcessController address */
-    public static final String INTERPROCESS_PC_ADDRESS = "--pc-address";
-
-    /** The ProcessController port */
-    public static final String INTERPROCESS_PC_PORT = "--pc-port";
-
-    /** The name of a process started by the process controller */
-    public static final String INTERPROCESS_NAME = "--interprocess-name";
-
     /** The HostController address */
     public static final String OLD_INTERPROCESS_HC_ADDRESS = "-interprocess-hc-address";
     public static final String INTERPROCESS_HC_ADDRESS = "--interprocess-hc-address";
@@ -47,7 +38,8 @@ public class CommandLineConstants {
     /** Get the version of the server */
     public static final String OLD_VERSION = "-version";
     public static final String VERSION = "--version";
-    public static final String SHORT_VERSION = "-V";
+    public static final String SHORT_VERSION = "-v";
+    public static final String OLD_SHORT_VERSION = "-V";
 
     /** Configure the file to be used to read properties */
     public static final String OLD_PROPERTIES = "-properties";
@@ -58,8 +50,11 @@ public class CommandLineConstants {
     public static final String OLD_DEFAULT_JVM = "-default-jvm";
     public static final String DEFAULT_JVM = "--default-jvm";
 
+    /** Flag indicating when a process was restarted. */
+    public static final String PROCESS_RESTARTED = "--process-restarted";
+
     /** Passed in when the host controller is respawned by process controller */
-    public static final String RESTART_HOST_CONTROLLER = "--restarted-host-controller";
+    public static final String RESTART_HOST_CONTROLLER = PROCESS_RESTARTED;
 
     /** Passed in to a slave host controller to get a backup of all files on the domain controller" */
     public static final String OLD_BACKUP_DC = "-backup";
@@ -77,22 +72,35 @@ public class CommandLineConstants {
     /** Passed in to a DC to choose the domain.xml file */
     public static final String OLD_DOMAIN_CONFIG = "-domain-config";
     public static final String DOMAIN_CONFIG = "--domain-config";
+    public static final String SHORT_DOMAIN_CONFIG = "-c";
 
-    /** Passed in to a HC to choose the domain.xml file */
+    /** Passed in to a HC to choose the host.xml file */
     public static final String OLD_HOST_CONFIG = "-host-config";
     public static final String HOST_CONFIG = "--host-config";
 
     /** Passed in to a standalone instance to choose the standalone.xml file */
+    public static final String SHORT_SERVER_CONFIG = "-c";
     public static final String OLD_SERVER_CONFIG = "-server-config";
     public static final String SERVER_CONFIG = "--server-config";
 
     /** Address on which the process controller listens */
-    public static final String OLD_BIND_ADDR = "-bind-addr";
-    public static final String BIND_ADDR = "--bind-addr";
+    public static final String OLD_PROCESS_CONTROLLER_BIND_ADDR = "-bind-addr";
+    public static final String PROCESS_CONTROLLER_BIND_ADDR = "--pc-address";
 
     /** Port on which the process controller listens */
-    public static final String OLD_BIND_PORT = "-bind-port";
-    public static final String BIND_PORT = "--bind-port";
+    public static final String OLD_PROCESS_CONROLLER_BIND_PORT = "-bind-port";
+    public static final String PROCESS_CONTROLLER_BIND_PORT = "--pc-port";
+
+    public static final String SYS_PROP = "-D";
+
+    public static final String PUBLIC_BIND_ADDRESS = "-b";
+
+    public static final String DEFAULT_MULTICAST_ADDRESS = "-u";
+
+    /** Additional class path items, used only by app client*/
+    public static final String APPCLIENT_CONFIG = "--appclient-config";
+    public static final String SHORT_HOST = "-H";
+    public static final String HOST = "--host";
 
     private CommandLineConstants() {
     }

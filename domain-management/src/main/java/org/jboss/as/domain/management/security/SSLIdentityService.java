@@ -22,16 +22,12 @@
 
 package org.jboss.as.domain.management.security;
 
-import org.jboss.dmr.ModelNode;
-import org.jboss.msc.service.Service;
-import org.jboss.msc.service.StartContext;
-import org.jboss.msc.service.StartException;
-import org.jboss.msc.service.StopContext;
-import org.jboss.msc.value.InjectedValue;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.KEYSTORE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PASSWORD;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PROTOCOL;
+import static org.jboss.as.domain.management.DomainManagementMessages.MESSAGES;
 
-import javax.net.ssl.KeyManager;
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -42,10 +38,16 @@ import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.KEYSTORE;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PASSWORD;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PROTOCOL;
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+
+import org.jboss.dmr.ModelNode;
+import org.jboss.msc.service.Service;
+import org.jboss.msc.service.StartContext;
+import org.jboss.msc.service.StartException;
+import org.jboss.msc.service.StopContext;
+import org.jboss.msc.value.InjectedValue;
 
 /**
  * Service to handle managing the SSL Identity of a security realm.
@@ -57,12 +59,14 @@ public class SSLIdentityService implements Service<SSLIdentityService> {
     public static final String SERVICE_SUFFIX = "ssl";
 
     private final ModelNode ssl;
+    private final String unmaskedPassword;
     private final InjectedValue<String> relativeTo = new InjectedValue<String>();
 
     private volatile SSLContext sslContext;
 
-    public SSLIdentityService(ModelNode ssl) {
+    public SSLIdentityService(ModelNode ssl, String unmaskedPassword) {
         this.ssl = ssl;
+        this.unmaskedPassword = unmaskedPassword;
     }
 
     public void start(StartContext context) throws StartException {
@@ -99,19 +103,19 @@ public class SSLIdentityService implements Service<SSLIdentityService> {
 
             this.sslContext = sslContext;
         } catch (NoSuchAlgorithmException nsae) {
-            throw new StartException("Unable to start service", nsae);
+            throw MESSAGES.unableToStart(nsae);
         } catch (KeyManagementException kme) {
-            throw new StartException("Unable to start service", kme);
+            throw MESSAGES.unableToStart(kme);
         } catch (KeyStoreException kse) {
-            throw new StartException("Unable to start service", kse);
+            throw MESSAGES.unableToStart(kse);
         } catch (FileNotFoundException fnfe) {
-            throw new StartException("Unable to start service", fnfe);
+            throw MESSAGES.unableToStart(fnfe);
         } catch (CertificateException e) {
-            throw new StartException("Unable to start service", e);
+            throw MESSAGES.unableToStart(e);
         } catch (IOException e) {
-            throw new StartException("Unable to start service", e);
+            throw MESSAGES.unableToStart(e);
         } catch (UnrecoverableKeyException e) {
-            throw new StartException("Unable to start service", e);
+            throw MESSAGES.unableToStart(e);
         }
     }
 

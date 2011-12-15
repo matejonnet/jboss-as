@@ -39,6 +39,9 @@ import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceTarget;
 import org.jboss.msc.value.Values;
 
+import java.util.HashSet;
+import java.util.Set;
+
 import static org.jboss.as.ee.component.Attachments.EE_MODULE_DESCRIPTION;
 import static org.jboss.as.ee.naming.Attachments.MODULE_CONTEXT_CONFIG;
 import static org.jboss.as.server.deployment.Attachments.SETUP_ACTIONS;
@@ -87,9 +90,16 @@ public class ModuleContextProcessor implements DeploymentUnitProcessor {
 
         moduleDescription.setNamespaceContextSelector(selector);
 
+        final Set<ServiceName> serviceNames = new HashSet<ServiceName>();
+        serviceNames.add(appContextServiceName);
+        serviceNames.add(moduleContextServiceName);
+        serviceNames.add(ContextNames.JBOSS_CONTEXT_SERVICE_NAME);
+        serviceNames.add(ContextNames.GLOBAL_CONTEXT_SERVICE_NAME);
+
         // add the arquillian setup action, so the module namespace is available in arquillian tests
         final JavaNamespaceSetup setupAction = new JavaNamespaceSetup(selector);
         deploymentUnit.addToAttachmentList(SETUP_ACTIONS, setupAction);
+        deploymentUnit.addToAttachmentList(org.jboss.as.ee.component.Attachments.EE_SETUP_ACTIONS, setupAction);
     }
 
     public void undeploy(DeploymentUnit context) {

@@ -21,20 +21,23 @@
  */
 package org.jboss.as.clustering;
 
+import static org.jboss.as.clustering.ClusteringImplMessages.MESSAGES;
+
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
 import java.lang.ref.WeakReference;
 import java.net.InetSocketAddress;
-import java.security.AccessController;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Hashtable;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -42,6 +45,7 @@ import java.util.Vector;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -51,34 +55,33 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 
 import org.jboss.as.clustering.jgroups.ChannelFactory;
-import org.jboss.as.clustering.jgroups.mux.DelegatingStateTransferUpHandler;
-import org.jboss.as.clustering.jgroups.mux.MuxUpHandler;
-import org.jboss.as.clustering.jgroups.mux.StateTransferFilter;
+import org.jboss.as.clustering.jgroups.ClassLoaderAwareUpHandler;
 import org.jboss.logging.Logger;
-import org.jboss.util.loading.ContextClassLoaderSwitcher;
-import org.jboss.util.loading.ContextClassLoaderSwitcher.SwitchContext;
-import org.jboss.util.stream.MarshalledValueInputStream;
-import org.jboss.util.stream.MarshalledValueOutputStream;
+import org.jboss.marshalling.Marshaller;
+import org.jboss.marshalling.MarshallerFactory;
+import org.jboss.marshalling.Marshalling;
+import org.jboss.marshalling.MarshallingConfiguration;
+import org.jboss.marshalling.SimpleClassResolver;
+import org.jboss.marshalling.Unmarshaller;
 import org.jgroups.Address;
 import org.jgroups.Channel;
 import org.jgroups.Event;
-import org.jgroups.ExtendedMembershipListener;
-import org.jgroups.ExtendedMessageListener;
 import org.jgroups.MembershipListener;
 import org.jgroups.MergeView;
 import org.jgroups.Message;
 import org.jgroups.MessageListener;
+import org.jgroups.StateTransferException;
 import org.jgroups.UpHandler;
 import org.jgroups.Version;
 import org.jgroups.View;
 import org.jgroups.blocks.MethodCall;
-import org.jgroups.blocks.Request;
 import org.jgroups.blocks.RequestOptions;
+import org.jgroups.blocks.ResponseMode;
 import org.jgroups.blocks.RpcDispatcher;
+import org.jgroups.blocks.RspFilter;
 import org.jgroups.blocks.mux.MuxRpcDispatcher;
-import org.jgroups.blocks.mux.Muxer;
-import org.jgroups.blocks.mux.NoMuxHandler;
 import org.jgroups.stack.IpAddress;
+import org.jgroups.util.Buffer;
 import org.jgroups.util.Rsp;
 import org.jgroups.util.RspList;
 
@@ -96,8 +99,7 @@ import org.jgroups.util.RspList;
  * @author Brian Stansberry
  * @author Vladimir Blagojevic
  * @author <a href="mailto:galder.zamarreno@jboss.com">Galder Zamarreno</a>
- *
- * @version $Revision: 104456 $
+ * @author Paul Ferraro
  */
 public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupMembershipNotifier, GroupStateTransferService {
     // Constants -----------------------------------------------------
@@ -126,6 +128,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
     // Constants -----------------------------------------------------
 
     // Attributes ----------------------------------------------------
+    static final MarshallerFactory marshallerFactory = Marshalling.getMarshallerFactory("river", Marshalling.class.getClassLoader());
 
     private ChannelFactory channelFactory;
     private String stackName;
@@ -152,25 +155,21 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
     /** Do we send any membership change notifications synchronously? */
     private boolean allowSyncListeners = false;
     /** The asynchronously invoked GroupMembershipListeners */
-    final ArrayList<GroupMembershipListener> asyncMembershipListeners = new ArrayList<GroupMembershipListener>();
+    final List<GroupMembershipListener> asyncMembershipListeners = new CopyOnWriteArrayList<GroupMembershipListener>();
     /** The HAMembershipListener and HAMembershipExtendedListeners */
-    private final ArrayList<GroupMembershipListener> syncMembershipListeners = new ArrayList<GroupMembershipListener>();
+    private final List<GroupMembershipListener> syncMembershipListeners = new CopyOnWriteArrayList<GroupMembershipListener>();
     /** The handler used to send membership change notifications asynchronously */
     private AsynchEventHandler asynchHandler;
 
     private long state_transfer_timeout = 60000;
     String stateIdPrefix;
-    final Map<String, StateTransferProvider> stateProviders = new HashMap<String, StateTransferProvider>();
-    final Map<String, StateTransferTask<?, ?>> stateTransferTasks = new Hashtable<String, StateTransferTask<?, ?>>();
-
-    @SuppressWarnings("unchecked")
-    final ContextClassLoaderSwitcher classLoaderSwitcher = (ContextClassLoaderSwitcher) AccessController
-            .doPrivileged(ContextClassLoaderSwitcher.INSTANTIATOR);
+    final Map<String, StateTransferProvider> stateProviders = new ConcurrentHashMap<String, StateTransferProvider>();
+    final Map<String, StateTransferTask<?, ?>> stateTransferTasks = new ConcurrentHashMap<String, StateTransferTask<?, ?>>();
 
     /** The cluster instance log category */
-    protected Logger log = Logger.getLogger(getClass().getName());;
-    Logger clusterLifeCycleLog = Logger.getLogger(getClass().getName() + ".lifecycle");
-    private final Vector<String> history = new Vector<String>();
+    protected ClusteringImplLogger log = Logger.getMessageLogger(ClusteringImplLogger.class, getClass().getName());
+    ClusteringImplLogger clusterLifeCycleLog = Logger.getMessageLogger(ClusteringImplLogger.class, getClass().getName() + ".lifecycle");
+    private final List<String> history = new LinkedList<String>();
     private int maxHistoryLength = 100;
 
     /** Thread pool used to run state transfer requests */
@@ -205,9 +204,9 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         return this.groupName;
     }
 
-    public Vector<String> getCurrentView() {
+    public List<String> getCurrentView() {
         GroupView curView = this.groupView;
-        Vector<String> result = new Vector<String>(curView.allMembers.size());
+        List<String> result = new ArrayList<String>(curView.allMembers.size());
         for (ClusterNode member : curView.allMembers) {
             result.add(member.getName());
         }
@@ -221,10 +220,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
 
     @Override
     public ClusterNode[] getClusterNodes() {
-        GroupView curView = this.groupView;
-        synchronized (curView.allMembers) {
-            return curView.allMembers.toArray(new ClusterNode[curView.allMembers.size()]);
-        }
+        return this.groupView.allMembers.toArray(new ClusterNode[0]);
     }
 
     @Override
@@ -234,10 +230,10 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
 
     public boolean isCurrentNodeCoordinator() {
         GroupView curView = this.groupView;
-        if (curView.allMembers.size() == 0 || this.me == null) {
+        if (curView.allMembers.isEmpty() || this.me == null) {
             return false;
         }
-        return curView.allMembers.elementAt(0).equals(this.me);
+        return curView.allMembers.get(0).equals(this.me);
     }
 
     // ***************************
@@ -276,34 +272,27 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
      * {@inheritDoc}
      */
     @Override
-    public ArrayList<?> callMethodOnCluster(String serviceName, String methodName, Object[] args, Class<?>[] types,
-            boolean excludeSelf) throws InterruptedException {
-        return this.callMethodOnCluster(serviceName, methodName, args, types, Object.class, excludeSelf, null,
-                this.getMethodCallTimeout(), false);
+    public <T> List<T> callMethodOnCluster(String serviceName, String methodName, Object[] args, Class<?>[] types, boolean excludeSelf) throws InterruptedException {
+        return this.callMethodOnCluster(serviceName, methodName, args, types, excludeSelf, null, this.getMethodCallTimeout(), false);
     }
 
     /**
      * {@inheritDoc}
      */
     @Override
-    public ArrayList<?> callMethodOnCluster(String serviceName, String methodName, Object[] args, Class<?>[] types,
-            boolean excludeSelf, ResponseFilter filter) throws InterruptedException {
-        return this.callMethodOnCluster(serviceName, methodName, args, types, Object.class, excludeSelf, filter,
-                this.getMethodCallTimeout(), false);
+    public <T> List<T> callMethodOnCluster(String serviceName, String methodName, Object[] args, Class<?>[] types, boolean excludeSelf, ResponseFilter filter) throws InterruptedException {
+        return this.callMethodOnCluster(serviceName, methodName, args, types, excludeSelf, filter, this.getMethodCallTimeout(), false);
     }
 
     /**
      * {@inheritDoc}
      */
     @Override
-    public <T> ArrayList<T> callMethodOnCluster(String serviceName, String methodName, Object[] args, Class<?>[] types,
-            Class<T> returnType, boolean excludeSelf, ResponseFilter filter, long methodTimeout, boolean unordered)
-            throws InterruptedException {
+    public <T> List<T> callMethodOnCluster(String serviceName, String methodName, Object[] args, Class<?>[] types, boolean excludeSelf, ResponseFilter filter, long methodTimeout, boolean unordered) throws InterruptedException {
         MethodCall m = new MethodCall(serviceName + "." + methodName, args, types);
-        RspFilterAdapter rspFilter = filter == null ? null : new RspFilterAdapter(filter, this.nodeFactory);
-        RequestOptions ro = new RequestOptions(Request.GET_ALL, methodTimeout, false, rspFilter);
+        RequestOptions options = new RequestOptions(ResponseMode.GET_ALL, methodTimeout, false, new NoHandlerForRPCRspFilter(filter));
         if (excludeSelf) {
-            ro.setExclusionList(this.localJGAddress);
+            options.setExclusionList(this.localJGAddress);
         }
 
         if (this.channel.flushSupported()) {
@@ -312,39 +301,38 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
 
         boolean trace = this.log.isTraceEnabled();
         if (trace) {
-            this.log.trace("calling synchronous method on cluster, serviceName=" + serviceName + ", methodName=" + methodName
-                    + ", members=" + this.groupView + ", excludeSelf=" + excludeSelf);
+            this.log.tracef("calling synchronous method on cluster, serviceName=%s, methodName=%s, members=%s, excludeSelf=%s", serviceName, methodName, this.groupView, excludeSelf);
         }
-        RspList rsp = this.dispatcher.callRemoteMethods(null, m, ro);
-        ArrayList<T> result = this.processResponseList(rsp, returnType, trace);
+        try {
+            RspList<T> rsp = this.dispatcher.callRemoteMethods(null, m, options);
+            List<T> result = this.processResponseList(rsp, trace);
 
-        if (!excludeSelf && this.directlyInvokeLocal && (filter == null || filter.needMoreResponses())) {
-            try {
-                invokeDirectly(serviceName, methodName, args, types, returnType, result, filter);
-            } catch (RuntimeException e) {
-                throw e;
-            } catch (InterruptedException e) {
-                throw e;
-            } catch (Exception e) {
-                throw new RuntimeException(e);
+            if (!excludeSelf && this.directlyInvokeLocal && (filter == null || filter.needMoreResponses())) {
+                invokeDirectly(serviceName, methodName, args, types, result, filter);
             }
+            return result;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Error e) {
+            throw e;
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
-        return result;
     }
 
-    <T> T invokeDirectly(String serviceName, String methodName, Object[] args, Class<?>[] types, Class<T> returnType,
-            List<T> remoteResponses, ResponseFilter filter) throws Exception {
+    @SuppressWarnings("unchecked")
+    <T> T invokeDirectly(String serviceName, String methodName, Object[] args, Class<?>[] types, List<T> remoteResponses, ResponseFilter filter) throws Exception {
         T retVal = null;
         Object handler = this.rpcHandlers.get(serviceName);
         if (handler != null) {
             MethodCall call = new MethodCall(methodName, args, types);
             try {
                 Object result = call.invoke(handler);
-                if (returnType != null && void.class != returnType) {
-                    retVal = returnType.cast(result);
-                    if (remoteResponses != null && (filter == null || filter.isAcceptable(retVal, me))) {
-                        remoteResponses.add(retVal);
-                    }
+                retVal = (T) result;
+                if (remoteResponses != null && (filter == null || filter.isAcceptable(retVal, me))) {
+                    remoteResponses.add(retVal);
                 }
             } catch (Exception e) {
                 throw e;
@@ -362,32 +350,21 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
      * {@inheritDoc}
      */
     @Override
-    public Object callMethodOnCoordinatorNode(String serviceName, String methodName, Object[] args, Class<?>[] types,
-            boolean excludeSelf) throws Exception {
-        return this.callMethodOnCoordinatorNode(serviceName, methodName, args, types, Object.class, excludeSelf,
-                this.getMethodCallTimeout(), false);
+    public <T> T callMethodOnCoordinatorNode(String serviceName, String methodName, Object[] args, Class<?>[] types, boolean excludeSelf) throws Exception {
+        return this.<T>callMethodOnCoordinatorNode(serviceName, methodName, args, types, excludeSelf, this.getMethodCallTimeout(), false);
     }
 
     /**
      * {@inheritDoc}
      */
     @Override
-    public <T> T callMethodOnCoordinatorNode(String serviceName, String methodName, Object[] args, Class<?>[] types,
-            Class<T> returnType, boolean excludeSelf, long methodTimeout, boolean unordered) throws Exception {
+    public <T> T callMethodOnCoordinatorNode(String serviceName, String methodName, Object[] args, Class<?>[] types, boolean excludeSelf, long methodTimeout, boolean unordered) throws Exception {
         boolean trace = this.log.isTraceEnabled();
 
         MethodCall m = new MethodCall(serviceName + "." + methodName, args, types);
 
         if (trace) {
-            this.log.trace("callMethodOnCoordinatorNode(false), objName=" + serviceName + ", methodName=" + methodName);
-        }
-
-        if (returnType == null) {
-            // Use void.class as return type; a call to void.class.cast(object)
-            // below will throw CCE for anything other than null response
-            @SuppressWarnings("unchecked")
-            Class<T> unchecked = (Class<T>) void.class;
-            returnType = unchecked;
+            this.log.tracef("callMethodOnCoordinatorNode(false), objName=%s, methodName=%s", serviceName, methodName);
         }
 
         // the first cluster view member is the coordinator
@@ -396,23 +373,23 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
             if (excludeSelf) {
                 return null;
             } else if (this.directlyInvokeLocal) {
-                return invokeDirectly(serviceName, methodName, args, types, returnType, null, null);
+                return this.<T>invokeDirectly(serviceName, methodName, args, types, null, null);
             }
         }
 
         Address coord = this.groupView.coordinator;
-        RequestOptions opt = new RequestOptions(Request.GET_ALL, methodTimeout);
+        RequestOptions opt = new RequestOptions(ResponseMode.GET_ALL, methodTimeout, false, new NoHandlerForRPCRspFilter());
         if (unordered) {
             opt.setFlags(Message.OOB);
         }
         try {
-            return returnType.cast(this.dispatcher.callRemoteMethod(coord, m, opt));
+            return this.dispatcher.<T>callRemoteMethod(coord, m, opt);
         } catch (Exception e) {
             throw e;
         } catch (Error e) {
             throw e;
         } catch (Throwable e) {
-            throw new RuntimeException("Caught raw Throwable on remote invocation", e);
+            throw MESSAGES.caughtRemoteInvocationThrowable(e);
         }
     }
 
@@ -420,71 +397,51 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
      * {@inheritDoc}
      */
     @Override
-    public Object callMethodOnNode(String serviceName, String methodName, Object[] args, Class<?>[] types,
+    public <T>  T callMethodOnNode(String serviceName, String methodName, Object[] args, Class<?>[] types,
             ClusterNode targetNode) throws Exception {
-        return this.callMethodOnNode(serviceName, methodName, args, types, Object.class, this.getMethodCallTimeout(),
-                targetNode, false);
+        return this.<T>callMethodOnNode(serviceName, methodName, args, types, this.getMethodCallTimeout(), targetNode, false);
     }
 
     /**
      * {@inheritDoc}
      */
     @Override
-    public Object callMethodOnNode(String serviceName, String methodName, Object[] args, Class<?>[] types, long methodTimeout,
-            ClusterNode targetNode) throws Exception {
-        return this.callMethodOnNode(serviceName, methodName, args, types, Object.class, methodTimeout, targetNode, false);
+    public <T> T callMethodOnNode(String serviceName, String methodName, Object[] args, Class<?>[] types, long methodTimeout, ClusterNode targetNode) throws Exception {
+        return this.<T>callMethodOnNode(serviceName, methodName, args, types, methodTimeout, targetNode, false);
     }
 
     /**
      * {@inheritDoc}
      */
     @Override
-    public <T> T callMethodOnNode(String serviceName, String methodName, Object[] args, Class<?>[] types, Class<T> returnType,
-            long methodTimeout, ClusterNode targetNode, boolean unordered) throws Exception {
-        if (returnType == null) {
-            // Use void.class as return type; a call to void.class.cast(object)
-            // below will throw CCE for anything other than null response
-            @SuppressWarnings("unchecked")
-            Class<T> unchecked = (Class<T>) void.class;
-            returnType = unchecked;
-        }
-
+    public <T> T callMethodOnNode(String serviceName, String methodName, Object[] args, Class<?>[] types, long methodTimeout, ClusterNode targetNode, boolean unordered) throws Exception {
         if (!(targetNode instanceof ClusterNodeImpl)) {
-            throw new IllegalArgumentException("targetNode " + targetNode + " is not an instance of " + ClusterNodeImpl.class
-                    + " -- only targetNodes provided by this HAPartition should be used");
+            throw MESSAGES.invalidTargetNodeInstance(targetNode, ClusterNodeImpl.class);
         }
         boolean trace = this.log.isTraceEnabled();
 
         MethodCall m = new MethodCall(serviceName + "." + methodName, args, types);
 
         if (trace) {
-            this.log.trace("callMethodOnNode( objName=" + serviceName + ", methodName=" + methodName);
+            this.log.tracef("callMethodOnNode( objName=%s, methodName=%s )", serviceName, methodName);
         }
         if (this.directlyInvokeLocal && this.me.equals(targetNode)) {
-            return invokeDirectly(serviceName, methodName, args, types, returnType, null, null);
+            return this.<T>invokeDirectly(serviceName, methodName, args, types, null, null);
         }
 
-        Object rsp = null;
-        RequestOptions opt = new RequestOptions(Request.GET_FIRST, methodTimeout);
+        RequestOptions opt = new RequestOptions(ResponseMode.GET_FIRST, methodTimeout, false, new NoHandlerForRPCRspFilter());
         if (unordered) {
             opt.setFlags(Message.OOB);
         }
         try {
-            rsp = this.dispatcher.callRemoteMethod(((ClusterNodeImpl) targetNode).getOriginalJGAddress(), m, opt);
+            return this.dispatcher.<T>callRemoteMethod(((ClusterNodeImpl) targetNode).getOriginalJGAddress(), m, opt);
         } catch (Exception e) {
             throw e;
         } catch (Error e) {
             throw e;
         } catch (Throwable e) {
-            throw new RuntimeException("Caught raw Throwable on remote invocation", e);
+            throw MESSAGES.caughtRemoteInvocationThrowable(e);
         }
-
-        if (rsp instanceof NoHandlerForRPC) {
-            this.log.trace("Ignoring NoHandlerForRPC");
-            rsp = null;
-        }
-
-        return returnType.cast(rsp);
     }
 
     /**
@@ -500,19 +457,17 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
      * {@inheritDoc}
      */
     @Override
-    public void callAsyncMethodOnNode(String serviceName, String methodName, Object[] args, Class<?>[] types,
-            ClusterNode targetNode, boolean unordered) throws Exception {
+    public void callAsyncMethodOnNode(String serviceName, String methodName, Object[] args, Class<?>[] types, ClusterNode targetNode, boolean unordered) throws Exception {
 
         if (!(targetNode instanceof ClusterNodeImpl)) {
-            throw new IllegalArgumentException("targetNode " + targetNode + " is not an instance of " + ClusterNodeImpl.class
-                    + " -- only targetNodes provided by this HAPartition should be used");
+            throw MESSAGES.invalidTargetNodeInstance(targetNode, ClusterNodeImpl.class);
         }
         boolean trace = this.log.isTraceEnabled();
 
         MethodCall m = new MethodCall(serviceName + "." + methodName, args, types);
 
         if (trace) {
-            this.log.trace("callAsyncMethodOnNode( objName=" + serviceName + ", methodName=" + methodName);
+            this.log.tracef("callAsyncMethodOnNode( objName=%s, methodName=%s )" + methodName, serviceName, methodName);
         }
 
         if (this.directlyInvokeLocal && this.me.equals(targetNode)) {
@@ -520,7 +475,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
             return;
         }
 
-        RequestOptions opt = new RequestOptions(Request.GET_NONE, this.getMethodCallTimeout());
+        RequestOptions opt = new RequestOptions(ResponseMode.GET_NONE, this.getMethodCallTimeout(), false, new NoHandlerForRPCRspFilter());
         if (unordered) {
             opt.setFlags(Message.OOB);
         }
@@ -531,7 +486,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         } catch (Error e) {
             throw e;
         } catch (Throwable e) {
-            throw new RuntimeException("Caught raw Throwable on remote invocation", e);
+            throw MESSAGES.caughtRemoteInvocationThrowable(e);
         }
     }
 
@@ -539,8 +494,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
      * {@inheritDoc}
      */
     @Override
-    public void callAsynchMethodOnCluster(String serviceName, String methodName, Object[] args, Class<?>[] types,
-            boolean excludeSelf) throws InterruptedException {
+    public void callAsynchMethodOnCluster(String serviceName, String methodName, Object[] args, Class<?>[] types, boolean excludeSelf) throws InterruptedException {
         this.callAsynchMethodOnCluster(serviceName, methodName, args, types, excludeSelf, false);
     }
 
@@ -548,23 +502,28 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
      * {@inheritDoc}
      */
     @Override
-    public void callAsynchMethodOnCluster(final String serviceName, final String methodName, final Object[] args,
-            final Class<?>[] types, boolean excludeSelf, boolean unordered) throws InterruptedException {
+    public void callAsynchMethodOnCluster(final String serviceName, final String methodName, final Object[] args, final Class<?>[] types, boolean excludeSelf, boolean unordered) throws InterruptedException {
         MethodCall m = new MethodCall(serviceName + "." + methodName, args, types);
-        RequestOptions ro = new RequestOptions(Request.GET_NONE, this.getMethodCallTimeout());
+        RequestOptions options = new RequestOptions(ResponseMode.GET_NONE, this.getMethodCallTimeout(), false, new NoHandlerForRPCRspFilter());
         if (excludeSelf) {
-            ro.setExclusionList(this.localJGAddress);
+            options.setExclusionList(this.localJGAddress);
         }
 
         if (this.channel.flushSupported()) {
             this.flushBlockGate.await(this.getMethodCallTimeout());
         }
         if (this.log.isTraceEnabled()) {
-            this.log.trace("calling asynch method on cluster, serviceName=" + serviceName + ", methodName=" + methodName
-                    + ", members=" + this.groupView + ", excludeSelf=" + excludeSelf);
+            this.log.tracef("calling asynch method on cluster, serviceName=%s, methodName=%s, members=%s, excludeSelf=%s",
+                    serviceName, methodName, this.groupView, excludeSelf);
         }
         try {
-            this.dispatcher.callRemoteMethods(null, m, ro);
+            this.dispatcher.callRemoteMethods(null, m, options);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Error e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         } finally {
             if (!excludeSelf && this.directlyInvokeLocal) {
                 new AsynchronousLocalInvocation(serviceName, methodName, args, types).invoke();
@@ -588,7 +547,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         MethodCall m = new MethodCall(serviceName + "." + methodName, args, types);
 
         if (trace) {
-            this.log.trace("callMethodOnCoordinatorNode(false), objName=" + serviceName + ", methodName=" + methodName);
+            this.log.tracef("callMethodOnCoordinatorNode(false), objName=%s, methodName=%s", serviceName, methodName);
         }
 
         // the first cluster view member is the coordinator
@@ -606,7 +565,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         }
 
         Address coord = this.groupView.coordinator;
-        RequestOptions opt = new RequestOptions(Request.GET_ALL, this.getMethodCallTimeout());
+        RequestOptions opt = new RequestOptions(ResponseMode.GET_ALL, this.getMethodCallTimeout(), false, new NoHandlerForRPCRspFilter());
         if (unordered) {
             opt.setFlags(Message.OOB);
         }
@@ -617,7 +576,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         } catch (Error e) {
             throw e;
         } catch (Throwable e) {
-            throw new RuntimeException("Caught raw Throwable on remote invocation", e);
+            throw MESSAGES.caughtRemoteInvocationThrowable(e);
         }
     }
 
@@ -678,11 +637,10 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
             future = new FutureTask<SerializableStateTransferResult>(newTask);
         } else if (task instanceof SerializableStateTransferTask) {
             // Unlikely scenario
-            log.warn("Received concurrent requests to get service state for " + serviceName);
+            log.receivedConcurrentStateRequests(serviceName);
             future = new FutureTask<SerializableStateTransferResult>((SerializableStateTransferTask) task);
         } else {
-            throw new IllegalStateException("State transfer task for " + serviceName
-                    + " that will return an input stream is already pending");
+            throw MESSAGES.stateTransferAlreadyPending(serviceName, "input stream");
         }
         Executor e = getThreadPool();
         if (e == null) {
@@ -707,11 +665,10 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
             future = new FutureTask<StreamStateTransferResult>(newTask);
         } else if (task instanceof StreamStateTransferTask) {
             // Unlikely scenario
-            log.warn("Received concurrent requests to get service state for " + serviceName);
+            log.receivedConcurrentStateRequests(serviceName);
             future = new FutureTask<StreamStateTransferResult>((StreamStateTransferTask) task);
         } else {
-            throw new IllegalStateException("State transfer task for " + serviceName
-                    + " that will return an deserialized object is already pending");
+            throw MESSAGES.stateTransferAlreadyPending(serviceName, "deserialized object");
         }
         Executor e = getThreadPool();
         if (e == null) {
@@ -824,7 +781,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
     public void create() throws Exception {
 
         if (state == State.CREATED || state == State.STARTING || state == State.STARTED || state == State.STOPPING || state == State.STOPPED) {
-            log.debug("Ignoring create call; current state is " + this.state);
+            log.debugf("Ignoring create call; current state is %s", this.state);
             return;
         }
 
@@ -834,7 +791,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
 
     public void start() throws Exception {
         if (state == State.STARTING || state == State.STARTED || state == State.STOPPING) {
-            log.debug("Ignoring start call; current state is " + this.state);
+            log.debugf("Ignoring start call; current state is %s", this.state);
             return;
         }
 
@@ -850,7 +807,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         } catch (Throwable t) {
             state = State.FAILED;
             if (this.channel != null && this.channelSelfConnected) {
-                this.log.debug("Caught exception after channel connected; closing channel -- " + t.getLocalizedMessage());
+                this.log.debugf("Caught exception after channel connected; closing channel -- %s", t.getLocalizedMessage());
                 this.channel.close();
                 this.channel = null;
             }
@@ -865,7 +822,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
 
     public void stop() {
         if (state != State.STARTED) {
-            log.debug("Ignoring stop call; current state is " + this.state);
+            log.debugf("Ignoring stop call; current state is %s", this.state);
             return;
         }
 
@@ -876,10 +833,10 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         } catch (InterruptedException e) {
             state = State.FAILED;
             Thread.currentThread().interrupt();
-            log.warn("Exception in stop ", e);
+            log.exceptionInStop(e);
         } catch (Exception e) {
             state = State.FAILED;
-            log.warn("Exception in stop ", e);
+            log.exceptionInStop(e);
         } catch (Error e) {
             state = State.FAILED;
             throw e;
@@ -889,7 +846,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
 
     public void destroy() {
         if (state == State.DESTROYED) {
-            log.debug("Ignoring destroy call; current state is " + this.state);
+            log.debugf("Ignoring destroy call; current state is %s", this.state);
             return;
         }
 
@@ -900,7 +857,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         try {
             destroyService();
         } catch (Exception e) {
-            log.error("Error destroying service", e);
+            log.errorDestroyingService(e);
         }
         state = State.DESTROYED;
     }
@@ -920,14 +877,13 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
 
     protected void startService() throws Exception {
         if (this.scopeId == null) {
-            throw new IllegalStateException("Must set scopeId before calling start()");
+            throw MESSAGES.varNotSet("scopeId", "start()");
         }
 
         this.stateIdPrefix = getClass().getName() + "." + this.scopeId + ".";
 
         if (this.channel == null || !this.channel.isOpen()) {
-            this.log.debug("Creating Channel for partition " + this.getGroupName() + " using stack "
-                    + this.getChannelStackName());
+            this.log.debugf("Creating Channel for partition %s using stack %s", this.getGroupName(), this.getChannelStackName());
 
             this.channel = this.createChannel();
         }
@@ -950,10 +906,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
             this.flushBlockGate.open();
         }
 
-        // See if the channel will not let us receive our own invocations and
-        // we have to make them ourselves
-        Boolean receiveLocal = (Boolean) this.channel.getOpt(Channel.LOCAL);
-        this.directlyInvokeLocal = (receiveLocal != null && !receiveLocal.booleanValue());
+        this.directlyInvokeLocal = this.channel.getDiscardOwnMessages();
 
         // get current JG group properties
         this.localJGAddress = this.channel.getAddress();
@@ -969,7 +922,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         try {
             this.asynchHandler.stop();
         } catch (Exception e) {
-            this.log.warn("Failed to stop asynchHandler", e);
+            this.log.failedToStop(e, "asynchHandler");
         }
 
         // NR 200505 : [JBCLUSTER-38] replace channel.close() by a disconnect and
@@ -981,7 +934,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
                 this.channel.close();
             }
         } catch (Exception e) {
-            this.log.error("channel disconnection failed", e);
+            this.log.channelDisconnectError(e);
         } finally {
             this.channel = null;
         }
@@ -994,18 +947,18 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
     protected Channel createChannel() {
         ChannelFactory factory = this.getChannelFactory();
         if (factory == null) {
-            throw new IllegalStateException("HAPartitionConfig has no JChannelFactory");
+            throw MESSAGES.haPartitionConfigHasNo("JChannelFactory");
         }
         String stack = this.getChannelStackName();
         if (stack == null) {
-            throw new IllegalStateException("HAPartitionConfig has no multiplexer stack");
+            throw MESSAGES.haPartitionConfigHasNo("multiplexer stack");
         }
         try {
             return factory.createChannel(this.getGroupName());
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Failure creating multiplexed Channel", e);
+            throw MESSAGES.failedToCreateMultiplexChannel(e);
         }
     }
 
@@ -1037,11 +990,13 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         }
     }
 
-    protected void logHistory(String message) {
+    protected void logHistory(String pattern, Object... args) {
         if (this.maxHistoryLength > 0) {
             try {
-
-                this.history.add(new SimpleDateFormat().format(new Date()) + " : " + message);
+                List<Object> list = new ArrayList<Object>(args.length + 1);
+                list.add(new Date());
+                list.addAll(Arrays.asList(args));
+                this.history.add(String.format("%c : " + pattern, list.toArray()));
                 if (this.history.size() > this.maxHistoryLength) {
                     this.history.remove(0);
                 }
@@ -1055,53 +1010,57 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
     /**
      * Creates an object from a byte buffer
      */
-    Object objectFromByteBufferInternal(byte[] buffer) throws Exception {
-        if (buffer == null) {
-            return null;
+    Object objectFromByteBufferInternal(ClassLoader loader, byte[] buffer, int offset, int length) throws Exception {
+        if (buffer == null) return null;
+        MarshallingConfiguration config = new MarshallingConfiguration();
+        if (loader != null) {
+            config.setClassResolver(new SimpleClassResolver(loader));
         }
-
-        ByteArrayInputStream bais = new ByteArrayInputStream(buffer);
-        SwitchContext context = classLoaderSwitcher.getSwitchContext(this.getClass().getClassLoader());
+        Unmarshaller unmarshaller = marshallerFactory.createUnmarshaller(config);
+        unmarshaller.start(Marshalling.createByteInput(new ByteArrayInputStream(buffer, offset, length)));
         try {
-            MarshalledValueInputStream mvis = new MarshalledValueInputStream(bais);
-            return mvis.readObject();
+            return unmarshaller.readObject();
         } finally {
-            context.reset();
+            unmarshaller.close();
         }
     }
 
     /**
      * Serializes an object into a byte buffer. The object has to implement interface Serializable or Externalizable
      */
-    byte[] objectToByteBufferInternal(Object obj) throws Exception {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        MarshalledValueOutputStream mvos = new MarshalledValueOutputStream(baos);
-        mvos.writeObject(obj);
-        mvos.flush();
-        return baos.toByteArray();
+    byte[] objectToByteBufferInternal(Object object) throws Exception {
+        Marshaller marshaller = marshallerFactory.createMarshaller(new MarshallingConfiguration());
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        marshaller.start(Marshalling.createByteOutput(output));
+        marshaller.writeObject(object);
+        marshaller.close();
+        return output.toByteArray();
     }
 
     /**
      * Creates a response object from a byte buffer - optimized for response marshalling
      */
-    Object objectFromByteBufferResponseInternal(byte[] buffer) throws Exception {
+    Object objectFromByteBufferResponseInternal(ClassLoader loader, byte[] buffer, int offset, int length) throws Exception {
         if (buffer == null) {
             return null;
         }
 
-        if (buffer[0] == NULL_VALUE) {
+        if (buffer[offset] == NULL_VALUE) {
             return null;
         }
 
-        ByteArrayInputStream bais = new ByteArrayInputStream(buffer);
+        MarshallingConfiguration config = new MarshallingConfiguration();
+        if (loader != null) {
+            config.setClassResolver(new SimpleClassResolver(loader));
+        }
+        Unmarshaller unmarshaller = marshallerFactory.createUnmarshaller(config);
+        unmarshaller.start(Marshalling.createByteInput(new ByteArrayInputStream(buffer, offset, length)));
         // read past the null/serializable byte
-        bais.read();
-        SwitchContext context = classLoaderSwitcher.getSwitchContext(this.getClass().getClassLoader());
+        unmarshaller.read();
         try {
-            MarshalledValueInputStream mvis = new MarshalledValueInputStream(bais);
-            return mvis.readObject();
+            return unmarshaller.readObject();
         } finally {
-            context.reset();
+            unmarshaller.close();
         }
     }
 
@@ -1114,13 +1073,14 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
             return new byte[] { NULL_VALUE };
         }
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        Marshaller marshaller = marshallerFactory.createMarshaller(new MarshallingConfiguration());
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        marshaller.start(Marshalling.createByteOutput(output));
         // write a marker to stream to distinguish from null value stream
-        baos.write(SERIALIZABLE_VALUE);
-        MarshalledValueOutputStream mvos = new MarshalledValueOutputStream(baos);
-        mvos.writeObject(obj);
-        mvos.flush();
-        return baos.toByteArray();
+        marshaller.write(SERIALIZABLE_VALUE);
+        marshaller.writeObject(obj);
+        marshaller.close();
+        return output.toByteArray();
     }
 
     private void notifyChannelLock() {
@@ -1129,50 +1089,34 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         }
     }
 
-    private <T> ArrayList<T> processResponseList(RspList rspList, Class<T> returnType, boolean trace) {
-        if (returnType == null) {
-            // Use void.class as return type; a call to void.class.cast(object)
-            // below will throw CCE for anything other than null response
-            @SuppressWarnings("unchecked")
-            Class<T> unchecked = (Class<T>) void.class;
-            returnType = unchecked;
-        }
-
-        ArrayList<T> rtn = new ArrayList<T>();
+    private <T> List<T> processResponseList(RspList<T> rspList, boolean trace) {
+        List<T> result = new ArrayList<T>(rspList.size());
         if (rspList != null) {
-            for (Rsp<?> response : rspList.values()) {
+            for (Rsp<T> response : rspList.values()) {
                 // Only include received responses
                 if (response.wasReceived()) {
-                    Object item = response.getValue();
-                    if (item instanceof NoHandlerForRPC || item instanceof NoMuxHandler) {
-                        continue;
-                    }
-
-                    rtn.add(returnType.cast(item));
+                    result.add(response.getValue());
                 } else if (trace) {
-                    this.log.trace("Ignoring non-received response: " + response);
+                    this.log.tracef("Ignoring non-received response: %s", response);
                 }
             }
 
         }
-        return rtn;
+        return result;
     }
 
     GroupView processViewChange(View newView) throws Exception {
         GroupView oldMembers = this.groupView;
         GroupView newGroupView = new GroupView(newView, oldMembers, this.nodeFactory);
-
-        this.logHistory("New view: " + newGroupView.allMembers + " with viewId: " + newGroupView.viewId + " (old view: "
-                + newGroupView.allMembers + " )");
+        this.logHistory(MESSAGES.viewCreated(newGroupView.allMembers, newGroupView.viewId, oldMembers));
 
         this.groupView = newGroupView;
 
         if (oldMembers.viewId == -1) {
             // Initial viewAccepted
-            this.log.debug("ViewAccepted: initial members set for partition " + this.getGroupName() + ": "
-                    + newGroupView.viewId + " (" + this.groupView + ")");
+            this.log.debugf("ViewAccepted: initial members set for partition %s: %s (%s)", this.getGroupName(), newGroupView.viewId, this.groupView);
 
-            this.log.info("Number of cluster members: " + newGroupView.allMembers.size());
+            this.log.numberOfClusterMembers(newGroupView.allMembers.size());
             for (ClusterNode node : newGroupView.allMembers) {
                 this.log.debug(node);
             }
@@ -1184,23 +1128,20 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
 
             boolean merge = newView instanceof MergeView;
             if (this.isCurrentNodeCoordinator()) {
-                this.clusterLifeCycleLog.info("New cluster view for partition " + this.getGroupName() + " (id: "
-                        + newGroupView.viewId + ", delta: " + difference + ", merge: " + merge + ") : "
-                        + newGroupView.allMembers);
+                this.clusterLifeCycleLog.newClusterCurrentView(this.groupName, newGroupView.viewId, difference, merge, newGroupView.allMembers);
             } else {
-                this.log.info("New cluster view for partition " + this.getGroupName() + ": " + newGroupView.viewId + " ("
-                        + this.groupView + " delta: " + difference + ", merge: " + merge + ")");
+                this.log.newClusterView(this.getGroupName(), newGroupView.viewId, this.groupView, difference, merge);
             }
 
-            this.log.debug("dead members: " + newGroupView.deadMembers);
-            this.log.debug("membership changed from " + oldMembers.allMembers.size() + " to " + newGroupView.allMembers.size());
+            this.log.debugf("dead members: %s", newGroupView.deadMembers);
+            this.log.debugf("membership changed from %d to %d", oldMembers.allMembers.size(), newGroupView.allMembers.size());
+
             // Put the view change to the asynch queue
             this.asynchHandler.queueEvent(newGroupView);
 
             // Broadcast the new view to the synchronous view change listeners
             if (this.allowSyncListeners) {
-                this.notifyListeners(this.syncMembershipListeners, newGroupView.viewId, newGroupView.allMembers,
-                        newGroupView.deadMembers, newGroupView.newMembers, newGroupView.originatingGroups);
+                this.notifyListeners(this.syncMembershipListeners, newGroupView.viewId, newGroupView.allMembers, newGroupView.deadMembers, newGroupView.newMembers, newGroupView.originatingGroups);
             }
         }
 
@@ -1219,7 +1160,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
                     }
 
                     if (this.groupView == null) {
-                        throw new IllegalStateException("No view received from Channel");
+                        throw MESSAGES.viewNotReceived("Channel");
                     }
                 }
             }
@@ -1231,11 +1172,11 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
 
     private void setupLoggers(String partitionName) {
         if (partitionName == null) {
-            this.log = Logger.getLogger(getClass().getName());
-            this.clusterLifeCycleLog = Logger.getLogger(getClass().getName() + ".lifecycle");
+            this.log = Logger.getMessageLogger(ClusteringImplLogger.class, getClass().getName());
+            this.clusterLifeCycleLog = Logger.getMessageLogger(ClusteringImplLogger.class, getClass().getName() + ".lifecycle");
         } else {
-            this.log = Logger.getLogger(getClass().getName() + "." + partitionName);
-            this.clusterLifeCycleLog = Logger.getLogger(getClass().getName() + ".lifecycle." + partitionName);
+            this.log = Logger.getMessageLogger(ClusteringImplLogger.class, getClass().getName() + "." + partitionName);
+            this.clusterLifeCycleLog = Logger.getMessageLogger(ClusteringImplLogger.class, getClass().getName() + ".lifecycle." + partitionName);
         }
     }
 
@@ -1253,19 +1194,18 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
                     if (other.getOriginalJGAddress().equals(((ClusterNodeImpl) this.me).getOriginalJGAddress())) {
                         other = (ClusterNodeImpl) member;
                     }
-                    throw new IllegalStateException("Found member " + other + " in current view that duplicates us (" + this.me
-                            + "). This" + " node cannot join partition until duplicate member has" + " been removed");
+                    throw MESSAGES.duplicateViewFound(other, this.me);
                 }
             }
         }
     }
 
-    static Vector<ClusterNode> translateAddresses(Vector<Address> addresses, ClusterNodeFactory factory) {
+    static List<ClusterNode> translateAddresses(List<Address> addresses, ClusterNodeFactory factory) {
         if (addresses == null) {
             return null;
         }
 
-        Vector<ClusterNode> result = new Vector<ClusterNode>(addresses.size());
+        List<ClusterNode> result = new ArrayList<ClusterNode>(addresses.size());
         for (Address address : addresses) {
             result.add(factory.getClusterNode(address));
         }
@@ -1281,14 +1221,14 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
      * @param newMembers Vector of new members
      * @return Vector of members that have died between the two views, can be empty.
      */
-    static Vector<ClusterNode> getDeadMembers(Vector<ClusterNode> oldMembers, Vector<ClusterNode> newMembers) {
+    static List<ClusterNode> getDeadMembers(List<ClusterNode> oldMembers, List<ClusterNode> newMembers) {
         if (oldMembers == null) {
-            oldMembers = new Vector<ClusterNode>();
+            oldMembers = new ArrayList<ClusterNode>();
         }
         if (newMembers == null) {
-            newMembers = new Vector<ClusterNode>();
+            newMembers = new ArrayList<ClusterNode>();
         }
-        Vector<ClusterNode> dead = cloneMembers(oldMembers);
+        List<ClusterNode> dead = new ArrayList<ClusterNode>(oldMembers);
         dead.removeAll(newMembers);
         return dead;
     }
@@ -1300,56 +1240,34 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
      * @param allMembers Vector of new members
      * @return Vector of members that have joined the partition between the two views
      */
-    static Vector<ClusterNode> getNewMembers(Vector<ClusterNode> oldMembers, Vector<ClusterNode> allMembers) {
+    static List<ClusterNode> getNewMembers(List<ClusterNode> oldMembers, List<ClusterNode> allMembers) {
         if (oldMembers == null) {
-            oldMembers = new Vector<ClusterNode>();
+            oldMembers = new ArrayList<ClusterNode>();
         }
         if (allMembers == null) {
-            allMembers = new Vector<ClusterNode>();
+            allMembers = new ArrayList<ClusterNode>();
         }
-        Vector<ClusterNode> newMembers = cloneMembers(allMembers);
+        List<ClusterNode> newMembers = new ArrayList<ClusterNode>(allMembers);
         newMembers.removeAll(oldMembers);
         return newMembers;
     }
 
-    void notifyListeners(ArrayList<GroupMembershipListener> theListeners, long viewID, Vector<ClusterNode> allMembers,
-            Vector<ClusterNode> deadMembers, Vector<ClusterNode> newMembers, Vector<List<ClusterNode>> originatingGroups) {
-        this.log.debug("Begin notifyListeners, viewID: " + viewID);
-        List<GroupMembershipListener> toNotify = null;
-        synchronized (theListeners) {
-            // JBAS-3619 -- don't hold synch lock while notifying
-            toNotify = cloneListeners(theListeners);
-        }
-
-        for (GroupMembershipListener aListener : toNotify) {
+    void notifyListeners(List<GroupMembershipListener> listeners, long viewID, List<ClusterNode> allMembers, List<ClusterNode> deadMembers, List<ClusterNode> newMembers, List<List<ClusterNode>> originatingGroups) {
+        this.log.debugf("Begin notifyListeners, viewID: %d", viewID);
+        for (GroupMembershipListener listener : listeners) {
             try {
                 if (originatingGroups != null) {
-                    aListener.membershipChangedDuringMerge(deadMembers, newMembers, allMembers, originatingGroups);
+                    listener.membershipChangedDuringMerge(deadMembers, newMembers, allMembers, originatingGroups);
                 } else {
-                    aListener.membershipChanged(deadMembers, newMembers, allMembers);
+                    listener.membershipChanged(deadMembers, newMembers, allMembers);
                 }
             } catch (Throwable e) {
                 // a problem in a listener should not prevent other members to receive the new view
-                this.log.warn("Membership listener callback failure: " + aListener, e);
+                this.log.memberShipListenerCallbackFailure(e, listener);
             }
         }
 
-        this.log.debug("End notifyListeners, viewID: " + viewID);
-    }
-
-    @SuppressWarnings("unchecked")
-    static Vector<Address> cloneMembers(View view) {
-        return (Vector<Address>) view.getMembers().clone();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Vector<ClusterNode> cloneMembers(Vector<ClusterNode> toClone) {
-        return (Vector<ClusterNode>) toClone.clone();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<GroupMembershipListener> cloneListeners(ArrayList<GroupMembershipListener> toClone) {
-        return (List<GroupMembershipListener>) toClone.clone();
+        this.log.debugf("End notifyListeners, viewID: %d", viewID);
     }
 
     // Inner classes -------------------------------------------------
@@ -1360,33 +1278,33 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
      */
     protected static class GroupView {
         protected final long viewId;
-        protected final Vector<ClusterNode> deadMembers;
-        protected final Vector<ClusterNode> newMembers;
-        protected final Vector<ClusterNode> allMembers;
-        protected final Vector<List<ClusterNode>> originatingGroups;
-        protected final Vector<Address> jgmembers;
+        protected final List<ClusterNode> deadMembers;
+        protected final List<ClusterNode> newMembers;
+        protected final List<ClusterNode> allMembers;
+        protected final List<List<ClusterNode>> originatingGroups;
+        protected final List<Address> jgmembers;
         protected final Address coordinator;
 
         GroupView() {
             this.viewId = -1;
-            this.deadMembers = new Vector<ClusterNode>();
-            this.newMembers = this.allMembers = new Vector<ClusterNode>();
-            this.jgmembers = new Vector<Address>();
+            this.deadMembers = new ArrayList<ClusterNode>();
+            this.newMembers = this.allMembers = new ArrayList<ClusterNode>();
+            this.jgmembers = new ArrayList<Address>();
             this.coordinator = null;
             this.originatingGroups = null;
         }
 
         GroupView(View newView, GroupView previousView, ClusterNodeFactory factory) {
             this.viewId = newView.getVid().getId();
-            this.jgmembers = cloneMembers(newView);
-            this.coordinator = this.jgmembers.size() == 0 ? null : this.jgmembers.elementAt(0);
+            this.jgmembers = new ArrayList<Address>(newView.getMembers());
+            this.coordinator = this.jgmembers.size() == 0 ? null : this.jgmembers.get(0);
             this.allMembers = translateAddresses(newView.getMembers(), factory);
             this.deadMembers = getDeadMembers(previousView.allMembers, allMembers);
             this.newMembers = getNewMembers(previousView.allMembers, allMembers);
             if (newView instanceof MergeView) {
                 MergeView mergeView = (MergeView) newView;
-                Vector<View> subgroups = mergeView.getSubgroups();
-                this.originatingGroups = new Vector<List<ClusterNode>>(subgroups.size());
+                List<View> subgroups = mergeView.getSubgroups();
+                this.originatingGroups = new ArrayList<List<ClusterNode>>(subgroups.size());
                 for (View view : subgroups) {
                     this.originatingGroups.add(translateAddresses(view.getMembers(), factory));
                 }
@@ -1402,22 +1320,21 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
     class RequestMarshallerImpl implements org.jgroups.blocks.RpcDispatcher.Marshaller {
 
         @Override
-        public Object objectFromByteBuffer(byte[] buf) throws Exception {
-            return CoreGroupCommunicationService.this.objectFromByteBufferInternal(buf);
-        }
-
-        @Override
-        public byte[] objectToByteBuffer(Object obj) throws Exception {
+        public Buffer objectToBuffer(Object obj) throws Exception {
             // wrap MethodCall in Object[service_name, byte[]] so that service name is available during demarshalling
             if (obj instanceof MethodCall) {
                 String name = ((MethodCall) obj).getName();
                 int idx = name.lastIndexOf('.');
                 String serviceName = name.substring(0, idx);
-                return CoreGroupCommunicationService.this.objectToByteBufferInternal(new Object[] { serviceName,
-                        CoreGroupCommunicationService.this.objectToByteBufferInternal(obj) });
+                return new Buffer(CoreGroupCommunicationService.this.objectToByteBufferInternal(new Object[] { serviceName, CoreGroupCommunicationService.this.objectToByteBufferInternal(obj) }));
             }
 
-            return CoreGroupCommunicationService.this.objectToByteBufferInternal(obj);
+            return new Buffer(CoreGroupCommunicationService.this.objectToByteBufferInternal(obj));
+        }
+
+        @Override
+        public Object objectFromBuffer(byte[] buf, int offset, int length) throws Exception {
+            return CoreGroupCommunicationService.this.objectFromByteBufferInternal(null, buf, offset, length);
         }
     }
 
@@ -1427,8 +1344,13 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
     class ResponseMarshallerImpl implements org.jgroups.blocks.RpcDispatcher.Marshaller {
 
         @Override
-        public Object objectFromByteBuffer(byte[] buf) throws Exception {
-            Object retval = CoreGroupCommunicationService.this.objectFromByteBufferResponseInternal(buf);
+        public Buffer objectToBuffer(Object obj) throws Exception {
+            return new Buffer(CoreGroupCommunicationService.this.objectToByteBufferResponseInternal(obj));
+        }
+
+        @Override
+        public Object objectFromBuffer(byte[] buf, int offset, int length) throws Exception {
+            Object retval = CoreGroupCommunicationService.this.objectFromByteBufferResponseInternal(HAServiceResponse.class.getClassLoader(), buf, offset, length);
             // HAServiceResponse is only received when a scoped classloader is required for unmarshalling
             if (!(retval instanceof HAServiceResponse)) {
                 return retval;
@@ -1438,28 +1360,19 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
             byte[] payload = ((HAServiceResponse) retval).getPayload();
 
             WeakReference<ClassLoader> weak = CoreGroupCommunicationService.this.clmap.get(serviceName);
-            SwitchContext context = CoreGroupCommunicationService.this.classLoaderSwitcher.getSwitchContext((weak != null) ? weak.get() : CoreGroupCommunicationService.class.getClassLoader());
-            try {
-                retval = CoreGroupCommunicationService.this.objectFromByteBufferResponseInternal(payload);
-
-                return retval;
-            } finally {
-                context.reset();
+            ClassLoader serviceLoader = (weak != null) ? weak.get() : null;
+            if (serviceLoader == null) {
+                serviceLoader = CoreGroupCommunicationService.class.getClassLoader();
             }
-        }
-
-        @Override
-        public byte[] objectToByteBuffer(Object obj) throws Exception {
-            return CoreGroupCommunicationService.this.objectToByteBufferResponseInternal(obj);
+            return CoreGroupCommunicationService.this.objectFromByteBufferResponseInternal(serviceLoader, payload, offset, length);
         }
     }
 
     /**
      * Overrides RpcDispatcher.Handle so that we can dispatch to many different objects.
      */
-    private class RpcHandler extends MuxRpcDispatcher implements StateTransferFilter {
-        RpcHandler(short scopeId, Channel channel, MessageListener messageListener, MembershipListener membershipListener,
-                Marshaller reqMarshaller, Marshaller rspMarshaller) {
+    private class RpcHandler extends MuxRpcDispatcher {
+        RpcHandler(short scopeId, Channel channel, MessageListener messageListener, MembershipListener membershipListener, Marshaller reqMarshaller, Marshaller rspMarshaller) {
             super(scopeId);
 
             setMessageListener(messageListener);
@@ -1469,6 +1382,11 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
             setChannel(channel);
             channel.addChannelListener(this);
             start();
+        }
+
+        @Override
+        public UpHandler getProtocolAdapter() {
+            return new ClassLoaderAwareUpHandler(this.prot_adapter, CoreGroupCommunicationService.class.getClassLoader());
         }
 
         /**
@@ -1485,24 +1403,22 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
             Object body = null;
             Object retval = null;
             Object handler = null;
-            boolean trace = this.log.isTraceEnabled();
+            boolean trace = CoreGroupCommunicationService.this.log.isTraceEnabled();
             String service = null;
             byte[] request_bytes = null;
 
             if (trace) {
-                this.log.trace("Partition " + CoreGroupCommunicationService.this.getGroupName() + " received msg");
+                CoreGroupCommunicationService.this.log.tracef("Partition %s received msg", CoreGroupCommunicationService.this.getGroupName());
             }
-            if (req == null || req.getBuffer() == null) {
-                this.log.warn("Partition " + CoreGroupCommunicationService.this.getGroupName()
-                        + " message or message buffer is null!");
+            if (req == null || req.getRawBuffer() == null) {
+                CoreGroupCommunicationService.this.log.nullPartitionMessage(CoreGroupCommunicationService.this.getGroupName());
                 return null;
             }
 
             try {
-                Object wrapper = CoreGroupCommunicationService.this.objectFromByteBufferInternal(req.getBuffer());
+                Object wrapper = CoreGroupCommunicationService.this.objectFromByteBufferInternal(null, req.getRawBuffer(), req.getOffset(), req.getLength());
                 if (wrapper == null || !(wrapper instanceof Object[])) {
-                    this.log.warn("Partition " + CoreGroupCommunicationService.this.getGroupName()
-                            + " message wrapper does not contain Object[] object!");
+                    CoreGroupCommunicationService.this.log.invalidPartitionMessageWrapper(CoreGroupCommunicationService.this.getGroupName());
                     return null;
                 }
 
@@ -1515,33 +1431,30 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
                 handler = CoreGroupCommunicationService.this.rpcHandlers.get(service);
                 if (handler == null) {
                     if (trace) {
-                        this.log.trace("Partition " + CoreGroupCommunicationService.this.getGroupName()
-                                + " no rpc handler registered under service " + service);
+                        CoreGroupCommunicationService.this.log.tracef("Partition %s no rpc handler registered under service %s", CoreGroupCommunicationService.this.getGroupName(), service);
                     }
                     return new NoHandlerForRPC();
                 }
             } catch (Exception e) {
-                this.log.warn("Partition " + CoreGroupCommunicationService.this.getGroupName()
-                        + " failed unserializing message buffer (msg=" + req + ")", e);
+                CoreGroupCommunicationService.this.log.partitionFailedUnserialing(e, CoreGroupCommunicationService.this.getGroupName(), req);
                 return null;
             }
 
             // If client registered the service with a classloader, override the thread classloader here
             WeakReference<ClassLoader> weak = CoreGroupCommunicationService.this.clmap.get(service);
-            SwitchContext context = CoreGroupCommunicationService.this.classLoaderSwitcher.getSwitchContext((weak != null) ? weak.get() : CoreGroupCommunicationService.class.getClassLoader());
+            ClassLoader serviceLoader = (weak != null) ? weak.get() : null;
+            if (serviceLoader == null) {
+                serviceLoader = CoreGroupCommunicationService.class.getClassLoader();
+            }
             try {
-                body = CoreGroupCommunicationService.this.objectFromByteBufferInternal(request_bytes);
+                body = CoreGroupCommunicationService.this.objectFromByteBufferInternal(serviceLoader, request_bytes, 0, request_bytes.length);
             } catch (Exception e) {
-                this.log.warn("Partition " + CoreGroupCommunicationService.this.getGroupName()
-                        + " failed extracting message body from request bytes", e);
+                CoreGroupCommunicationService.this.log.partitionFailedExtractingMessageBody(e, CoreGroupCommunicationService.this.getGroupName());
                 return null;
-            } finally {
-                context.reset();
             }
 
             if (body == null || !(body instanceof MethodCall)) {
-                this.log.warn("Partition " + CoreGroupCommunicationService.this.getGroupName()
-                        + " message does not contain a MethodCall object!");
+                CoreGroupCommunicationService.this.log.invalidPartitionMessage(CoreGroupCommunicationService.this.getGroupName());
                 return null;
             }
 
@@ -1550,15 +1463,15 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
             String methodName = method_call.getName();
 
             if (trace) {
-                this.log.trace("full methodName: " + methodName);
+                CoreGroupCommunicationService.this.log.tracef("full methodName: %s", methodName);
             }
 
             int idx = methodName.lastIndexOf('.');
             String handlerName = methodName.substring(0, idx);
             String newMethodName = methodName.substring(idx + 1);
             if (trace) {
-                this.log.trace("handlerName: " + handlerName + " methodName: " + newMethodName);
-                this.log.trace("Handle: " + methodName);
+                CoreGroupCommunicationService.this.log.tracef("handlerName: %s methodName: %s", handlerName, newMethodName);
+                CoreGroupCommunicationService.this.log.tracef("Handle: %s",  methodName);
             }
 
             // prepare method call
@@ -1576,53 +1489,17 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
                     retval = new HAServiceResponse(handlerName, retbytes);
                 }
                 if (trace) {
-                    this.log.trace("rpc call return value: " + retval);
+                    CoreGroupCommunicationService.this.log.tracef("rpc call return value: %s", retval);
                 }
             } catch (Throwable t) {
                 if (trace) {
-                    this.log.trace("Partition " + CoreGroupCommunicationService.this.getGroupName()
-                            + " rpc call threw exception", t);
+                    CoreGroupCommunicationService.this.log.tracef(t, "Partition %s rpc call threw exception", CoreGroupCommunicationService.this.getGroupName());
                 }
                 retval = t;
             }
 
             return retval;
         }
-
-        @Override
-        public void start() {
-            super.start();
-            // Replace the handler again! TODO get this in superclass
-            Muxer<UpHandler> muxer = this.getMuxer();
-            if (muxer != null) {
-                muxer.add(scopeId.shortValue(), new DelegatingStateTransferUpHandler(this.getProtocolAdapter(), this));
-            } else {
-                muxer = new MuxUpHandler(this.channel.getUpHandler());
-                muxer.add(scopeId.shortValue(), new DelegatingStateTransferUpHandler(this.getProtocolAdapter(), this));
-                this.channel.setUpHandler((UpHandler) muxer);
-            }
-        }
-
-        @Override
-        public void stop() {
-            Muxer<UpHandler> muxer = this.getMuxer();
-            if (muxer != null) {
-                muxer.remove(scopeId.shortValue());
-            }
-            super.stop();
-        }
-
-        @Override
-        public boolean accepts(String stateId) {
-            return stateId != null && stateId.startsWith(CoreGroupCommunicationService.this.stateIdPrefix);
-        }
-
-        @SuppressWarnings("unchecked")
-        private Muxer<UpHandler> getMuxer() {
-            UpHandler handler = channel.getUpHandler();
-            return ((handler != null) && (handler instanceof Muxer<?>)) ? (Muxer<UpHandler>) handler : null;
-        }
-
     }
 
     /**
@@ -1698,9 +1575,9 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         public ClusterNode getClusterNode(Address a) {
             IpAddress result = addressMap.get(a);
             if (result == null) {
-                result = (IpAddress) channel.downcall(new Event(Event.GET_PHYSICAL_ADDRESS, a));
+                result = (IpAddress) channel.down(new Event(Event.GET_PHYSICAL_ADDRESS, a));
                 if (result == null) {
-                    throw new IllegalStateException("Address " + a + "not registered in transport layer");
+                    throw MESSAGES.addressNotRegistered(a);
                 }
                 addressMap.put(a, result);
             }
@@ -1745,28 +1622,27 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
     /**
      * Handles MembershipListener callbacks from JGroups Channel
      */
-    class MembershipListenerImpl implements ExtendedMembershipListener {
+    class MembershipListenerImpl implements MembershipListener {
         @Override
         public void suspect(org.jgroups.Address suspected_mbr) {
-            CoreGroupCommunicationService.this.logHistory("Node suspected: "
-                    + (suspected_mbr == null ? "null" : suspected_mbr.toString()));
+            CoreGroupCommunicationService.this.logHistory(MESSAGES.nodeSuspected(suspected_mbr));
             if (CoreGroupCommunicationService.this.isCurrentNodeCoordinator()) {
-                CoreGroupCommunicationService.this.clusterLifeCycleLog.info("Suspected member: " + suspected_mbr);
+                CoreGroupCommunicationService.this.clusterLifeCycleLog.suspectedMember(suspected_mbr);
             } else {
-                CoreGroupCommunicationService.this.log.info("Suspected member: " + suspected_mbr);
+                CoreGroupCommunicationService.this.log.suspectedMember(suspected_mbr);
             }
         }
 
         @Override
         public void block() {
             CoreGroupCommunicationService.this.flushBlockGate.close();
-            CoreGroupCommunicationService.this.log.debug("Block processed at " + CoreGroupCommunicationService.this.me);
+            CoreGroupCommunicationService.this.log.debugf("Block processed at %s", CoreGroupCommunicationService.this.me);
         }
 
         @Override
         public void unblock() {
             CoreGroupCommunicationService.this.flushBlockGate.open();
-            CoreGroupCommunicationService.this.log.debug("Unblock processed at " + CoreGroupCommunicationService.this.me);
+            CoreGroupCommunicationService.this.log.debugf("Unblock processed at %s", CoreGroupCommunicationService.this.me);
         }
 
         /**
@@ -1783,9 +1659,9 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
                 processViewChange(newView);
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
-                CoreGroupCommunicationService.this.log.error("ViewAccepted failed", ex);
+                CoreGroupCommunicationService.this.log.methodFailure(ex, "ViewAccepted");
             } catch (Exception ex) {
-                CoreGroupCommunicationService.this.log.error("ViewAccepted failed", ex);
+                CoreGroupCommunicationService.this.log.methodFailure(ex, "ViewAccepted");
             }
         }
     }
@@ -1793,144 +1669,55 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
     /**
      * Handles MessageListener callbacks from the JGroups layer.
      */
-    class MessageListenerImpl implements ExtendedMessageListener {
+    class MessageListenerImpl implements MessageListener {
         @Override
         public void receive(org.jgroups.Message msg) {
             // no-op
         }
 
         @Override
-        public void getState(String state_id, OutputStream ostream) {
-            String serviceName = extractServiceName(state_id);
-
-            CoreGroupCommunicationService.this.log.debug("getState called for service " + serviceName);
-
-            StateTransferProvider provider = stateProviders.get(serviceName);
-            if (provider != null) {
-                OutputStream toClose = ostream;
-                Object state = provider.getCurrentState();
-                try {
-                    if (provider instanceof StateTransferStreamProvider) {
-                        ((StateTransferStreamProvider) provider).getCurrentState(ostream);
-                    } else {
-                        MarshalledValueOutputStream mvos = new MarshalledValueOutputStream(ostream);
-                        toClose = mvos;
-                        mvos.writeObject(state);
-                    }
-                } catch (Exception ex) {
-                    CoreGroupCommunicationService.this.log.error("getState failed for service " + serviceName, ex);
-                } finally {
-                    if (toClose != null) {
-                        try {
-                            toClose.flush();
-                            toClose.close();
-                        } catch (IOException ignored) {
-                            log.debug("Caught exception closing stream used for marshalling state", ignored);
-                        }
-                    }
-                }
-            }
-        }
-
-        @Override
-        public byte[] getState(String state_id) {
-            String serviceName = extractServiceName(state_id);
-
-            CoreGroupCommunicationService.this.log.debug("getState called for service " + serviceName);
-
-            StateTransferProvider provider = stateProviders.get(serviceName);
-            if (provider != null) {
-                MarshalledValueOutputStream mvos = null;
-                Object state = provider.getCurrentState();
-                try {
-                    ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
-                    mvos = new MarshalledValueOutputStream(baos);
-                    mvos.writeObject(state);
-                    mvos.flush();
-                    mvos.close();
-                    return baos.toByteArray();
-                } catch (Exception ex) {
-                    CoreGroupCommunicationService.this.log.error("getState failed for service " + serviceName, ex);
-                } finally {
-                    if (mvos != null) {
-                        try {
-                            mvos.close();
-                        } catch (IOException ignored) {
-                            log.debug("Caught exception closing stream used for marshalling state", ignored);
-                        }
-                    }
-                }
-            }
-
-            return null; // This will cause the receiver to get a "false" on the channel.getState() call
-        }
-
-        @Override
-        public void setState(String state_id, byte[] state) {
-            String serviceName = extractServiceName(state_id);
-
-            CoreGroupCommunicationService.this.log.debug("setState called for service " + serviceName);
-
-            StateTransferTask<?, ?> task = CoreGroupCommunicationService.this.stateTransferTasks.remove(serviceName);
-            if (task == null) {
-                CoreGroupCommunicationService.this.log.warn("No " + StateTransferTask.class.getSimpleName()
-                        + " registered to receive state for service " + serviceName);
-            } else {
-                task.setState(state);
-            }
-        }
-
-        @Override
-        public void setState(String state_id, InputStream istream) {
-            String serviceName = extractServiceName(state_id);
-
-            CoreGroupCommunicationService.this.log.debug("setState called for service " + serviceName);
-
-            StateTransferTask<?, ?> task = CoreGroupCommunicationService.this.stateTransferTasks.remove(serviceName);
-            if (task == null) {
-                CoreGroupCommunicationService.this.log.warn("No " + StateTransferTask.class.getSimpleName()
-                        + " registered to receive state for service " + serviceName);
-                // Consume the stream
-                try {
-                    byte[] bytes = new byte[1024];
-                    while (istream.read(bytes) >= 0) {
-                        // read more
-                    }
-                } catch (IOException ignored) {
-                }
-            } else {
-                task.setState(istream);
-            }
-        }
-
-        @Override
-        public byte[] getState() {
-            throw new UnsupportedOperationException("Only partial state transfer (with a state_id) is supported");
-        }
-
-        @Override
         public void getState(OutputStream stream) {
-            throw new UnsupportedOperationException("Only partial state transfer (with a state_id) is supported");
-        }
+            DataOutputStream out = new DataOutputStream(new BufferedOutputStream(stream));
+            try {
+                for (Map.Entry<String, StateTransferProvider> entry: stateProviders.entrySet()) {
+                    String serviceName = entry.getKey();
+                    out.writeUTF(serviceName);
+                    StateTransferProvider provider = entry.getValue();
 
-        @Override
-        public void setState(byte[] obj) {
-            throw new UnsupportedOperationException("Only partial state transfer (with a state_id) is supported");
+                    Marshaller marshaller = marshallerFactory.createMarshaller(new MarshallingConfiguration());
+                    ByteArrayOutputStream output = new ByteArrayOutputStream();
+                    marshaller.start(Marshalling.createByteOutput(output));
+                    marshaller.writeObject(provider.getCurrentState());
+                    marshaller.close();
+                    byte[] bytes = output.toByteArray();
+                    out.writeInt(bytes.length);
+                    out.write(bytes);
+                }
+            } catch (IOException e) {
+                CoreGroupCommunicationService.this.log.methodFailure(e, "getState");
+            }
         }
 
         @Override
         public void setState(InputStream stream) {
-            throw new UnsupportedOperationException("Only partial state transfer (with a state_id) is supported");
-        }
-
-        private String extractServiceName(String state_id) {
-            if (!state_id.startsWith(CoreGroupCommunicationService.this.stateIdPrefix)) {
-                throw new IllegalArgumentException("Unknown state_id " + state_id + " -- must start with "
-                        + CoreGroupCommunicationService.this.stateIdPrefix);
+            DataInputStream input = new DataInputStream(stream);
+            try {
+                while (input.available() > 0) {
+                    String serviceName = input.readUTF();
+                    StateTransferTask<?, ?> task = CoreGroupCommunicationService.this.stateTransferTasks.remove(serviceName);
+                    int length = input.readInt();
+                    if (task != null) {
+                        byte[] bytes = new byte[length];
+                        input.read(bytes);
+                        task.setState(bytes);
+                    } else {
+                        input.skipBytes(length);
+                    }
+                }
+            } catch (IOException e) {
+                CoreGroupCommunicationService.this.log.methodFailure(e, "setState");
             }
-            return state_id.substring(CoreGroupCommunicationService.this.stateIdPrefix.length());
         }
-
     }
 
     /**
@@ -1951,20 +1738,14 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         @Override
         public T call() throws Exception {
             synchronized (callMutex) {
-                if (result != null) {
-                    return result;
-                }
+                if (result != null)  return result;
 
-                boolean intr = false;
-                boolean rc = false;
                 try {
                     long start, stop;
                     this.isStateSet = false;
                     start = System.currentTimeMillis();
-                    String state_id = CoreGroupCommunicationService.this.stateIdPrefix + serviceName;
-                    rc = CoreGroupCommunicationService.this.getChannel().getState(null, state_id,
-                            CoreGroupCommunicationService.this.getStateTransferTimeout());
-                    if (rc) {
+                    try {
+                        CoreGroupCommunicationService.this.getChannel().getState(null, CoreGroupCommunicationService.this.getStateTransferTimeout());
                         synchronized (this) {
                             while (!this.isStateSet) {
                                 if (this.setStateException != null) {
@@ -1974,46 +1755,39 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
                                 try {
                                     wait();
                                 } catch (InterruptedException iex) {
-                                    intr = true;
+                                    Thread.currentThread().interrupt();
                                 }
                             }
                         }
                         stop = System.currentTimeMillis();
-                        CoreGroupCommunicationService.this.log.debug("serviceState was retrieved successfully (in "
-                                + (stop - start) + " milliseconds)");
-                    } else {
+                        CoreGroupCommunicationService.this.log.debugf("serviceState was retrieved successfully (in %d milliseconds)", stop - start);
+                        return createStateTransferResult(true, state, null);
+                    } catch (StateTransferException e) {
                         // No one provided us with serviceState.
                         // We need to find out if we are the coordinator, so we must
                         // block until viewAccepted() is called at least once
-
                         synchronized (CoreGroupCommunicationService.this.channelLock) {
                             while (CoreGroupCommunicationService.this.getCurrentView().size() == 0) {
                                 CoreGroupCommunicationService.this.log.debug("waiting on viewAccepted()");
                                 try {
                                     CoreGroupCommunicationService.this.channelLock.wait();
                                 } catch (InterruptedException iex) {
-                                    intr = true;
+                                    Thread.currentThread().interrupt();
                                 }
                             }
                         }
 
                         if (CoreGroupCommunicationService.this.isCurrentNodeCoordinator()) {
-                            CoreGroupCommunicationService.this.log.debug("State could not be retrieved for service "
-                                    + serviceName + " (we are the first member in group)");
+                            CoreGroupCommunicationService.this.log.debugf("State could not be retrieved for service %s (we are the first member in group)", serviceName);
                         } else {
-                            throw new IllegalStateException("Initial serviceState transfer failed: "
-                                    + "Channel.getState() returned false");
+                            throw MESSAGES.initialTransferFailed("serviceState");
                         }
                     }
 
-                    result = createStateTransferResult(rc, state, null);
+                    return createStateTransferResult(false, state, null);
                 } catch (Exception e) {
-                    result = createStateTransferResult(rc, null, e);
-                } finally {
-                    if (intr)
-                        Thread.currentThread().interrupt();
+                    return createStateTransferResult(false, null, e);
                 }
-                return result;
             }
         }
 
@@ -2022,11 +1796,10 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         void setState(byte[] state) {
             try {
                 if (state == null) {
-                    CoreGroupCommunicationService.this.log.debug("transferred state for service " + serviceName
-                            + " is null (may be first member in cluster)");
+                    CoreGroupCommunicationService.this.log.debugf("transferred state for service %s is null (may be first member in cluster)", serviceName);
                 } else {
                     ByteArrayInputStream bais = new ByteArrayInputStream(state);
-                    setStateInternal(bais);
+                    setState(bais);
                     bais.close();
                 }
 
@@ -2041,31 +1814,10 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
             }
         }
 
-        void setState(InputStream state) {
-            try {
-                if (state == null) {
-                    CoreGroupCommunicationService.this.log.debug("transferred state for service " + serviceName
-                            + " is null (may be first member in cluster)");
-                } else {
-                    setStateInternal(state);
-                }
-
-                this.isStateSet = true;
-            } catch (Throwable t) {
-                recordSetStateFailure(t);
-            } finally {
-                // Notify waiting thread that serviceState has been set.
-                synchronized (this) {
-                    notifyAll();
-                }
-            }
-
-        }
-
-        protected abstract void setStateInternal(InputStream is) throws IOException, ClassNotFoundException;
+        protected abstract void setState(InputStream is) throws IOException, ClassNotFoundException;
 
         private void recordSetStateFailure(Throwable t) {
-            CoreGroupCommunicationService.this.log.error("failed setting serviceState for service " + serviceName, t);
+            CoreGroupCommunicationService.this.log.failedSettingServiceProperty(t, "serviceState", serviceName);
             if (t instanceof Exception) {
                 this.setStateException = (Exception) t;
             } else {
@@ -2108,23 +1860,18 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         }
 
         @Override
-        protected void setStateInternal(InputStream is) throws IOException, ClassNotFoundException {
-            ClassLoader cl = getStateTransferClassLoader();
-            SwitchContext switchContext = CoreGroupCommunicationService.this.classLoaderSwitcher.getSwitchContext(cl);
-            try {
-                MarshalledValueInputStream mvis = new MarshalledValueInputStream(is);
-                this.state = (Serializable) mvis.readObject();
-            } finally {
-                switchContext.reset();
-            }
+        protected void setState(InputStream is) throws IOException, ClassNotFoundException {
+            MarshallingConfiguration config = new MarshallingConfiguration();
+            config.setClassResolver(new SimpleClassResolver(getStateTransferClassLoader()));
+            Unmarshaller unmarshaller = marshallerFactory.createUnmarshaller(config);
+            unmarshaller.start(Marshalling.createByteInput(is));
+            this.state = unmarshaller.readObject(Serializable.class);
+            unmarshaller.close();
         }
 
         private ClassLoader getStateTransferClassLoader() {
-            ClassLoader cl = classloader == null ? null : classloader.get();
-            if (cl == null) {
-                cl = this.getClass().getClassLoader();
-            }
-            return cl;
+            ClassLoader loader = (classloader != null) ? classloader.get() : null;
+            return (loader != null) ? loader : this.getClass().getClassLoader();
         }
     }
 
@@ -2134,8 +1881,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         }
 
         @Override
-        protected StreamStateTransferResult createStateTransferResult(final boolean gotState, final InputStream state,
-                final Exception exception) {
+        protected StreamStateTransferResult createStateTransferResult(final boolean gotState, final InputStream state, final Exception exception) {
             return new StreamStateTransferResult() {
                 @Override
                 public InputStream getState() {
@@ -2155,7 +1901,7 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         }
 
         @Override
-        protected void setStateInternal(InputStream is) throws IOException, ClassNotFoundException {
+        protected void setState(InputStream is) throws IOException, ClassNotFoundException {
             this.state = is;
         }
     }
@@ -2179,9 +1925,9 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
         @Override
         public void run() {
             try {
-                CoreGroupCommunicationService.this.invokeDirectly(serviceName, methodName, args, types, void.class, null, null);
+                CoreGroupCommunicationService.this.invokeDirectly(serviceName, methodName, args, types, null, null);
             } catch (Exception e) {
-                log.warn("Caught exception asynchronously invoking method " + methodName + " on service " + serviceName, e);
+                log.caughtErrorInvokingAsyncMethod(e, methodName, serviceName);
             }
         }
 
@@ -2192,6 +1938,28 @@ public class CoreGroupCommunicationService implements GroupRpcDispatcher, GroupM
                 // Just do it synchronously
                 run();
             }
+        }
+    }
+
+    private class NoHandlerForRPCRspFilter implements RspFilter {
+        private final RspFilter filter;
+
+        NoHandlerForRPCRspFilter() {
+            this.filter = null;
+        }
+
+        NoHandlerForRPCRspFilter(ResponseFilter filter) {
+            this.filter = (filter != null) ? new RspFilterAdapter(filter, CoreGroupCommunicationService.this.nodeFactory) : null;
+        }
+
+        @Override
+        public boolean isAcceptable(Object response, Address sender) {
+            return !(response instanceof NoHandlerForRPC) && ((filter == null) || filter.isAcceptable(response, sender));
+        }
+
+        @Override
+        public boolean needMoreResponses() {
+            return (filter == null) || filter.needMoreResponses();
         }
     }
 }
