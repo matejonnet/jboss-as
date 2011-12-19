@@ -10,6 +10,7 @@ import java.util.Map;
 import org.alterjoc.jbossconfigurator.client.RemoteConfigurator;
 import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.paas.controller.AsClusterPassManagement;
 import org.jboss.as.paas.controller.domain.IaasProvider;
 
 /**
@@ -36,13 +37,28 @@ public class IaasController {
      * @throws Exception
      */
     public static String createNewInstance(String providerName) throws Exception {
+        IaasProvider provider = INSTANCE.getProvider(providerName);
+        return createNewInstance(provider).getId();
+    }
+
+    public static IaasInstance createNewInstance(IaasProvider provider) throws Exception {
         //TODO create new thread to create new server instance and add deployment jobs to queue ?? can domain controller handle this without sleep ?
 
-        IaasProvider provider = INSTANCE.getProvider(providerName);
         IaasInstance instance = provider.createInstance();
 
+        //TODO make configurable
+        int maxWaitTime = 120000; //2min
+        long started = System.currentTimeMillis();
+
         //wait for instance boot up
-        while (!instance.isRunning()) {
+        while (!instance.isRunning() || instance.getPrivateAddresses().size() == 0) {
+            if (instance.isRunning()) {
+                instance = provider.reloadInstanceMeta(instance);
+            }
+
+            if (System.currentTimeMillis() - started > maxWaitTime) {
+                throw new RuntimeException("Instance hasn't boot in " + maxWaitTime / 1000 + "seconds.");
+            }
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
@@ -51,9 +67,14 @@ public class IaasController {
             }
         }
 
-        configureInstance(instance.getPrivateAddresses().get(0));
+        String newInstanceIp = instance.getPrivateAddresses().get(0);
 
-        return instance.getId();
+        AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
+        clusterPaasMngmt.addRemoteServer(newInstanceIp);
+
+        configureInstance(newInstanceIp);
+
+        return instance;
     }
 
     /**
@@ -72,6 +93,12 @@ public class IaasController {
      */
     public static boolean terminateInstance(String providerName, String instanceId) throws DeltaCloudClientException, Exception {
         IaasProvider provider = INSTANCE.getProvider(providerName);
+
+        String hostIp = provider.getPrivateAddresses(instanceId).get(0);
+
+        AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
+        clusterPaasMngmt.removeRemoteSerer(hostIp);
+
         return provider.terminateInstance(instanceId);
     }
 

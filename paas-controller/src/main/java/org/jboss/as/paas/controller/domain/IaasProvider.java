@@ -9,12 +9,15 @@ import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.paas.controller.iaas.IaasDriver;
 import org.jboss.as.paas.controller.iaas.IaasInstance;
+import org.jboss.logging.Logger;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
 //TODO extract abstract and remove OperationContext from non VM provider. create different implementations
 public class IaasProvider {
+
+    private static Logger log = Logger.getLogger(IaasProvider.class);
 
     private String name;
     private String driver;
@@ -55,7 +58,7 @@ public class IaasProvider {
 
 
 
-    private IaasDriver getDeletage() throws Exception, DeltaCloudClientException {
+    private IaasDriver getDeletage() throws Exception {
         if (driverDeletage == null) {
             driverDeletage = IaasDriver.Factory.createDriver(this);
         }
@@ -116,7 +119,8 @@ public class IaasProvider {
      * @throws Exception
      * @throws DeltaCloudClientException
      */
-    public IaasInstance createInstance() throws DeltaCloudClientException, Exception {
+    public IaasInstance createInstance() throws Exception {
+        log.debugf("Booting instance from image [%s]", imageId);
         return getDeletage().createInstance(imageId);
     }
 
@@ -126,7 +130,7 @@ public class IaasProvider {
      * @throws Exception
      * @throws DeltaCloudClientException
      */
-    public boolean terminateInstance(String instanceId) throws DeltaCloudClientException, Exception {
+    public boolean terminateInstance(String instanceId) throws Exception {
         return getDeletage().terminateInstance(instanceId);
     }
 
@@ -136,8 +140,26 @@ public class IaasProvider {
      * @throws Exception
      * @throws DeltaCloudClientException
      */
-    public List<String> getPublicAddresses(String instanceId) throws DeltaCloudClientException, Exception {
+    public List<String> getPublicAddresses(String instanceId) throws Exception {
         return getDeletage().getInstance(instanceId).getPublicAddresses();
+    }
+
+    /**
+     * @param instance
+     * @return reloaded instance
+     * @throws Exception
+     */
+    public IaasInstance reloadInstanceMeta(IaasInstance instance) throws Exception {
+        return getDeletage().getInstance(instance.getId());
+    }
+
+    /**
+     * @param instanceId
+     * @return
+     * @throws Exception
+     */
+    public List<String> getPrivateAddresses(String instanceId) throws Exception {
+        return getDeletage().getInstance(instanceId).getPrivateAddresses();
     }
 
 

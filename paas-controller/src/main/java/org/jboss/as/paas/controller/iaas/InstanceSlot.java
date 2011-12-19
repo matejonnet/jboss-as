@@ -3,7 +3,6 @@
  */
 package org.jboss.as.paas.controller.iaas;
 
-import org.jboss.as.paas.controller.DomainController;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>

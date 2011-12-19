@@ -28,13 +28,13 @@ public class IaasInstanceJCloudWrapper implements IaasInstance {
      */
     @Override
     public List<String> getPublicAddresses() {
-        String[] addresses = (String[]) instance.getPublicAddresses().toArray();
+        String[] addresses = (String[]) instance.getPublicAddresses().toArray(new String[0]);
         return Arrays.asList(addresses);
     }
 
     @Override
     public List<String> getPrivateAddresses() {
-        String[] addresses = (String[]) instance.getPrivateAddresses().toArray();
+        String[] addresses = (String[]) instance.getPrivateAddresses().toArray(new String[0]);
         return Arrays.asList(addresses);
     }
 

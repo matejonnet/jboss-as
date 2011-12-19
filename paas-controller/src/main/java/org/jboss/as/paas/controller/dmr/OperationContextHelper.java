@@ -6,6 +6,7 @@ package org.jboss.as.paas.controller.dmr;
 import java.io.InputStream;
 
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.client.MessageSeverity;
@@ -224,6 +225,46 @@ public class OperationContextHelper {
             @Override
             public void acquireControllerLock() {
                 context.acquireControllerLock();
+            }
+
+            @Override
+            public void completeStep(RollbackHandler rollbackHandler) {
+                context.completeStep();
+            }
+
+            @Override
+            public boolean isRollbackOnRuntimeFailure() {
+                return context.isRollbackOnRuntimeFailure();
+            }
+
+            @Override
+            public boolean isResourceServiceRestartAllowed() {
+                return context.isResourceServiceRestartAllowed();
+            }
+
+            @Override
+            public void addResource(PathAddress address, Resource toAdd) {
+                context.addResource(address, toAdd);
+            }
+
+            @Override
+            public Resource getOriginalRootResource() {
+                return context.getOriginalRootResource();
+            }
+
+            @Override
+            public boolean markResourceRestarted(PathAddress resource, Object owner) {
+                return context.markResourceRestarted(resource, owner);
+            }
+
+            @Override
+            public boolean revertResourceRestarted(PathAddress resource, Object owner) {
+                return context.revertResourceRestarted(resource, owner);
+            }
+
+            @Override
+            public ModelNode resolveExpressions(ModelNode node) throws OperationFailedException {
+                return context.resolveExpressions(node);
             }
         };
     }

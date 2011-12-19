@@ -7,7 +7,6 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.client.ModelControllerClient;
-import org.jboss.as.paas.controller.dmr.JbossDmrActions;
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
@@ -15,7 +14,7 @@ import org.jboss.logging.Logger;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class ListApplicationsHandler implements OperationStepHandler {
+public class ListApplicationsHandler extends BaseHandler implements OperationStepHandler {
     public static final ListApplicationsHandler INSTANCE = new ListApplicationsHandler();
     public static final String OPERATION_NAME = "list-applications";
 
@@ -35,14 +34,11 @@ public class ListApplicationsHandler implements OperationStepHandler {
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-        System.out.println(">>>>>>>>> ListApplicationsHandle.execute.");
-        JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
-        PaasDmrActions paasDmrActions = new PaasDmrActions(context);
-
-        if (!jbossDmrActions.isDomainController()) {
-            context.completeStep();
+        if (!super.execute(context)) {
             return;
         }
+        PaasDmrActions paasDmrActions = new PaasDmrActions(context);
+
 
         System.out.println(">>>>>>>>> ListApplicationsHandle.execute: continue");
 

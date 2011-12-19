@@ -3,8 +3,8 @@
  */
 package org.jboss.as.paas.controller.extension;
 
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ATTRIBUTES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIPTION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUEST_PROPERTIES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUIRED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
 
@@ -16,10 +16,6 @@ import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.paas.controller.PaasProcessor;
-import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
-import org.jboss.as.paas.controller.dmr.JbossDmrActions;
-import org.jboss.as.paas.controller.dmr.PaasDmrActions;
-import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 import org.jboss.logging.Logger;
@@ -30,6 +26,7 @@ import org.jboss.logging.Logger;
 public class DeployHandler extends BaseHandler implements OperationStepHandler {
     public static final DeployHandler INSTANCE = new DeployHandler();
     public static final String OPERATION_NAME = "deploy";
+    //TODO rename attribute to PROPERTY
     private static final String ATTRIBUTE_PATH = "path";
     private static final String ATTRIBUTE_PROVIDER = "provider";
     private static final String ATTRIBUTE_NEW_INSTANCE = "new-instance";
@@ -44,18 +41,12 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-
-        PaasDmrActions paasDmrActions = new PaasDmrActions(context);
-        JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
-        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
-        PaasProcessor paasProcessor = new PaasProcessor();
-
-        System.out.println(">>>>>>>>> DeployHandle.execute ");
-        //TODO create interceptor annotation
-        if (!jbossDmrActions.isDomainController()) {
-            context.completeStep();
+        if (!super.execute(context)) {
             return;
         }
+
+        PaasProcessor paasProcessor = new PaasProcessor();
+
         System.out.println(">>>>>>>>> DeployHandle.execute: continue ... ");
 
         final String filePath = operation.get(ATTRIBUTE_PATH).asString();
@@ -91,11 +82,7 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
         String appName = f.getName();
         String serverGroupName = getServerGroupName(appName);
 
-
-        paasDmrActions.createServerGroup(serverGroupName);
-
-        InstanceSlot slot = paasProcessor.getSlot(newInstance, getServerGroupName(appName), context, provider);
-        compositeDmrActions.addHostToServerGroup(slot, getServerGroupName(appName));
+        paasProcessor.addHostToServerGroup(serverGroupName, context, newInstance, provider);
 
         jbossDmrActions.deployToServerGroup(f, appName, serverGroupName);
 
@@ -112,17 +99,17 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
             final ModelNode node = new ModelNode();
             node.get(DESCRIPTION).set("Deploy application.");
 
-            node.get(ATTRIBUTES, ATTRIBUTE_PATH, DESCRIPTION).set("Path to file.");
-            node.get(ATTRIBUTES, ATTRIBUTE_PATH, TYPE).set(ModelType.STRING);
-            node.get(ATTRIBUTES, ATTRIBUTE_PATH, REQUIRED).set(true);
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_PATH, DESCRIPTION).set("Path to file.");
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_PATH, TYPE).set(ModelType.STRING);
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_PATH, REQUIRED).set(true);
 
-            node.get(ATTRIBUTES, ATTRIBUTE_PROVIDER, DESCRIPTION).set("Provider name.");
-            node.get(ATTRIBUTES, ATTRIBUTE_PROVIDER, TYPE).set(ModelType.STRING);
-            node.get(ATTRIBUTES, ATTRIBUTE_PROVIDER, REQUIRED).set(true);
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_PROVIDER, DESCRIPTION).set("Provider name.");
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_PROVIDER, TYPE).set(ModelType.STRING);
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_PROVIDER, REQUIRED).set(true);
 
-            node.get(ATTRIBUTES, ATTRIBUTE_NEW_INSTANCE, DESCRIPTION).set("Force new instance creation. Default: false");
-            node.get(ATTRIBUTES, ATTRIBUTE_NEW_INSTANCE, TYPE).set(ModelType.STRING);
-            node.get(ATTRIBUTES, ATTRIBUTE_NEW_INSTANCE, REQUIRED).set(false);
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_NEW_INSTANCE, DESCRIPTION).set("Force new instance creation. Default: false");
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_NEW_INSTANCE, TYPE).set(ModelType.STRING);
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_NEW_INSTANCE, REQUIRED).set(false);
 
             return node;
         }

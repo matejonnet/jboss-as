@@ -8,7 +8,6 @@ import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.paas.controller.PaasProcessor;
 import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
-import org.jboss.as.paas.controller.dmr.JbossDmrActions;
 import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
@@ -32,13 +31,11 @@ public class ExpandHandler extends BaseHandler implements OperationStepHandler {
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-        JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
-        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
-
-        if (!jbossDmrActions.isDomainController()) {
-            context.completeStep();
+        if (!super.execute(context)) {
             return;
         }
+
+        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
 
         final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
         final String provider = operation.get(ATTRIBUTE_PROVIDER).asString();

@@ -9,11 +9,16 @@ import static org.jboss.as.controller.client.helpers.ClientConstants.OP_ADDR;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 
+import org.alterjoc.jbossconfigurator.sys.SysUtil;
+import org.jboss.as.cli.operation.OperationFormatException;
+import org.jboss.as.cli.operation.impl.DefaultOperationRequestBuilder;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.client.ModelControllerClient;
 import org.jboss.as.controller.client.Operation;
 import org.jboss.as.controller.client.OperationBuilder;
 import org.jboss.as.controller.registry.Resource;
@@ -43,10 +48,10 @@ public class JbossDmrActions extends DmrActions {
 //        System.out.println(">>>>>>> Util.isDomainController: " + rootResource.getChildTypes().contains("server-group"));
 //        return rootResource.getChildTypes().contains("server-group");
 
-        String localIp = System.getProperty("local.address.ip");
+        String localIp = SysUtil.getLocalIp();
 
-        PathAddress addr = PathAddress.pathAddress(
-                PathElement.pathElement("host", localIp));
+        PathAddress addr = PathAddress.pathAddress(PathElement.pathElement("host", localIp));
+
         final Resource resource = rootResource.navigate(addr);
         String domainController = resource.getModel().get("domain-controller").asPropertyList().get(0).getName();
         return "local".equals(domainController);
@@ -207,6 +212,21 @@ public class JbossDmrActions extends DmrActions {
         addStepToContext(request);
     }
 
+    /**
+     * @param hostIP
+     * @throws IOException
+     * @throws OperationFormatException
+     */
+    public void addHostToDomain(String hostIp, ModelControllerClient client) throws IOException, OperationFormatException {
+        String dcIP = SysUtil.getLocalIp();
 
+        // /host=<hostIP>:write-remote-domain-controller(host=1.2.3.4, port=9999)
+        DefaultOperationRequestBuilder setDc = new DefaultOperationRequestBuilder();
+        setDc.addNode("host", hostIp);
+        setDc.setOperationName("write-remote-domain-controller");
+        setDc.addProperty("host", dcIP);
+        setDc.addProperty("port", "9999");
+        client.execute(setDc.buildRequest());
+    }
 
 }

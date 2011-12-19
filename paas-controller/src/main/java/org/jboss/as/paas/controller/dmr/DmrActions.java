@@ -36,6 +36,7 @@ abstract class DmrActions {
             // TODO Auto-generated catch block
             log.error("Can not execute operation [" + opName + "]", e);
         }
+        context.getResult().add(operation);
         context.completeStep();
     }
 

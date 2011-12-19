@@ -6,8 +6,7 @@ package org.jboss.as.paas.controller.extension;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
-import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
-import org.jboss.as.paas.controller.dmr.JbossDmrActions;
+import org.jboss.as.paas.controller.PaasProcessor;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 
@@ -28,28 +27,20 @@ public class ShrinkHandler extends BaseHandler implements OperationStepHandler {
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-        JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
-        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
-
-        if (!jbossDmrActions.isDomainController()) {
-            context.completeStep();
+        if (!super.execute(context)) {
             return;
         }
 
         final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
-//TODO validate required attributes
-//        if(appName == null) {
-//            throw new OperationFormatException("Required argument name are missing.");
-//        }
+        //TODO validate required attributes
+        //        if(appName == null) {
+        //            throw new OperationFormatException("Required argument name are missing.");
+        //        }
 
-        try {
-            compositeDmrActions.removeHostsFromServerGroup(getServerGroupName(appName), false);
-        } catch (Exception e) {
-            //TODO throw new OperationFailedException(e);
-            e.printStackTrace();
-        }
+        PaasProcessor paasProcessor = new PaasProcessor();
 
-
+        String serverGroupName = getServerGroupName(appName);
+        paasProcessor.removeHostFromServerGroup(serverGroupName, context);
 
         context.completeStep();
     }

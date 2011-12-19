@@ -62,6 +62,7 @@ public class PaasExtension implements Extension {
 
     @Override
     public void initialize(ExtensionContext context) {
+
         System.out.println(">>>>>>>>>>> PaasExtension.initialize");
 
         //TODO register subsysetem outside the profile
