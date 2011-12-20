@@ -1,14 +1,17 @@
 package org.jboss.as.paas.controller;
 
 import java.util.HashSet;
+import java.util.NoSuchElementException;
 import java.util.Set;
 
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.registry.Resource.ResourceEntry;
 import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
+import org.jboss.as.paas.controller.dmr.JbossDmrActions;
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 import org.jboss.as.paas.controller.iaas.IaasController;
 import org.jboss.as.paas.controller.iaas.InstanceSlot;
+import org.jboss.logging.Logger;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -17,6 +20,8 @@ public class PaasProcessor {
 
     //TODO make configurable per provider
     public static final int MAX_AS_PER_HOST = 3;
+
+    private static final Logger log = Logger.getLogger(PaasProcessor.class);
 
     /**
      * loop throught instances which doesn't serve this group jet
@@ -104,7 +109,7 @@ public class PaasProcessor {
         }
 
         if (newInstanceRequired) {
-           slot = addNewServerInstanceToDomain(provider);
+           slot = addNewServerInstanceToDomain(provider, context);
         }
 
         return slot;
@@ -118,10 +123,10 @@ public class PaasProcessor {
      * @param provider
      */
     public void addHostToServerGroup(String serverGroupName, OperationContext context, boolean newInstance, String provider) {
-        PaasDmrActions paasDmrActions = new PaasDmrActions(context);
+        JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
         CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
 
-        paasDmrActions.createServerGroup(serverGroupName);
+        jbossDmrActions.createServerGroup(serverGroupName);
         InstanceSlot slot = getSlot(newInstance, serverGroupName, context, provider);
 
         compositeDmrActions.addHostToServerGroup(slot, serverGroupName);
@@ -147,15 +152,13 @@ public class PaasProcessor {
      * @return
      *
      */
-    private InstanceSlot addNewServerInstanceToDomain(String provider) {
+    private InstanceSlot addNewServerInstanceToDomain(String provider, OperationContext context) {
         try {
             //TODO update config instances/instance
             String instanceId = IaasController.createNewInstance(provider);
             String hostIp = IaasController.getInstanceIp(provider, instanceId);
 
-            //Add password for remote server
-            AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
-            clusterPaasMngmt.addRemoteServer(hostIp);
+            waitNewHostToRegisterToDC(hostIp, context);
 
             //TODO uncomment to replace external configurator
             //ControllerClient cc = new ControllerClient(username, password, hostIp);
@@ -167,6 +170,45 @@ public class PaasProcessor {
             e.printStackTrace();
         }
         return null;
+    }
+
+    /**
+     * @param hostIp
+     *
+     */
+    private void waitNewHostToRegisterToDC(String hostIp, OperationContext context) {
+        //TODO make configurable
+        int maxWaitTime = 30000; //30sec
+        long started = System.currentTimeMillis();
+
+        //wait remote as to register
+        while (true) {
+            boolean registred = false;
+
+            try {
+                //try to navigate to host, to see if it is already registered
+                JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
+                jbossDmrActions.navigateToHostName(hostIp);
+                registred = true;
+            } catch (NoSuchElementException e) {
+            }
+
+            if (registred) {
+                break;
+            }
+
+            if (System.currentTimeMillis() - started > maxWaitTime) {
+                throw new RuntimeException("Instance hasn't registred in " + maxWaitTime / 1000 + " seconds.");
+            }
+            try {
+                log.debug("Waiting remote as to register. Going to sleep for 1000.");
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        }
+
     }
 
 }

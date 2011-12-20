@@ -10,13 +10,14 @@ import java.util.Map;
 import org.alterjoc.jbossconfigurator.client.RemoteConfigurator;
 import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.jboss.as.controller.OperationContext;
-import org.jboss.as.paas.controller.AsClusterPassManagement;
 import org.jboss.as.paas.controller.domain.IaasProvider;
+import org.jboss.logging.Logger;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
 public class IaasController {
+    private static final Logger log = Logger.getLogger(IaasController.class);
 
     private static final IaasController INSTANCE = new IaasController();
     private Map<String, IaasProvider> providers = new HashMap<String, IaasProvider>();
@@ -42,6 +43,8 @@ public class IaasController {
     }
 
     public static IaasInstance createNewInstance(IaasProvider provider) throws Exception {
+        log.infof("Creating new server instance using %s provider", provider.getName());
+
         //TODO create new thread to create new server instance and add deployment jobs to queue ?? can domain controller handle this without sleep ?
 
         IaasInstance instance = provider.createInstance();
@@ -60,6 +63,7 @@ public class IaasController {
                 throw new RuntimeException("Instance hasn't boot in " + maxWaitTime / 1000 + "seconds.");
             }
             try {
+                log.debug("Waiting instance to boot. Going to sleep for 1000.");
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
                 // TODO Auto-generated catch block
@@ -69,8 +73,11 @@ public class IaasController {
 
         String newInstanceIp = instance.getPrivateAddresses().get(0);
 
-        AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
-        clusterPaasMngmt.addRemoteServer(newInstanceIp);
+        //TODO pass for management interface
+        //Add password for remote server
+        //AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
+        //clusterPaasMngmt.addRemoteServer(newInstanceIp);
+        //uncommetn also in terminateInstance
 
         configureInstance(newInstanceIp);
 
@@ -96,8 +103,9 @@ public class IaasController {
 
         String hostIp = provider.getPrivateAddresses(instanceId).get(0);
 
-        AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
-        clusterPaasMngmt.removeRemoteSerer(hostIp);
+        //TODO pass for management interface
+        //AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
+        //clusterPaasMngmt.removeRemoteSerer(hostIp);
 
         return provider.terminateInstance(instanceId);
     }

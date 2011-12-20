@@ -32,6 +32,7 @@ import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.OperationEntry;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
+import org.jboss.logging.Logger;
 import org.jboss.staxmapper.XMLElementReader;
 import org.jboss.staxmapper.XMLElementWriter;
 import org.jboss.staxmapper.XMLExtendedStreamReader;
@@ -43,6 +44,9 @@ import org.jboss.staxmapper.XMLExtendedStreamWriter;
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
 public class PaasExtension implements Extension {
+
+    private static final Logger log = Logger.getLogger(PaasExtension.class);
+
 
     /** The name space used for the {@code substystem} element */
     //    public static final String NAMESPACE = "urn:org.jboss.as.paas.controller:1.0";
@@ -64,6 +68,7 @@ public class PaasExtension implements Extension {
     public void initialize(ExtensionContext context) {
 
         System.out.println(">>>>>>>>>>> PaasExtension.initialize");
+        log.debug("PaasExtension.initialize");
 
         //TODO register subsysetem outside the profile
         //custom operations must execute on domain controller only. Now there is an if (isDomainController)

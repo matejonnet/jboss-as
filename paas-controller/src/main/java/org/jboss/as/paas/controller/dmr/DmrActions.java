@@ -7,6 +7,7 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
+import org.jboss.as.controller.registry.Resource;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 
@@ -53,4 +54,8 @@ abstract class DmrActions {
         }, OperationContext.Stage.MODEL);
     }
 
+    protected Resource naviagte(PathAddress address) {
+        Resource rootResource = context.getRootResource();
+        return rootResource.navigate(address);
+    }
 }

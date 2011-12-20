@@ -8,7 +8,6 @@ import static org.jboss.as.controller.client.helpers.ClientConstants.OP_ADDR;
 
 import java.util.Set;
 
-import org.jboss.as.cli.operation.OperationFormatException;
 import org.jboss.as.cli.operation.impl.DefaultOperationRequestBuilder;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationStepHandler;
@@ -36,13 +35,10 @@ public class PaasDmrActions extends DmrActions {
     private static final Logger log = Logger.getLogger(DmrActions.class);
 
     public Set<ResourceEntry> getInstances() {
-        Resource rootResource = context.getRootResource();
-
         PathAddress instancesAddr = PathAddress.pathAddress(
                 PathElement.pathElement("profile", "paas-controller"),
                 PathElement.pathElement("subsystem", "paas-controller"));
-
-        final Resource instancesResource = rootResource.navigate(instancesAddr);
+        Resource instancesResource = naviagte(instancesAddr);
         return instancesResource.getChildren("instance");
     }
 
@@ -111,28 +107,7 @@ public class PaasDmrActions extends DmrActions {
         return instance.getChildren("server-group");
     }
 
-    /**
-     * create a server group on DC
-     *
-     * @param context
-     * @param serverGroupName
-     */
-    public void createServerGroup(String serverGroupName) {
 
-        DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
-        builder.setOperationName("add");
-        builder.addNode("server-group", serverGroupName);
-        builder.addProperty("profile", "default");
-        builder.addProperty("socket-binding-group", "standard-sockets");
-
-        try {
-            ModelNode request = builder.buildRequest();
-            addStepToContext(request);
-        } catch (OperationFormatException e) {
-            // TODO Auto-generated catch block
-            log.error("Cannot build request to create server group.", e);
-        }
-    }
 
     public void listApplications(ModelNode operation) {
         //        final ModelNode request = new ModelNode();

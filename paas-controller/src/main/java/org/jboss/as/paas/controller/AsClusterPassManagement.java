@@ -23,7 +23,7 @@ public class AsClusterPassManagement {
 
     private static final Logger log = Logger.getLogger(AsClusterPassManagement.class);
 
-    private static final String MANAGEMENT_REALM = "clusterManagementRealm";
+    private static final String MANAGEMENT_REALM = "ManagementRealm";
     //TODO do not use hard coded pass, use system specific string
     private char[] SECRET_PASS = "test22test".toCharArray();
 

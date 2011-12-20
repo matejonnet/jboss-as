@@ -48,7 +48,6 @@
                     </formatter>
                 </console-handler>
                 <periodic-rotating-file-handler name="FILE" autoflush="true">
-                    <level name="INFO"/>
                     <formatter>
                         <pattern-formatter pattern="%d{HH:mm:ss,SSS} %-5p [%c] (%t) %s%E%n"/>
                     </formatter>
@@ -64,6 +63,9 @@
                 </logger>
                 <logger category="sun.rmi">
                     <level name="WARN"/>
+                </logger>
+                <logger category="org.jboss.as.paas">
+                    <level name="DEBUG"/>
                 </logger>
                 <root-logger>
                     <level name="INFO"/>

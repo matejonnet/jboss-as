@@ -229,4 +229,33 @@ public class JbossDmrActions extends DmrActions {
         client.execute(setDc.buildRequest());
     }
 
+    /**
+     * create a server group on DC
+     *
+     * @param context
+     * @param serverGroupName
+     */
+    public void createServerGroup(String serverGroupName) {
+
+        DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
+        builder.setOperationName("add");
+        builder.addNode("server-group", serverGroupName);
+        builder.addProperty("profile", "default");
+        builder.addProperty("socket-binding-group", "standard-sockets");
+
+        try {
+            ModelNode request = builder.buildRequest();
+            addStepToContext(request);
+        } catch (OperationFormatException e) {
+            // TODO Auto-generated catch block
+            log.error("Cannot build request to create server group.", e);
+        }
+    }
+
+    public Resource navigateToHostName(String hostName) {
+            PathAddress instancesAddr = PathAddress.pathAddress(
+                    PathElement.pathElement("host", hostName));
+            return naviagte(instancesAddr);
+    }
+
 }
