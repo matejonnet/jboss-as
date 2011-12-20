@@ -30,12 +30,10 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-jpa-parent</artifactId>
-        <version>7.1.0.Beta1</version>
+        <version>7.1.0.CR1-SNAPSHOT</version>
     </parent>
 
-    <groupId>org.jboss.as</groupId>
     <artifactId>jboss-as-jpa-hibernate3</artifactId>
-    <version>7.1.0.Beta1</version>
 
     <name>JBoss Application Server: Hibernate 3.6.x JPA integration </name>
 
@@ -84,11 +82,6 @@
 
         <dependency>
             <groupId>org.jboss.as</groupId>
-            <artifactId>jboss-as-naming</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.jboss.as</groupId>
             <artifactId>jboss-as-server</artifactId>
         </dependency>
 
@@ -125,7 +118,7 @@
         </dependency>
 
         <dependency>
-            <groupId>javassist</groupId>
+            <groupId>org.javassist</groupId>
             <artifactId>javassist</artifactId>
         </dependency>
 

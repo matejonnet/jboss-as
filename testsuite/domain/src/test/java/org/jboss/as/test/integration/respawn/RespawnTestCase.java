@@ -32,27 +32,31 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OUTCOME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_RESOURCE_OPERATION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RECURSIVE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESTART;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESULT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RUNNING_SERVER;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SHUTDOWN;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUCCESS;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.security.AccessController;
 import java.security.NoSuchAlgorithmException;
-import java.security.PrivilegedAction;
-import java.security.Provider;
-import java.security.Security;
 import java.util.ArrayList;
 import java.util.List;
 
 import junit.framework.Assert;
+
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.client.ModelControllerClient;
@@ -60,19 +64,19 @@ import org.jboss.as.process.Main;
 import org.jboss.as.process.ProcessController;
 import org.jboss.as.protocol.StreamUtils;
 import org.jboss.dmr.ModelNode;
-import org.jboss.sasl.JBossSaslProvider;
 import org.jboss.sasl.util.UsernamePasswordHashUtil;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
+import org.xnio.IoUtils;
 
 /**
  * RespawnTestCase
  *
- * TODO move into integration once working properly
- *
  * @author <a href="mailto:kabir.khan@jboss.com">Kabir Khan</a>
  */
+@Ignore("AS7-3093")
 public class RespawnTestCase {
 
     private static final int TIMEOUT = 15000;
@@ -81,22 +85,12 @@ public class RespawnTestCase {
     private static final String SERVER_ONE = "respawn-one";
     private static final String SERVER_TWO = "respawn-two";
     private static final int HC_PORT = 9999;
-    private static final Provider saslProvider = new JBossSaslProvider();
-
 
     static ProcessController processController;
     static ProcessUtil processUtil;
 
     @BeforeClass
     public static void createProcessController() throws IOException, URISyntaxException, NoSuchAlgorithmException {
-        AccessController.doPrivileged(new PrivilegedAction<Object>() {
-            public Object run() {
-                if (Security.getProperty(saslProvider.getName()) == null) {
-                    Security.insertProviderAt(saslProvider, 1);
-                }
-                return null;
-            }
-        });
 
         final String testName = RespawnTestCase.class.getSimpleName();
         final File domains = new File("target" + File.separator + "domains" + File.separator + testName);
@@ -118,7 +112,7 @@ public class RespawnTestCase {
         }
 
         ClassLoader tccl = Thread.currentThread().getContextClassLoader();
-        URL url = tccl.getResource("domain-configs/domain-standard.xml");
+        URL url = tccl.getResource("domain-configs/domain-respawn.xml");
         Assert.assertNotNull(url);
         File domainXml = new File(url.toURI());
         url = tccl.getResource("host-configs/respawn-master.xml");
@@ -126,6 +120,8 @@ public class RespawnTestCase {
 
         Assert.assertTrue(domainXml.exists());
         Assert.assertTrue(hostXml.exists());
+        copyFile(domainXml, domainConfigDir);
+        copyFile(hostXml, domainConfigDir);
 
         // No point backing up the file in a test scenario, just write what we need.
         File usersFile = new File(domainConfigDir, "mgmt-users.properties");
@@ -154,8 +150,8 @@ public class RespawnTestCase {
         args.add("--");
         args.add("-default-jvm");
         args.add(processUtil.getJavaCommand());
-        args.add("--host-config=" + hostXml.getAbsolutePath());
-        args.add("--domain-config=" + domainXml.getAbsolutePath());
+        args.add("--host-config=" + hostXml.getName());
+        args.add("--domain-config=" + domainXml.getName());
         args.add("-Djboss.test.host.master.address=" + System.getProperty("jboss.test.host.master.address", "127.0.0.1"));
         args.add("-Djboss.domain.base.dir=" + masterDir.getAbsolutePath());
 
@@ -198,6 +194,13 @@ public class RespawnTestCase {
         readHostControllerServers();
     }
 
+    private void shutdownHostController(boolean restart) throws Exception {
+        final ModelNode operation = new ModelNode();
+        operation.get(OP).set(SHUTDOWN);
+        operation.get(OP_ADDR).set(PathAddress.pathAddress(PathElement.pathElement(HOST, "master")).toModelNode());
+        operation.get(RESTART).set(restart);
+
+    }
 
     private void readHostControllerServers() throws Exception {
 
@@ -258,6 +261,30 @@ public class RespawnTestCase {
         } while(System.currentTimeMillis() < time);
         Assert.fail("Did not have all running processes " + runningProcesses);
         return null;
+    }
+
+    private static void copyFile(File file, File directory) throws IOException{
+        File tgt = new File(directory, file.getName());
+        if (tgt.exists()) {
+            if (!tgt.delete()) {
+                throw new IllegalStateException("Could not delete file " + tgt.getAbsolutePath());
+            }
+        }
+        final InputStream in = new BufferedInputStream(new FileInputStream(file));
+        try {
+            final OutputStream out = new BufferedOutputStream(new FileOutputStream(tgt));
+            try {
+                int i = in.read();
+                while (i != -1) {
+                    out.write(i);
+                    i = in.read();
+                }
+            } finally {
+                IoUtils.safeClose(out);
+            }
+        } finally {
+            IoUtils.safeClose(in);
+        }
     }
 
     private static abstract class ProcessUtil {

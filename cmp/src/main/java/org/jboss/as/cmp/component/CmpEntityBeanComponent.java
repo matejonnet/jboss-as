@@ -29,9 +29,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+
 import javax.ejb.EJBException;
 import javax.ejb.EJBLocalHome;
 import javax.transaction.Transaction;
+
 import org.jboss.as.cmp.TransactionEntityMap;
 import org.jboss.as.cmp.context.CmpEntityBeanContext;
 import org.jboss.as.cmp.jdbc.JDBCEntityPersistenceStore;
@@ -73,6 +75,7 @@ public class CmpEntityBeanComponent extends EntityBeanComponent {
         final SimpleInterceptorFactoryContext factoryContext = new SimpleInterceptorFactoryContext();
         factoryContext.getContextData().put(Component.class, this);
         final Interceptor interceptor = relationInterceptorFactory.create(factoryContext);
+
         return new CmpEntityBeanComponentInstance(this, instanceReference, preDestroyInterceptor, methodInterceptors, interceptor);
     }
 

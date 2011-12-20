@@ -22,14 +22,8 @@
 
 package org.jboss.as.server.deployment.repository.impl;
 
-import org.jboss.as.server.deployment.repository.api.ContentRepository;
-import org.jboss.msc.service.Service;
-import org.jboss.msc.service.ServiceTarget;
-import org.jboss.msc.service.StartContext;
-import org.jboss.msc.service.StartException;
-import org.jboss.msc.service.StopContext;
-import org.jboss.vfs.VFS;
-import org.jboss.vfs.VirtualFile;
+import static org.jboss.as.server.deployment.repository.impl.DeploymentRepositoryLogger.ROOT_LOGGER;
+import static org.jboss.as.server.deployment.repository.impl.DeploymentRepositoryMessages.MESSAGES;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -43,8 +37,14 @@ import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
-import static org.jboss.as.server.deployment.repository.impl.DeploymentRepositoryLogger.ROOT_LOGGER;
-import static org.jboss.as.server.deployment.repository.impl.DeploymentRepositoryMessages.MESSAGES;
+import org.jboss.as.server.deployment.repository.api.ContentRepository;
+import org.jboss.msc.service.Service;
+import org.jboss.msc.service.ServiceTarget;
+import org.jboss.msc.service.StartContext;
+import org.jboss.msc.service.StartException;
+import org.jboss.msc.service.StopContext;
+import org.jboss.vfs.VFS;
+import org.jboss.vfs.VirtualFile;
 
 /**
  * Default implementation of {@link org.jboss.as.server.deployment.repository.api.ContentRepository}.
@@ -204,8 +204,20 @@ public class ContentRepositoryImpl implements ContentRepository, Service<Content
     @Override
     public void removeContent(byte[] hash) {
         File file = getDeploymentContentFile(hash, true);
-        if(!file.delete())
+        if(!file.delete()) {
             file.deleteOnExit();
+        }
+        File parent = file.getParentFile();
+        if (!parent.delete()) {
+            parent.deleteOnExit();
+        }
+        parent = parent.getParentFile();
+        if (parent.list().length == 0) {
+            if (!parent.delete()) {
+                parent.deleteOnExit();
+            }
+        }
+        ROOT_LOGGER.contentRemoved(file.getAbsolutePath());
     }
 
     protected static void safeClose(final Closeable closeable) {

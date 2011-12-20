@@ -29,22 +29,19 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.net.ssl.SSLContext;
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.CallbackHandler;
 import javax.security.auth.callback.NameCallback;
 import javax.security.auth.callback.UnsupportedCallbackException;
 
-import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.Connection;
 import org.jboss.remoting3.Endpoint;
 import org.jboss.remoting3.Registration;
@@ -56,37 +53,34 @@ import org.xnio.OptionMap;
 import org.xnio.Options;
 import org.xnio.Property;
 import org.xnio.Sequence;
-import org.xnio.OptionMap.Builder;
 
 /**
  * This class is not thread safe and should only be used by one thread
  *
  * @author <a href="kabir.khan@jboss.com">Kabir Khan</a>
- * @version $Revision: 1.1 $
+ * @author Emanuel Muckenhuber
+ * @author <a href="mailto:darran.lofthouse@jboss.com">Darran Lofthouse</a>
  */
-public class ProtocolChannelClient<T extends ProtocolChannel> implements Closeable {
+public class ProtocolChannelClient implements Closeable {
+
     private static final String JBOSS_LOCAL_USER = "JBOSS-LOCAL-USER";
+    private final Configuration configuration;
     private final boolean startedEndpoint;
     private final Endpoint endpoint;
     private final Registration providerRegistration;
     private final URI uri;
-    private final ProtocolChannelFactory<T> channelFactory;
-    private volatile Connection connection;
-    private final Set<T> channels = new HashSet<T>();
 
-    private ProtocolChannelClient(final boolean startedEndpoint,
-            final Endpoint endpoint,
-            final Registration providerRegistration,
-            final URI uri,
-            final ProtocolChannelFactory<T> channelFactory) {
+    private ProtocolChannelClient(final boolean startedEndpoint, final Endpoint endpoint,
+                                 final Registration providerRegistration, final Configuration configuration) {
+
         this.startedEndpoint = startedEndpoint;
         this.endpoint = endpoint;
         this.providerRegistration = providerRegistration;
-        this.uri = uri;
-        this.channelFactory = channelFactory;
+        this.configuration = configuration;
+        this.uri = configuration.getUri();
     }
 
-    public static <T extends ProtocolChannel> ProtocolChannelClient<T> create(final Configuration<T> configuration) throws IOException, URISyntaxException {
+    public static ProtocolChannelClient create(final Configuration configuration) throws IOException {
         if (configuration == null) {
             throw MESSAGES.nullVar("configuration");
         }
@@ -95,25 +89,21 @@ public class ProtocolChannelClient<T extends ProtocolChannel> implements Closeab
         final Endpoint endpoint;
         if (configuration.getEndpoint() != null) {
             endpoint = configuration.getEndpoint();
-            return new ProtocolChannelClient<T>(false, endpoint, null, configuration.getUri(), configuration.getChannelFactory());
+            return new ProtocolChannelClient(false, endpoint, null, configuration);
         } else {
             endpoint = Remoting.createEndpoint(configuration.getEndpointName(), configuration.getOptionMap());
-            Registration providerRegistration = endpoint.addConnectionProvider(configuration.getUri().getScheme(), new RemoteConnectionProviderFactory(), OptionMap.create(Options.SSL_ENABLED, Boolean.FALSE));
-            return new ProtocolChannelClient<T>(true, endpoint, providerRegistration, configuration.getUri(), configuration.getChannelFactory());
+            Registration providerRegistration = endpoint.addConnectionProvider(configuration.getUri().getScheme(), new RemoteConnectionProviderFactory(), OptionMap.EMPTY);
+            return new ProtocolChannelClient(true, endpoint, providerRegistration, configuration);
         }
     }
 
-
-    public Connection connect(CallbackHandler handler) throws IOException {
-        return connect(handler, null);
+    public IoFuture<Connection> connect(CallbackHandler handler) throws IOException {
+        return connect(handler, null, null);
     }
 
-    public Connection connect(CallbackHandler handler, Map<String, String> saslOptions) throws IOException {
-        if (connection != null) {
-            throw MESSAGES.alreadyConnected();
-        }
+    public IoFuture<Connection> connect(CallbackHandler handler, Map<String, String> saslOptions, SSLContext sslContext) throws IOException {
 
-        Builder builder = OptionMap.builder();
+        OptionMap.Builder builder = OptionMap.builder();
         builder.set(SASL_POLICY_NOANONYMOUS, Boolean.FALSE);
         builder.set(SASL_POLICY_NOPLAINTEXT, Boolean.FALSE);
         if (isLocal() == false) {
@@ -128,18 +118,52 @@ public class ProtocolChannelClient<T extends ProtocolChannel> implements Closeab
         }
         builder.set(Options.SASL_PROPERTIES, Sequence.of(tempProperties));
 
+        builder.set(Options.SSL_ENABLED, true);
+        builder.set(Options.SSL_STARTTLS, true);
+
         CallbackHandler actualHandler = handler != null ? handler : new AnonymousCallbackHandler();
-        WrapperCallbackHandler wrapperHandler = new WrapperCallbackHandler(actualHandler);
-        IoFuture<Connection> future = endpoint.connect(uri, builder.getMap(), wrapperHandler);
-        try {
-            this.connection = future.get();
-        } catch (CancellationException e) {
-            throw MESSAGES.connectWasCancelled();
-        } catch (IOException e) {
-            throw MESSAGES.couldNotConnect(uri, e);
+        return endpoint.connect(uri, builder.getMap(), actualHandler, sslContext);
+    }
+
+    public Connection connectSync(CallbackHandler handler) throws IOException {
+        return connectSync(handler, null, null);
+    }
+
+    public Connection connectSync(CallbackHandler handler, Map<String, String> saslOptions, SSLContext sslContext) throws IOException {
+        WrapperCallbackHandler wrapperHandler = new WrapperCallbackHandler(handler);
+        final IoFuture<Connection> future = connect(wrapperHandler, saslOptions, sslContext);
+        long timeoutMillis = configuration.getConnectionTimeout();
+        IoFuture.Status status = future.await(timeoutMillis, TimeUnit.MILLISECONDS);
+        while (status == IoFuture.Status.WAITING) {
+            if (wrapperHandler.isInCall()) {
+                // If there is currently an interaction with the user just wait again.
+                status = future.await(timeoutMillis, TimeUnit.MILLISECONDS);
+            } else {
+                long lastInteraction = wrapperHandler.getCallFinished();
+                if (lastInteraction > 0) {
+                    long now = System.currentTimeMillis();
+                    long timeSinceLast = now - lastInteraction;
+                    if (timeSinceLast < timeoutMillis) {
+                        // As this point we are setting the timeout based on the time of the last interaction
+                        // with the user, if there is any time left we will wait for that time but dont wait for
+                        // a full timeout.
+                        status = future.await(timeoutMillis - timeSinceLast, TimeUnit.MILLISECONDS);
+                    } else {
+                        status = null;
+                    }
+                } else {
+                    status = null; // Just terminate status processing.
+                }
+            }
         }
 
-        return connection;
+        if (status == IoFuture.Status.DONE) {
+            return future.get();
+        }
+        if (status == IoFuture.Status.FAILED) {
+            throw ProtocolMessages.MESSAGES.failedToConnect(uri, future.getException());
+        }
+        throw ProtocolMessages.MESSAGES.couldNotConnect(uri);
     }
 
     private boolean isLocal() {
@@ -154,38 +178,14 @@ public class ProtocolChannelClient<T extends ProtocolChannel> implements Closeab
         }
     }
 
-    public T openChannel(String channelName) throws IOException {
-        if (connection == null) {
-            throw MESSAGES.notConnected();
-        }
-        Channel channel = connection.openChannel(channelName, OptionMap.EMPTY).get();
-        T wrapped = channelFactory.create(channelName, channel);
-        channels.add(wrapped);
-        return wrapped;
-    }
-
     public void close() {
-        for (T channel : channels) {
-            try {
-                channel.writeShutdown();
-            } catch (IOException ignore) {
-            }
-//            try {
-//                channel.awaitClosed();
-//            } catch (InterruptedException e) {
-//                Thread.currentThread().interrupt();
-//            }
-        }
-        channels.clear();
-
-        IoUtils.safeClose(connection);
         if (startedEndpoint) {
             IoUtils.safeClose(providerRegistration);
             IoUtils.safeClose(endpoint);
         }
     }
 
-    public static final class Configuration<T extends ProtocolChannel> {
+    public static final class Configuration {
         private static final long DEFAULT_CONNECT_TIMEOUT = 5000;
 
         private static final AtomicInteger COUNTER = new AtomicInteger();
@@ -195,8 +195,8 @@ public class ProtocolChannelClient<T extends ProtocolChannel> implements Closeab
         private OptionMap optionMap = OptionMap.EMPTY;
         private ThreadGroup group;
         private String uriScheme;
+        private long connectionTimeout = DEFAULT_CONNECT_TIMEOUT;
         private URI uri;
-        private ProtocolChannelFactory<T> channelFactory;
 
         //Flags to avoid spamming logs with warnings every time someone tries to set these
         private static volatile boolean warnedExecutor;
@@ -227,18 +227,10 @@ public class ProtocolChannelClient<T extends ProtocolChannel> implements Closeab
                 if (!uri.getScheme().equals("remote")) {
                     throw MESSAGES.invalidUrl("remote");
                 }
-                /*try {
-                    endpoint.getConnectionProviderInterface(uri.getScheme(), ConnectionProviderFactory.class);
-                } catch (UnknownURISchemeException e) {
-                    throw new IllegalArgumentException("No " + uri.getScheme() + " registered in endpoint");
-                }*/
             } else {
                 if (!uriScheme.equals(uri.getScheme())) {
                     throw MESSAGES.unmatchedScheme(uriScheme, uri);
                 }
-            }
-            if (channelFactory == null) {
-                throw MESSAGES.nullVar("channelFactory");
             }
         }
 
@@ -252,26 +244,6 @@ public class ProtocolChannelClient<T extends ProtocolChannel> implements Closeab
 
         public void setEndpointName(String endpointName) {
             this.endpointName = endpointName;
-        }
-
-        public void setGroup(ThreadGroup group) {
-            this.group = group;
-        }
-
-        public void setConnectTimeoutProperty(String connectTimeoutProperty) {
-            boolean warned = warnedConnectTimeoutProperty;
-            if (!warned) {
-                warnedConnectTimeoutProperty = true;
-                ProtocolLogger.CLIENT_LOGGER.connectTimeoutPropertyNotNeeded();
-            }
-        }
-
-        public void setConnectTimeout(long connectTimeout) {
-            boolean warned = warnedConnectTimeout;
-            if (!warned) {
-                warnedConnectTimeout = true;
-                ProtocolLogger.CLIENT_LOGGER.connectTimeoutNotNeeded();
-            }
         }
 
         public String getEndpointName() {
@@ -309,6 +281,14 @@ public class ProtocolChannelClient<T extends ProtocolChannel> implements Closeab
             this.uri = uri;
         }
 
+        public long getConnectionTimeout() {
+            return connectionTimeout;
+        }
+
+        public void setConnectionTimeout(long connectionTimeout) {
+            this.connectionTimeout = connectionTimeout;
+        }
+
         /**
          * @deprecated The executor is no longer needed. Here for backwards compatibility
          */
@@ -321,13 +301,6 @@ public class ProtocolChannelClient<T extends ProtocolChannel> implements Closeab
            }
         }
 
-        public ProtocolChannelFactory<T> getChannelFactory() {
-            return channelFactory;
-        }
-
-        public void setChannelFactory(ProtocolChannelFactory<T> channelFactory) {
-            this.channelFactory = channelFactory;
-        }
     }
 
     private static final class WrapperCallbackHandler implements CallbackHandler {

@@ -21,14 +21,19 @@
  */
 package org.jboss.as.ejb3.component.stateful;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
+import javax.ejb.CreateException;
+
 import org.jboss.as.ejb3.component.interceptors.AbstractEJBInterceptor;
+import org.jboss.as.ejb3.component.interceptors.EjbExceptionTransformingInterceptorFactories;
 import org.jboss.as.ejb3.component.interceptors.SessionBeanHomeInterceptorFactory;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
-
-import java.lang.reflect.Method;
+import org.jboss.invocation.Interceptors;
 
 /**
  * Interceptor factory for SFSB's that invokes the ejbCreate method. This interceptor
@@ -37,6 +42,7 @@ import java.lang.reflect.Method;
  * @author Stuart Douglas
  */
 public class StatefulInitMethodInterceptorFactory implements InterceptorFactory {
+
 
     public static final InterceptorFactory INSTANCE = new StatefulInitMethodInterceptorFactory();
 
@@ -49,14 +55,26 @@ public class StatefulInitMethodInterceptorFactory implements InterceptorFactory 
     public Interceptor create(final InterceptorFactoryContext context) {
         final Method method = SessionBeanHomeInterceptorFactory.INIT_METHOD.get();
         final Object[] params = SessionBeanHomeInterceptorFactory.INIT_PARAMETERS.get();
+        //we remove them immediatly, so they are not set for the rest of the invocation
+        //TODO: find a better way to handle this
+        SessionBeanHomeInterceptorFactory.INIT_METHOD.remove();
+        SessionBeanHomeInterceptorFactory.INIT_PARAMETERS.remove();
         return new AbstractEJBInterceptor() {
             @Override
             public Object processInvocation(final InterceptorContext context) throws Exception {
                 if (method != null) {
-                    method.invoke(context.getTarget(), params);
+                    try {
+                        method.invoke(context.getTarget(), params);
+                    } catch (InvocationTargetException e) {
+                        if(CreateException.class.isAssignableFrom(e.getCause().getClass())) {
+                            EjbExceptionTransformingInterceptorFactories.setCreateException((CreateException)e.getCause());
+                        }
+                        throw Interceptors.rethrow(e.getCause());
+                    }
                 }
                 return context.proceed();
             }
         };
     }
+
 }

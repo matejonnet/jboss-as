@@ -23,8 +23,6 @@
 package org.jboss.as.ejb3.component.stateless;
 
 import java.lang.reflect.Method;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -34,12 +32,11 @@ import org.jboss.as.ejb3.component.pool.PooledComponent;
 import org.jboss.as.ejb3.component.session.SessionBeanComponent;
 import org.jboss.as.ejb3.pool.Pool;
 import org.jboss.as.ejb3.pool.StatelessObjectFactory;
-import org.jboss.as.ejb3.timerservice.PooledTimedObjectInvokerImpl;
-import org.jboss.as.ejb3.timerservice.spi.TimedObjectInvoker;
 import org.jboss.as.naming.ManagedReference;
 import org.jboss.invocation.Interceptor;
-import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
+import org.jboss.msc.service.StopContext;
+
 import static org.jboss.as.ejb3.EjbLogger.ROOT_LOGGER;
 
 /**
@@ -52,7 +49,6 @@ public class StatelessSessionComponent extends SessionBeanComponent implements P
 
     private final Pool<StatelessSessionComponentInstance> pool;
     private final Method timeoutMethod;
-    private final TimedObjectInvoker timedObjectInvoker;
 
     /**
      * Constructs a StatelessEJBComponent for a stateless session bean
@@ -89,23 +85,12 @@ public class StatelessSessionComponent extends SessionBeanComponent implements P
         } else {
             deploymentName = slsbComponentCreateService.getApplicationName() + "." + slsbComponentCreateService.getModuleName() + "." + slsbComponentCreateService.getDistinctName();
         }
-        this.timedObjectInvoker = new PooledTimedObjectInvokerImpl(this, deploymentName);
     }
 
 
     @Override
     protected BasicComponentInstance instantiateComponentInstance(AtomicReference<ManagedReference> instanceReference, Interceptor preDestroyInterceptor, Map<Method, Interceptor> methodInterceptors, final InterceptorFactoryContext interceptorContext) {
-
-        final Map<Method, Interceptor> timeouts;
-        if (timeoutInterceptors != null) {
-            timeouts = new HashMap<Method, Interceptor>();
-            for (Map.Entry<Method, InterceptorFactory> entry : timeoutInterceptors.entrySet()) {
-                timeouts.put(entry.getKey(), entry.getValue().create(interceptorContext));
-            }
-        } else {
-            timeouts = Collections.emptyMap();
-        }
-        return new StatelessSessionComponentInstance(this, instanceReference, preDestroyInterceptor, methodInterceptors, timeouts);
+        return new StatelessSessionComponentInstance(this, instanceReference, preDestroyInterceptor, methodInterceptors);
     }
 
     @Override
@@ -113,12 +98,25 @@ public class StatelessSessionComponent extends SessionBeanComponent implements P
         return pool;
     }
 
-    @Override
-    public TimedObjectInvoker getTimedObjectInvoker() {
-        return timedObjectInvoker;
-    }
-
     public Method getTimeoutMethod() {
         return timeoutMethod;
     }
+
+    @Override
+    public void start() {
+        super.start();
+        if(this.pool!=null){
+            this.pool.start();
+        }
+    }
+
+
+    @Override
+    public void stop(StopContext stopContext) {
+        if(this.pool!=null){
+            this.pool.stop();
+        }
+        super.stop(stopContext);
+    }
+
 }

@@ -21,9 +21,9 @@
  */
 package org.jboss.as.ejb3.component.entity.entitycache;
 
-import org.jboss.as.ejb3.component.entity.EntityBeanComponentInstance;
-
 import javax.ejb.NoSuchEntityException;
+
+import org.jboss.as.ejb3.component.entity.EntityBeanComponentInstance;
 
 /**
  * A cache for entity beans that are in the ready state.
@@ -38,8 +38,7 @@ public interface ReadyEntityCache {
      *
      * This corresponds to an ejbCreate call on the entity bean.
      *
-     * The newly created object will not be marked as in use. To invoke business methods
-     * on it it should still be acquired using get()
+     * The newly created object will be marked as in use, and must be released in the normal manner
      *
      * @param instance The new instance
      */

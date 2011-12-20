@@ -68,7 +68,7 @@ import org.jboss.msc.value.InjectedValue;
  *
  * @author Stuart Douglas
  */
-public class LocalEjbReceiver extends EJBReceiver<Void> implements Service<LocalEjbReceiver> {
+public class LocalEjbReceiver extends EJBReceiver implements Service<LocalEjbReceiver> {
 
     public static final ServiceName BY_VALUE_SERVICE_NAME = ServiceName.JBOSS.append("ejb3", "localEjbReceiver", "value");
     public static final ServiceName BY_REFERENCE_SERVICE_NAME = ServiceName.JBOSS.append("ejb3", "localEjbReceiver", "reference");
@@ -92,7 +92,7 @@ public class LocalEjbReceiver extends EJBReceiver<Void> implements Service<Local
     }
 
     @Override
-    protected void processInvocation(final EJBClientInvocationContext<Void> invocation, final EJBReceiverInvocationContext receiverContext) throws Exception {
+    protected void processInvocation(final EJBClientInvocationContext invocation, final EJBReceiverInvocationContext receiverContext) throws Exception {
         final EJBLocator locator = invocation.getLocator();
         final EjbDeploymentInformation ejb = findBean(locator.getAppName(), locator.getModuleName(), locator.getDistinctName(), locator.getBeanName());
         final EJBComponent ejbComponent = ejb.getEjbComponent();
@@ -132,7 +132,7 @@ public class LocalEjbReceiver extends EJBReceiver<Void> implements Service<Local
 
         if (locator instanceof StatefulEJBLocator) {
             final SessionID sessionID = ((StatefulEJBLocator) locator).getSessionId();
-            context.putPrivateData(SessionID.SESSION_ID_KEY, sessionID);
+            context.putPrivateData(SessionID.class, sessionID);
         } else if (locator instanceof EntityEJBLocator) {
             final Object primaryKey = ((EntityEJBLocator) locator).getPrimaryKey();
             context.putPrivateData(EntityBeanComponent.PRIMARY_KEY_CONTEXT_KEY, primaryKey);
@@ -233,11 +233,6 @@ public class LocalEjbReceiver extends EJBReceiver<Void> implements Service<Local
     }
 
     @Override
-    protected Void createReceiverSpecific() {
-        return null;
-    }
-
-    @Override
     public void start(final StartContext context) throws StartException {
 
         deploymentRepository.getValue().addListener(deploymentListener);
@@ -289,18 +284,18 @@ public class LocalEjbReceiver extends EJBReceiver<Void> implements Service<Local
         public void listenerAdded(final DeploymentRepository repository) {
             for (Map.Entry<DeploymentModuleIdentifier, ModuleDeployment> entry : repository.getModules().entrySet()) {
                 final DeploymentModuleIdentifier module = entry.getKey();
-                LocalEjbReceiver.this.registerModule(module.getApplicationName(), module.getModuleName(), module.getModuleName());
+                LocalEjbReceiver.this.registerModule(module.getApplicationName(), module.getModuleName(), module.getDistinctName());
             }
         }
 
         @Override
         public void deploymentAvailable(final DeploymentModuleIdentifier deployment, final ModuleDeployment moduleDeployment) {
-            LocalEjbReceiver.this.registerModule(deployment.getApplicationName(), deployment.getModuleName(), deployment.getModuleName());
+            LocalEjbReceiver.this.registerModule(deployment.getApplicationName(), deployment.getModuleName(), deployment.getDistinctName());
         }
 
         @Override
         public void deploymentRemoved(final DeploymentModuleIdentifier deployment) {
-            //TODO: implement this
+            LocalEjbReceiver.this.deregisterModule(deployment.getApplicationName(), deployment.getModuleName(), deployment.getDistinctName());
         }
     }
 }

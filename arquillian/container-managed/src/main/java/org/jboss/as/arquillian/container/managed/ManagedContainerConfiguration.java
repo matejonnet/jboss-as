@@ -21,6 +21,8 @@ import org.jboss.arquillian.container.spi.ConfigurationException;
 import org.jboss.arquillian.container.spi.client.deployment.Validate;
 import org.jboss.as.arquillian.container.CommonContainerConfiguration;
 
+import java.io.File;
+
 /**
  * JBossAsManagedConfiguration
  *
@@ -44,6 +46,13 @@ public class ManagedContainerConfiguration extends CommonContainerConfiguration 
     private String serverConfig = System.getProperty("jboss.server.config.file.name",  "standalone.xml");
 
     private boolean allowConnectingToRunningServer = false;
+
+    public ManagedContainerConfiguration() {
+        // if no javaHome is set use java.home of already running jvm
+        if (javaHome == null || javaHome.isEmpty()) {
+            javaHome = System.getProperty("java.home");
+        }
+    }
 
     @Override
     public void validate() throws ConfigurationException {

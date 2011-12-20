@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.naming.Reference;
 import javax.resource.ResourceException;
 import javax.resource.spi.ManagedConnectionFactory;
 import javax.sql.DataSource;
@@ -58,6 +59,7 @@ import org.jboss.jca.common.api.metadata.ra.ConfigProperty;
 import org.jboss.jca.common.api.validator.ValidateException;
 import org.jboss.jca.common.metadata.ds.DatasourcesImpl;
 import org.jboss.jca.common.metadata.ds.DriverImpl;
+import org.jboss.jca.core.api.connectionmanager.ccm.CachedConnectionManager;
 import org.jboss.jca.core.api.management.ManagementRepository;
 import org.jboss.jca.core.connectionmanager.ConnectionManager;
 import org.jboss.jca.core.spi.mdr.NotFoundException;
@@ -91,6 +93,7 @@ public abstract class AbstractDataSourceService implements Service<DataSource> {
     private final InjectedValue<ManagementRepository> managementRepositoryValue = new InjectedValue<ManagementRepository>();
     private final InjectedValue<SubjectFactory> subjectFactory = new InjectedValue<SubjectFactory>();
     private final InjectedValue<DriverRegistry> driverRegistry = new InjectedValue<DriverRegistry>();
+    private final InjectedValue<CachedConnectionManager> ccmValue = new InjectedValue<CachedConnectionManager>();
 
     private final String jndiName;
 
@@ -137,6 +140,10 @@ public abstract class AbstractDataSourceService implements Service<DataSource> {
         sqlDataSource = null;
     }
 
+    public CommonDeployment getDeploymentMD() {
+        return deploymentMD;
+    }
+
     public synchronized DataSource getValue() throws IllegalStateException, IllegalArgumentException {
         return sqlDataSource;
     }
@@ -159,6 +166,10 @@ public abstract class AbstractDataSourceService implements Service<DataSource> {
 
     public Injector<SubjectFactory> getSubjectFactoryInjector() {
         return subjectFactory;
+    }
+
+    public Injector<CachedConnectionManager> getCcmInjector() {
+        return ccmValue;
     }
 
     protected String buildConfigPropsString(Map<String, String> configProps) {
@@ -275,7 +286,12 @@ public abstract class AbstractDataSourceService implements Service<DataSource> {
 
         @Override
         protected String[] bindConnectionFactory(String deployment, final String jndi, Object cf) throws Throwable {
-            // don't register because it's one durin add operation
+            // AS7-2222: Just hack it
+            if (cf instanceof javax.resource.Referenceable) {
+                ((javax.resource.Referenceable)cf).setReference(new Reference(jndi));
+            }
+
+            // don't register because it's one during add operation
             return new String[] { jndi };
         }
 
@@ -319,6 +335,11 @@ public abstract class AbstractDataSourceService implements Service<DataSource> {
             } else {
                 return subjectFactory.getValue();
             }
+        }
+
+        @Override
+        public CachedConnectionManager getCachedConnectionManager() {
+            return ccmValue.getValue();
         }
 
         @Override

@@ -24,12 +24,14 @@ package org.jboss.as.webservices.deployers;
 import static org.jboss.as.ee.component.Attachments.EE_MODULE_DESCRIPTION;
 import static org.jboss.as.ee.component.interceptors.InterceptorOrder.Component.WS_HANDLERS_INTERCEPTOR;
 import static org.jboss.as.webservices.util.ASHelper.getJaxrpcDeployment;
+import static org.jboss.as.webservices.util.ASHelper.getJaxwsEjbs;
 import static org.jboss.as.webservices.util.ASHelper.getOptionalAttachment;
 import static org.jboss.as.webservices.util.ASHelper.getRequiredAttachment;
 import static org.jboss.as.webservices.util.WSAttachmentKeys.WEBSERVICES_METADATA_KEY;
 
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import javax.xml.rpc.handler.MessageContext;
@@ -54,6 +56,7 @@ import org.jboss.invocation.InterceptorContext;
 import org.jboss.metadata.ejb.spec.EjbJarMetaData;
 import org.jboss.metadata.javaee.spec.SecurityRoleMetaData;
 import org.jboss.metadata.javaee.spec.SecurityRolesMetaData;
+import org.jboss.msc.service.ServiceName;
 import org.jboss.wsf.spi.invocation.HandlerCallback;
 import org.jboss.wsf.spi.invocation.Invocation;
 import org.jboss.wsf.spi.metadata.j2ee.serviceref.UnifiedHandlerMetaData.HandlerType;
@@ -69,6 +72,7 @@ public final class WSIntegrationProcessorJAXRPC_EJB implements DeploymentUnitPro
     @Override
     public void deploy(final DeploymentPhaseContext phaseContext) throws DeploymentUnitProcessingException {
         final DeploymentUnit unit = phaseContext.getDeploymentUnit();
+        if (isJaxwsEjbDeployment(unit)) return;
         final EjbJarMetaData ejbJarMD = getOptionalAttachment(unit, EjbDeploymentAttachmentKeys.EJB_JAR_METADATA);
         final WebservicesMetaData webservicesMD = getOptionalAttachment(unit, WEBSERVICES_METADATA_KEY);
         if (ejbJarMD != null && webservicesMD != null) {
@@ -80,6 +84,10 @@ public final class WSIntegrationProcessorJAXRPC_EJB implements DeploymentUnitPro
     @Override
     public void undeploy(final DeploymentUnit context) {
         // does nothing
+    }
+
+    private static boolean isJaxwsEjbDeployment(final DeploymentUnit unit) {
+        return getJaxwsEjbs(unit).size() > 0;
     }
 
     private static void createJaxrpcDeployment(final DeploymentUnit unit, final WebservicesMetaData webservicesMD, final EEModuleDescription moduleDescription) {
@@ -104,7 +112,7 @@ public final class WSIntegrationProcessorJAXRPC_EJB implements DeploymentUnitPro
         // JSR 109 - Version 1.3 - 6.2.2.5 Transaction
         // Handlers run under the transaction context of the component they are associated with.
         sessionBean.getConfigurators().addLast(new JAXRPCHandlersConfigurator());
-        final String ejbViewName = ejbViewDescription.getServiceName().getCanonicalName();
+        final ServiceName ejbViewName = ejbViewDescription.getServiceName();
 
         return new EJBEndpoint(sessionBean, ejbViewName, securityRoles, null, false, null);
     }
@@ -115,6 +123,12 @@ public final class WSIntegrationProcessorJAXRPC_EJB implements DeploymentUnitPro
         // process assembly-descriptor DD section
         final EjbJarMetaData ejbJarMD = unit.getAttachment(EjbDeploymentAttachmentKeys.EJB_JAR_METADATA);
         if (ejbJarMD != null && ejbJarMD.getAssemblyDescriptor() != null) {
+            final List<SecurityRoleMetaData> securityRoleMetaDatas = ejbJarMD.getAssemblyDescriptor().getAny(SecurityRoleMetaData.class);
+            if (securityRoleMetaDatas != null) {
+                for (final SecurityRoleMetaData securityRoleMetaData : securityRoleMetaDatas) {
+                    securityRoles.add(securityRoleMetaData.getRoleName());
+                }
+            }
             final SecurityRolesMetaData securityRolesMD = ejbJarMD.getAssemblyDescriptor().getSecurityRoles();
             if (securityRolesMD != null && securityRolesMD.size() > 0) {
                 for (final SecurityRoleMetaData securityRoleMD : securityRolesMD) {

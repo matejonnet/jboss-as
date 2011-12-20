@@ -24,6 +24,7 @@ package org.jboss.as.cli.handlers;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 import org.jboss.as.cli.CommandContext;
 import org.jboss.as.cli.CommandFormatException;
@@ -39,7 +40,6 @@ import org.jboss.as.cli.operation.OperationRequestAddress.Node;
 import org.jboss.as.cli.operation.impl.DefaultCallbackHandler;
 import org.jboss.as.cli.operation.impl.DefaultOperationRequestAddress;
 import org.jboss.as.cli.util.SimpleTable;
-import org.jboss.as.cli.util.StrictSizeTable;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
 
@@ -147,25 +147,34 @@ public class LsHandler extends CommandHandlerWithHelp {
                 steps.add(resourceRequest);
             }
 
+            final String[] additionalProps;
             if(l.isPresent(parsedCmd)) {
-                final ModelNode request = new ModelNode();
-                request.get(Util.OPERATION).set(Util.READ_RESOURCE_DESCRIPTION);
-                final ModelNode addressNode = request.get(Util.ADDRESS);
-                if (address.isEmpty()) {
-                    addressNode.setEmptyList();
-                } else {
-                    Iterator<Node> iterator = address.iterator();
-                    while (iterator.hasNext()) {
-                        OperationRequestAddress.Node node = iterator.next();
-                        if (node.getName() != null) {
-                            addressNode.add(node.getType(), node.getName());
-                        } else if (iterator.hasNext()) {
-                            throw new OperationFormatException("Expected a node name for type '" + node.getType()
-                                    + "' in path '" + ctx.getPrefixFormatter().format(address) + "'");
+                steps.add(Util.buildRequest(ctx, address, Util.READ_RESOURCE_DESCRIPTION));
+                final Set<String> argNames = parsedCmd.getPropertyNames();
+                if(argNames.size() > 1) {
+                    additionalProps = new String[argNames.size() - 1];
+                    int i = 0;
+                    for(String arg : argNames) {
+                        if(arg.equals(l.getFullName())) {
+                            continue;
                         }
+                        final String prop;
+                        if(arg.length() > 1 && arg.charAt(0) == '-') {
+                            if(arg.charAt(1) == '-') {
+                                prop = arg.substring(2);
+                            } else {
+                                prop = arg.substring(1);
+                            }
+                        } else {
+                            prop = arg;
+                        }
+                        additionalProps[i++] = prop;
                     }
+                } else {
+                    additionalProps = null;
                 }
-                steps.add(request);
+            } else {
+                additionalProps = null;
             }
 
             try {
@@ -228,13 +237,26 @@ public class LsHandler extends CommandHandlerWithHelp {
                                     final ModelNode resourceResult = resourceOutcome.get(Util.RESULT);
                                     final List<Property> props = resourceResult.asPropertyList();
                                     if (!props.isEmpty()) {
-                                        // potentially, allowed and default values
-//                                        SimpleTable attrTable = attrDescriptions == null ? null :
-//                                            new SimpleTable(new String[]{"ATTR NAME", "VALUE", "TYPE", "NILLABLE", "REQUIRED", "ACCESS", "EXPR", "RESTART", "STORAGE"});
-//                                      SimpleTable childrenTable = childDescriptions == null ? null :
-//                                            new SimpleTable(new String[]{"CHILD NAME", "MIN-OCCURS", "MAX-OCCURS"});
-                                        StrictSizeTable attrTable = attrDescriptions == null ? null : new StrictSizeTable(attrDescriptions.keys().size());
-                                        StrictSizeTable childrenTable = childDescriptions == null ? null : new StrictSizeTable(childDescriptions.keys().size());
+                                        final SimpleTable attrTable;
+                                        if(attrDescriptions == null) {
+                                            attrTable = null;
+                                        } else {
+                                            if(additionalProps != null) {
+                                                String[] headers = new String[3 + additionalProps.length];
+                                                headers[0] = "ATTRIBUTE";
+                                                headers[1] = "VALUE";
+                                                headers[2] = "TYPE";
+                                                int i = 3;
+                                                for(String additional : additionalProps) {
+                                                    headers[i++] = additional.toUpperCase();
+                                                }
+                                                attrTable = new SimpleTable(headers);
+                                            } else {
+                                                attrTable = new SimpleTable(new String[]{"ATTRIBUTE", "VALUE", "TYPE"});
+                                            }
+                                        }
+                                        SimpleTable childrenTable = childDescriptions == null ? null :
+                                            new SimpleTable(new String[]{"CHILD", "MIN-OCCURS", "MAX-OCCURS"});
                                         if(typeNames == null && attrTable == null && childrenTable == null) {
                                             typeNames = new ArrayList<String>();
                                         }
@@ -252,72 +274,54 @@ public class LsHandler extends CommandHandlerWithHelp {
                                                     typeNames.add(buf.toString());
                                                     buf.setLength(0);
                                                 } else {
+                                                    final String[] line = new String[attrTable.columnsTotal()];
+                                                    line[0] = prop.getName();
+                                                    line[1] = prop.getValue().asString();
                                                     if(attrDescriptions.hasDefined(prop.getName())) {
                                                         final ModelNode attrDescr = attrDescriptions.get(prop.getName());
-/*                                                        attrTable.addLine(new String[]{prop.getName(),
-                                                                prop.getValue().asString(),
-                                                                getAsString(attrDescr, Util.TYPE),
-                                                                getAsString(attrDescr, Util.NILLABLE),
-                                                                getAsString(attrDescr, Util.REQUIRED),
-                                                                getAsString(attrDescr, Util.ACCESS_TYPE),
-                                                                getAsString(attrDescr, Util.EXPRESSIONS_ALLOWED),
-                                                                getAsString(attrDescr, Util.RESTART_REQUIRED),
-                                                                getAsString(attrDescr, Util.STORAGE)
-                                                                });
-*/
-                                                        attrTable.addCell("ATTRIBUTE", prop.getName());
-                                                        attrTable.addCell(Util.VALUE, prop.getValue().asString());
-                                                        for(String name : attrDescr.keys()) {
-                                                            if(!Util.DESCRIPTION.equals(name) &&
-                                                                    !Util.HEAD_COMMENT_ALLOWED.equals(name) &&
-                                                                    !Util.TAIL_COMMENT_ALLOWED.equals(name)) {
-                                                                attrTable.addCell(name, attrDescr.get(name).asString());
+                                                        line[2] = getAsString(attrDescr, Util.TYPE);
+                                                        if(additionalProps != null) {
+                                                            int i = 3;
+                                                            for(String additional : additionalProps) {
+                                                                line[i++] = getAsString(attrDescr, additional);
                                                             }
                                                         }
                                                     } else {
-/*                                                        attrTable.addLine(new String[]{prop.getName(),
-                                                                prop.getValue().asString(),
-                                                                "n/a", "n/a", "n/a", "n/a", "n/a", "n/a"
-                                                            });
-*/
-                                                        attrTable.addCell("ATTRIBUTE", prop.getName());
-                                                        attrTable.addCell(Util.VALUE, prop.getValue().asString());
+                                                        for(int i = 2; i < line.length; ++i) {
+                                                            line[i] = "n/a";
+                                                        }
                                                     }
-                                                    if(!attrTable.isAtLastRow()) {
-                                                        attrTable.nextRow();
-                                                    }
+                                                    attrTable.addLine(line);
                                                 }
                                             } else if(childDescriptions != null) {
                                                 if(childDescriptions.hasDefined(prop.getName())) {
                                                     final ModelNode childDescr = childDescriptions.get(prop.getName());
-/*                                                    childrenTable.addLine(new String[]{prop.getName(),
+                                                    final Integer maxOccurs = getAsInteger(childDescr, Util.MAX_OCCURS);
+                                                    childrenTable.addLine(new String[]{prop.getName(),
                                                             getAsString(childDescr, Util.MIN_OCCURS),
-                                                            getAsString(childDescr, Util.MAX_OCCURS)
+                                                            maxOccurs == null ? "n/a" : (maxOccurs == Integer.MAX_VALUE ? "unbounded" : maxOccurs.toString())
                                                             });
-*/
-                                                    childrenTable.addCell("CHILD", prop.getName());
-                                                    for(String name : childDescr.keys()) {
-                                                        if(!Util.DESCRIPTION.equals(name) &&
-                                                                !Util.HEAD_COMMENT_ALLOWED.equals(name) &&
-                                                                !Util.TAIL_COMMENT_ALLOWED.equals(name)) {
-                                                            childrenTable.addCell(name, childDescr.get(name).asString());
-                                                        }
-                                                    }
                                                 } else {
-//                                                    attrTable.addLine(new String[]{prop.getName(), "n/a", "n/a"});
-                                                    childrenTable.addCell("CHILD", prop.getName());
-                                                }
-                                                if(!childrenTable.isAtLastRow()) {
-                                                    childrenTable.nextRow();
+                                                    childrenTable.addLine(new String[]{prop.getName(), "n/a", "n/a"});
                                                 }
                                             }
                                         }
 
-                                        if(childrenTable != null && !childrenTable.isEmpty()) {
-                                            ctx.printLine(childrenTable.toString());
-                                        }
+                                        StringBuilder buf = null;
                                         if(attrTable != null && !attrTable.isEmpty()) {
-                                            ctx.printLine(attrTable.toString());
+                                            buf = new StringBuilder();
+                                            attrTable.append(buf, true);
+                                        }
+                                        if(childrenTable != null && !childrenTable.isEmpty()) {
+                                            if(buf == null) {
+                                                buf = new StringBuilder();
+                                            } else {
+                                                buf.append("\n\n");
+                                            }
+                                            childrenTable.append(buf, true);
+                                        }
+                                        if(buf != null) {
+                                            ctx.printLine(buf.toString());
                                         }
                                     }
                                 } else {
@@ -350,6 +354,14 @@ public class LsHandler extends CommandHandlerWithHelp {
         return attrDescr.has(name) ? attrDescr.get(name).asString() : "n/a";
     }
 
+    protected Integer getAsInteger(final ModelNode attrDescr, String name) {
+        if(attrDescr == null) {
+            return null;
+        }
+        return attrDescr.has(name) ? attrDescr.get(name).asInt() : null;
+    }
+
+    /*
     public static void main(String[] args) throws Exception {
 
         //System.out.printf("%-8s %-11s %-8s %-11s", "name", "type", "required", "access-type");
@@ -358,4 +370,5 @@ public class LsHandler extends CommandHandlerWithHelp {
         t.addLine(new String[]{"some name", "int", "false", "read-only", null});
         System.out.println(t.toString());
     }
+    */
 }

@@ -26,7 +26,6 @@ import static org.jboss.as.jmx.JmxMessages.MESSAGES;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.ServerSocket;
 import java.rmi.registry.LocateRegistry;
@@ -44,6 +43,7 @@ import javax.management.remote.rmi.RMIJRMPServerImpl;
 
 import org.jboss.as.network.SocketBinding;
 import org.jboss.msc.service.Service;
+import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceListener;
 import org.jboss.msc.service.ServiceName;
@@ -77,13 +77,15 @@ public class JMXConnectorService implements Service<Void> {
 
     public static ServiceController<?> addService(final ServiceTarget target, final String serverBinding, final String registryBinding, final ServiceListener<Object>... listeners) {
         JMXConnectorService jmxConnectorService = new JMXConnectorService();
-        return target.addService(JMXConnectorService.SERVICE_NAME, jmxConnectorService)
+        ServiceBuilder builder = target.addService(JMXConnectorService.SERVICE_NAME, jmxConnectorService)
                 .addDependency(MBeanServerService.SERVICE_NAME, MBeanServer.class, jmxConnectorService.getMBeanServerServiceInjector())
                 .addDependency(SocketBinding.JBOSS_BINDING_NAME.append(registryBinding), SocketBinding.class, jmxConnectorService.getRegistryPortBinding())
                 .addDependency(SocketBinding.JBOSS_BINDING_NAME.append(serverBinding), SocketBinding.class, jmxConnectorService.getServerPortBinding())
-                .addListener(listeners)
-                .setInitialMode(ServiceController.Mode.ACTIVE)
-                .install();
+                .setInitialMode(ServiceController.Mode.ACTIVE);
+        if (listeners != null) {
+            builder.addListener(listeners);
+        }
+        return builder.install();
     }
 
     @Override
@@ -167,10 +169,6 @@ public class JMXConnectorService implements Service<Void> {
 
     private int getRmiServerPort() {
         return serverPortBinding.getValue().getSocketAddress().getPort();
-    }
-
-    private InetAddress getRmiRegistryAddress() {
-        return registryPortBinding.getValue().getSocketAddress().getAddress();
     }
 
     private String getRmiRegistryAddressString() {

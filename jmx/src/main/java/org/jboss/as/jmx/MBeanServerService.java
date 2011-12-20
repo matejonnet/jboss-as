@@ -27,9 +27,10 @@ import java.lang.management.ManagementFactory;
 import javax.management.MBeanServer;
 
 import org.jboss.as.controller.ModelController;
-import org.jboss.as.jmx.model.ModelControllerMBeanServer;
-import org.jboss.as.jmx.tcl.TcclMBeanServer;
+import org.jboss.as.jmx.model.ModelControllerMBeanServerPlugin;
 import org.jboss.as.server.Services;
+import org.jboss.as.server.jmx.MBeanServerPlugin;
+import org.jboss.as.server.jmx.PluggableMBeanServer;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceBuilder.DependencyType;
 import org.jboss.msc.service.ServiceController;
@@ -47,13 +48,14 @@ import org.jboss.msc.value.InjectedValue;
  * @author John Bailey
  * @author Kabir Khan
  */
-public class MBeanServerService implements Service<MBeanServer> {
+public class MBeanServerService implements Service<PluggableMBeanServer> {
     public static final ServiceName SERVICE_NAME = ServiceName.JBOSS.append("mbean", "server");
 
     private final boolean showModel;
     private final InjectedValue<ModelController> modelControllerValue = new InjectedValue<ModelController>();
 
-    private MBeanServer mBeanServer;
+    private PluggableMBeanServer mBeanServer;
+    private MBeanServerPlugin showModelPlugin;
 
     private MBeanServerService(final boolean showModel) {
         this.showModel = showModel;
@@ -70,19 +72,24 @@ public class MBeanServerService implements Service<MBeanServer> {
 
     /** {@inheritDoc} */
     public synchronized void start(final StartContext context) throws StartException {
-        mBeanServer = new TcclMBeanServer(ManagementFactory.getPlatformMBeanServer());
+        //If the platform MBeanServer was set up to be the PluggableMBeanServer, use that otherwise create a new one and delegate
+        MBeanServer platform = ManagementFactory.getPlatformMBeanServer();
+        PluggableMBeanServerImpl pluggable = platform instanceof PluggableMBeanServerImpl ? (PluggableMBeanServerImpl)platform : new PluggableMBeanServerImpl(platform);
         if (showModel) {
-            mBeanServer = new ModelControllerMBeanServer(mBeanServer, modelControllerValue.getValue());
+            showModelPlugin = new ModelControllerMBeanServerPlugin(modelControllerValue.getValue());
+            pluggable.addPlugin(showModelPlugin);
         }
+        mBeanServer = pluggable;
     }
 
     /** {@inheritDoc} */
     public synchronized void stop(final StopContext context) {
+        mBeanServer.removePlugin(showModelPlugin);
         mBeanServer = null;
     }
 
     /** {@inheritDoc} */
-    public synchronized MBeanServer getValue() throws IllegalStateException {
+    public synchronized PluggableMBeanServer getValue() throws IllegalStateException {
         return mBeanServer;
     }
 }

@@ -37,9 +37,10 @@ import org.jboss.as.controller.AbstractControllerService;
 import org.jboss.as.controller.BootContext;
 import org.jboss.as.controller.ControlledProcessState;
 import org.jboss.as.controller.ModelController;
-import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.ProcessType;
+import org.jboss.as.controller.RunningModeControl;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.persistence.ConfigurationPersistenceException;
 import org.jboss.as.controller.persistence.ExtensibleConfigurationPersister;
@@ -59,7 +60,6 @@ import org.jboss.as.server.deployment.SubDeploymentProcessor;
 import org.jboss.as.server.deployment.annotation.AnnotationIndexProcessor;
 import org.jboss.as.server.deployment.annotation.CompositeIndexProcessor;
 import org.jboss.as.server.deployment.integration.Seam2Processor;
-import org.jboss.as.server.deployment.module.AdditionalModuleProcessor;
 import org.jboss.as.server.deployment.module.ClassFileTransformerProcessor;
 import org.jboss.as.server.deployment.module.DeploymentRootExplodedMountProcessor;
 import org.jboss.as.server.deployment.module.DeploymentRootMountProcessor;
@@ -86,7 +86,7 @@ import org.jboss.as.server.deployment.service.ServiceActivatorProcessor;
 import org.jboss.as.server.moduleservice.ExtensionIndexService;
 import org.jboss.as.server.moduleservice.ExternalModuleService;
 import org.jboss.as.server.moduleservice.ServiceModuleLoader;
-import org.jboss.as.server.services.security.RuntimeVaultReader;
+import org.jboss.as.server.services.security.AbstractVaultReader;
 import org.jboss.dmr.ModelNode;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceController;
@@ -113,9 +113,10 @@ public final class ServerService extends AbstractControllerService {
     private final Bootstrap.Configuration configuration;
     private final BootstrapListener bootstrapListener;
     private final ControlledProcessState processState;
+    private final RunningModeControl runningModeControl;
     private volatile ExecutorService queuelessExecutor;
     private volatile ExtensibleConfigurationPersister extensibleConfigurationPersister;
-    private final RuntimeVaultReader vaultReader;
+    private final AbstractVaultReader vaultReader;
 
     /**
      * Construct a new instance.
@@ -124,12 +125,32 @@ public final class ServerService extends AbstractControllerService {
      * @param prepareStep the prepare step to use
      */
     ServerService(final Bootstrap.Configuration configuration, final ControlledProcessState processState,
-                  final OperationStepHandler prepareStep, final BootstrapListener bootstrapListener, RuntimeVaultReader vaultReader) {
-        super(OperationContext.Type.SERVER, processState, ServerDescriptionProviders.ROOT_PROVIDER, prepareStep, new RuntimeExpressionResolver(vaultReader));
+                  final OperationStepHandler prepareStep, final BootstrapListener bootstrapListener,
+                  final RunningModeControl runningModeControl, final AbstractVaultReader vaultReader) {
+        super(getProcessType(configuration.getServerEnvironment()), runningModeControl, null, processState,
+                ServerDescriptionProviders.ROOT_PROVIDER, prepareStep, new RuntimeExpressionResolver(vaultReader));
         this.configuration = configuration;
         this.bootstrapListener = bootstrapListener;
         this.processState = processState;
+        this.runningModeControl = runningModeControl;
         this.vaultReader = vaultReader;
+    }
+
+    static ProcessType getProcessType(ServerEnvironment serverEnvironment) {
+        if (serverEnvironment != null) {
+            switch (serverEnvironment.getLaunchType()) {
+            case DOMAIN:
+                return ProcessType.DOMAIN_SERVER;
+            case STANDALONE:
+                return ProcessType.STANDALONE_SERVER;
+            case EMBEDDED:
+                return ProcessType.EMBEDDED_SERVER;
+            case APPCLIENT:
+                return ProcessType.APPLICATION_CLIENT;
+            }
+        }
+
+        return ProcessType.EMBEDDED_SERVER;
     }
 
     /**
@@ -139,8 +160,9 @@ public final class ServerService extends AbstractControllerService {
      * @param configuration the bootstrap configuration
      */
     public static void addService(final ServiceTarget serviceTarget, final Bootstrap.Configuration configuration,
-                                  final ControlledProcessState processState, final BootstrapListener bootstrapListener, final RuntimeVaultReader vaultReader) {
-        ServerService service = new ServerService(configuration, processState, null, bootstrapListener, vaultReader);
+                                  final ControlledProcessState processState, final BootstrapListener bootstrapListener,
+                                  final RunningModeControl runningModeControl, final AbstractVaultReader vaultReader) {
+        ServerService service = new ServerService(configuration, processState, null, bootstrapListener, runningModeControl, vaultReader);
         ServiceBuilder<?> serviceBuilder = serviceTarget.addService(Services.JBOSS_SERVER_CONTROLLER, service);
         serviceBuilder.addDependency(ServerDeploymentRepository.SERVICE_NAME,ServerDeploymentRepository.class, service.injectedDeploymentRepository);
         serviceBuilder.addDependency(ContentRepository.SERVICE_NAME, ContentRepository.class, service.injectedContentRepository);
@@ -206,11 +228,10 @@ public final class ServerService extends AbstractControllerService {
         DeployerChainAddHandler.addDeploymentProcessor(Phase.STRUCTURE, Phase.STRUCTURE_SUB_DEPLOYMENT, new SubDeploymentProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.STRUCTURE, Phase.STRUCTURE_MODULE_IDENTIFIERS, new ModuleIdentifierProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.STRUCTURE, Phase.STRUCTURE_ANNOTATION_INDEX, new AnnotationIndexProcessor());
-        DeployerChainAddHandler.addDeploymentProcessor(Phase.PARSE, Phase.PARSE_STRUCTURE_DESCRIPTOR, new DeploymentStructureDescriptorParser());
+        DeployerChainAddHandler.addDeploymentProcessor(Phase.STRUCTURE, Phase.STRUCTURE_JBOSS_DEPLOYMENT_STRUCTURE_DESCRIPTOR, new DeploymentStructureDescriptorParser());
+        DeployerChainAddHandler.addDeploymentProcessor(Phase.STRUCTURE, Phase.STRUCTURE_CLASS_PATH, new ManifestClassPathProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.PARSE, Phase.PARSE_DEPENDENCIES_MANIFEST, new ManifestDependencyProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.PARSE, Phase.PARSE_COMPOSITE_ANNOTATION_INDEX, new CompositeIndexProcessor());
-        DeployerChainAddHandler.addDeploymentProcessor(Phase.PARSE, Phase.PARSE_ADDITIONAL_MODULES, new AdditionalModuleProcessor());
-        DeployerChainAddHandler.addDeploymentProcessor(Phase.PARSE, Phase.PARSE_CLASS_PATH, new ManifestClassPathProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.PARSE, Phase.PARSE_EXTENSION_LIST, new ManifestExtensionListProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.PARSE, Phase.PARSE_EXTENSION_NAME, new ManifestExtensionNameProcessor());
         DeployerChainAddHandler.addDeploymentProcessor(Phase.PARSE, Phase.PARSE_SERVICE_LOADER_DEPLOYMENT, new ServiceLoaderProcessor());
@@ -271,7 +292,7 @@ public final class ServerService extends AbstractControllerService {
         ServerControllerModelUtil.updateCoreModel(rootResource.getModel());
         ServerControllerModelUtil.initOperations(rootRegistration, injectedContentRepository.getValue(),
                 extensibleConfigurationPersister, configuration.getServerEnvironment(), processState,
-                vaultReader, queuelessExecutor != null);
+                runningModeControl, vaultReader, queuelessExecutor != null);
 
         // TODO maybe make creating of empty nodes part of the MNR description
         rootResource.registerChild(PathElement.pathElement(ModelDescriptionConstants.CORE_SERVICE, ModelDescriptionConstants.MANAGEMENT), Resource.Factory.create());

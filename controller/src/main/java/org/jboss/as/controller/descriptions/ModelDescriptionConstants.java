@@ -36,6 +36,7 @@ public class ModelDescriptionConstants {
     public static final String ACCESS_TYPE = "access-type";
     public static final String ADD = "add";
     public static final String ADDRESS = "address";
+    public static final String ADMIN_ONLY = "admin-only";
     public static final String ADVANCED_FILTER = "advanced-filter";
     public static final String ALLOWED = "allowed";
     public static final String ALLOW_RESOURCE_SERVICE_RESTART = "allow-resource-service-restart";
@@ -115,6 +116,7 @@ public class ModelDescriptionConstants {
     public static final String LOCALE = "locale";
     public static final String MANAGEMENT_SUBSYSTEM_ENDPOINT = "management-subsystem-endpoint";
     public static final String MANAGEMENT = "management";
+    public static final String MANAGEMENT_CLIENT_CONTENT = "management-client-content";
     public static final String MANAGEMENT_INTERFACE = "management-interface";
     public static final String MASK = "mask";
     public static final String MASTER = "master";
@@ -177,6 +179,7 @@ public class ModelDescriptionConstants {
     public static final String READ_RESOURCE_METRICS = "read-resource-metrics";
     public static final String READ_RESOURCE_OPERATION = "read-resource";
     public static final String RECURSIVE = "recursive";
+    public static final String RECURSIVE_DEPTH = "recursive-depth";
     public static final String REDEPLOY = "redeploy";
     public static final String RELATIVE_TO = "relative-to";
     public static final String RELEASE_CODENAME = "release-codename";
@@ -191,6 +194,7 @@ public class ModelDescriptionConstants {
     public static final String REQUIRES = "requires";
     public static final String RESPONSE = "response";
     public static final String RESPONSE_HEADERS = "response-headers";
+    public static final String RESTART = "restart";
     public static final String RESTART_REQUIRED = "restart-required";
     public static final String RESULT = "result";
     public static final String ROLLBACK_ACROSS_GROUPS = "rollback-across-groups";
@@ -199,6 +203,7 @@ public class ModelDescriptionConstants {
     public static final String ROLLED_BACK = "rolled-back";
     public static final String ROLLING_TO_SERVERS = "rolling-to-servers";
     public static final String ROLLOUT_PLAN = "rollout-plan";
+    public static final String ROLLOUT_PLANS = "rollout-plans";
     public static final String RUNNING_SERVER = "server";
     public static final String RUNTIME_NAME = "runtime-name";
     public static final String RUNTIME_UPDATE_SKIPPED = "runtime-update-skipped";
@@ -221,6 +226,7 @@ public class ModelDescriptionConstants {
     public static final String SERVICE_CONTAINER = "service-container";
     public static final String OPERATION_REQUIRES_RELOAD = "operation-requires-reload";
     public static final String OPERATION_REQUIRES_RESTART = "operation-requires-restart";
+    public static final String RESTART_SERVERS = "restart-servers";
     public static final String SHUTDOWN = "shutdown";
     public static final String SOCKET_BINDING = "socket-binding";
     public static final String SOCKET_BINDING_REF = "socket-binding-ref";
@@ -231,8 +237,11 @@ public class ModelDescriptionConstants {
     public static final String SOURCE_PORT = "source-port";
     public static final String SSL = "ssl";
     public static final String START = "start";
+    public static final String START_SERVERS = "start-servers";
     public static final String STATUS = "status";
     public static final String STEPS = "steps";
+    public static final String STOP = "stop";
+    public static final String STOP_SERVERS = "stop-servers";
     /** The key for {@link AttributeAccess.Storage} fields. */
     public static final String STORAGE = "storage";
     public static final String SUBDEPLOYMENT = "subdeployment";
@@ -242,7 +251,9 @@ public class ModelDescriptionConstants {
     public static final String SYSTEM_PROPERTIES = "system-properties";
     public static final String TAIL_COMMENT_ALLOWED = "tail-comment-allowed";
     public static final String TO_REPLACE = "to-replace";
+    public static final String TRUSTSTORE = "truststore";
     public static final String TYPE = "type";
+    public static final String UNDEFINE_ATTRIBUTE_OPERATION = "undefine-attribute";
     public static final String UNDEPLOY = "undeploy";
     public static final String UPLOAD_DEPLOYMENT_BYTES = "upload-deployment-bytes";
     public static final String UPLOAD_DEPLOYMENT_URL = "upload-deployment-url";

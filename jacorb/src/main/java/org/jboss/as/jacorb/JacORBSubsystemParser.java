@@ -344,7 +344,7 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
                     node.get(definition.getName()).set("on");
                 else
                     throw new XMLStreamException(
-                            "Unexpected element value. Should be one of " + JacORBSubsystemDefinitions.ORB_INIT_ATTRIBUTES);
+                            "Unexpected element value. Should be one of [security,transactions]");
             }
         }
     }
@@ -361,8 +361,7 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
      */
     private void parseORBInitializersConfig_1_1(XMLExtendedStreamReader reader, ModelNode node) throws XMLStreamException {
         // parse the initializers config attributes.
-        EnumSet<Attribute> attributes = EnumSet.of(Attribute.ORB_INIT_CODEBASE, Attribute.ORB_INIT_SECURITY,
-                Attribute.ORB_INIT_TRANSACTIONS);
+        EnumSet<Attribute> attributes = EnumSet.of(Attribute.ORB_INIT_SECURITY, Attribute.ORB_INIT_TRANSACTIONS);
         this.parseAttributes(reader, node, attributes, null);
         // the initializers element doesn't have child elements.
         requireNoContent(reader);
@@ -460,9 +459,10 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
      */
     private void parseSecurityConfig(XMLExtendedStreamReader reader, ModelNode node) throws XMLStreamException {
         // parse all security attributes.
-        EnumSet<Attribute> expectedAttributes = EnumSet.of(Attribute.SECURITY_SUPPORT_SSL, Attribute.SECURITY_ADD_COMPONENT_INTERCEPTOR,
-                Attribute.SECURITY_CLIENT_SUPPORTS, Attribute.SECURITY_CLIENT_REQUIRES, Attribute.SECURITY_SERVER_SUPPORTS,
-                Attribute.SECURITY_SERVER_REQUIRES, Attribute.SECURITY_USE_DOMAIN_SF, Attribute.SECURITY_USE_DOMAIN_SSF);
+        EnumSet<Attribute> expectedAttributes = EnumSet.of(Attribute.SECURITY_SUPPORT_SSL, Attribute.SECURITY_SECURITY_DOMAIN,
+                Attribute.SECURITY_ADD_COMPONENT_INTERCEPTOR, Attribute.SECURITY_CLIENT_SUPPORTS, Attribute.SECURITY_CLIENT_REQUIRES,
+                Attribute.SECURITY_SERVER_SUPPORTS, Attribute.SECURITY_SERVER_REQUIRES, Attribute.SECURITY_USE_DOMAIN_SF,
+                Attribute.SECURITY_USE_DOMAIN_SSF);
         this.parseAttributes(reader, node, expectedAttributes, null);
         // the security element doesn't have child elements.
         requireNoContent(reader);
@@ -622,11 +622,10 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
                 throw duplicateAttribute(reader, attribute.getLocalName());
             }
             requiredAttributes.remove(attribute);
-            JacORBSubsystemDefinitions.valueOf(attribute.getLocalName()).parseAndSetParameter(attrValue, node,
-                    reader.getLocation());
+            JacORBSubsystemDefinitions.valueOf(attribute.getLocalName()).parseAndSetParameter(attrValue, node, reader);
         }
 
-        // throw an exception if a required attribute wasn't found.
+      // throw an exception if a required attribute wasn't found.
         if (!requiredAttributes.isEmpty()) {
             throw missingRequired(reader, requiredAttributes);
         }
@@ -843,7 +842,7 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
         return isWritable;
     }
 
-    // helper enum types that encapsulate the subsyustem namespace, elements, and attributes.
+    // helper enum types that encapsulate the subsystem namespace, elements, and attributes.
 
     /**
      * <p>
@@ -864,7 +863,7 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
 
         /**
          * <p>
-         * {@code JacORBNamespace} constructor. Sets the namespace {@code URI}.
+         * {@code Namespace} constructor. Sets the namespace {@code URI}.
          * </p>
          *
          * @param namespaceURI a {@code String} representing the namespace {@code URI}.
@@ -900,12 +899,12 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
 
         /**
          * <p>
-         * Gets the {@code JacORBNamespace} identified by the specified {@code URI}.
+         * Gets the {@code Namespace} identified by the specified {@code URI}.
          * </p>
          *
          * @param uri a {@code String} representing the namespace {@code URI}.
-         * @return the {@code JacORBNamespace} identified by the {@code URI}. If no namespace can be found, the
-         *         {@code JacORBNamespace.UNKNOWN} type is returned.
+         * @return the {@code Namespace} identified by the {@code URI}. If no namespace can be found, the
+         *         {@code Namespace.UNKNOWN} type is returned.
          */
         static Namespace forUri(final String uri) {
             final Namespace element = MAP.get(uri);
@@ -946,7 +945,7 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
 
         /**
          * <p>
-         * {@code JacORBElement} constructor. Sets the element name.
+         * {@code Element} constructor. Sets the element name.
          * </p>
          *
          * @param name a {@code String} representing the local name of the element.
@@ -982,12 +981,12 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
 
         /**
          * <p>
-         * Gets the {@code JacORBElement} identified by the specified name.
+         * Gets the {@code Element} identified by the specified name.
          * </p>
          *
          * @param localName a {@code String} representing the local name of the element.
-         * @return the {@code JacORBElement} identified by the name. If no attribute can be found, the
-         *         {@code JacORBElement.UNKNOWN} type is returned.
+         * @return the {@code Element} identified by the name. If no attribute can be found, the {@code Element.UNKNOWN}
+         *         type is returned.
          */
         public static Element forName(String localName) {
             final Element element = MAP.get(localName);
@@ -1027,7 +1026,6 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
         ORB_CONN_OUTBUF_CACHE_TIMEOUT(JacORBSubsystemConstants.ORB_CONN_OUTBUF_CACHE_TIMEOUT),
 
         // attributes of the initializers element.
-        ORB_INIT_CODEBASE(JacORBSubsystemConstants.ORB_INIT_CODEBASE),
         ORB_INIT_SECURITY(JacORBSubsystemConstants.ORB_INIT_SECURITY),
         ORB_INIT_TRANSACTIONS(JacORBSubsystemConstants.ORB_INIT_TRANSACTIONS),
 
@@ -1056,6 +1054,7 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
 
         // attributes of the security element.
         SECURITY_SUPPORT_SSL(JacORBSubsystemConstants.SECURITY_SUPPORT_SSL),
+        SECURITY_SECURITY_DOMAIN(JacORBSubsystemConstants.SECURITY_SECURITY_DOMAIN),
         SECURITY_ADD_COMPONENT_INTERCEPTOR(JacORBSubsystemConstants.SECURITY_ADD_COMP_VIA_INTERCEPTOR),
         SECURITY_CLIENT_SUPPORTS(JacORBSubsystemConstants.SECURITY_CLIENT_SUPPORTS),
         SECURITY_CLIENT_REQUIRES(JacORBSubsystemConstants.SECURITY_CLIENT_REQUIRES),
@@ -1074,7 +1073,7 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
 
         /**
          * <p>
-         * {@code JacORBAttribute} constructor. Sets the attribute name.
+         * {@code Attribute} constructor. Sets the attribute name.
          * </p>
          *
          * @param name a {@code String} representing the local name of the attribute.
@@ -1109,12 +1108,12 @@ public class JacORBSubsystemParser implements XMLStreamConstants, XMLElementRead
 
         /**
          * <p>
-         * Gets the {@code JacORBAttribute} identified by the specified name.
+         * Gets the {@code Attribute} identified by the specified name.
          * </p>
          *
          * @param localName a {@code String} representing the local name of the attribute.
-         * @return the {@code JacORBAttribute} identified by the name. If no attribute can be found, the
-         *         {@code JacORBAttribute.UNKNOWN} type is returned.
+         * @return the {@code Attribute} identified by the name. If no attribute can be found, the {@code Attribute.UNKNOWN}
+         *         type is returned.
          */
         public static Attribute forName(String localName) {
             final Attribute attribute = MAP.get(localName);

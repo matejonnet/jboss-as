@@ -21,10 +21,14 @@
  */
 package org.jboss.as.ejb3.component.stateful;
 
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,45 +37,63 @@ import javax.ejb.EJBException;
 
 import org.jboss.as.ee.component.Component;
 import org.jboss.as.ee.component.ComponentInstance;
-import org.jboss.as.ejb3.cache.Identifiable;
+import org.jboss.as.ejb3.cache.Cacheable;
 import org.jboss.as.ejb3.component.InvokeMethodOnTargetInterceptor;
 import org.jboss.as.ejb3.component.session.SessionBeanComponentInstance;
 import org.jboss.as.naming.ManagedReference;
 import org.jboss.ejb.client.SessionID;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
+import org.jboss.invocation.InterceptorFactory;
 
 /**
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
  */
-public class StatefulSessionComponentInstance extends SessionBeanComponentInstance implements Identifiable {
+public class StatefulSessionComponentInstance extends SessionBeanComponentInstance implements Cacheable<SessionID> {
+    private static final long serialVersionUID = 3803978357389448971L;
 
     private final SessionID id;
 
-    private final Interceptor afterBegin;
-    private final Interceptor afterCompletion;
-    private final Interceptor beforeCompletion;
-
-    private boolean isDiscarded = false;
+    private transient Interceptor afterBegin;
+    private transient Interceptor afterCompletion;
+    private transient Interceptor beforeCompletion;
+    private transient Collection<Interceptor> prePassivate;
+    private transient Collection<Interceptor> postActivate;
+    private transient Interceptor ejb2XRemoveInterceptor;
 
     /**
      * Construct a new instance.
      *
      * @param component the component
+     * @param ejb2XRemoveInterceptor
      */
     protected StatefulSessionComponentInstance(final StatefulSessionComponent component, final AtomicReference<ManagedReference> instanceReference, final Interceptor preDestroyInterceptor, final Map<Method, Interceptor> methodInterceptors) {
-        super(component, instanceReference, preDestroyInterceptor, methodInterceptors, Collections.<Method, Interceptor>emptyMap());
-
+        super(component, instanceReference, preDestroyInterceptor, methodInterceptors);
 
         final UUID uuid = UUID.randomUUID();
         ByteBuffer bb = ByteBuffer.wrap(new byte[16]);
         bb.putLong(uuid.getMostSignificantBits());
         bb.putLong(uuid.getLeastSignificantBits());
         this.id = SessionID.createSessionID(bb.array());
+        this.createInterceptors();
+    }
 
+    private void createInterceptors() {
+        StatefulSessionComponent component = this.getComponent();
         this.afterBegin = component.createInterceptor(component.getAfterBegin());
         this.afterCompletion = component.createInterceptor(component.getAfterCompletion());
         this.beforeCompletion = component.createInterceptor(component.getBeforeCompletion());
+        this.prePassivate = this.createInterceptors(component, component.getPrePassivate());
+        this.postActivate = this.createInterceptors(component, component.getPostActivate());
+        this.ejb2XRemoveInterceptor = component.createInterceptor(component.getEjb2XRemoveMethod());
+    }
+
+    private Collection<Interceptor> createInterceptors(StatefulSessionComponent component, Collection<InterceptorFactory> factories) {
+        List<Interceptor> interceptors = new ArrayList<Interceptor>(factories.size());
+        for (InterceptorFactory factory: factories) {
+            interceptors.add(component.createInterceptor(factory));
+        }
+        return Collections.unmodifiableList(interceptors);
     }
 
     protected void afterBegin() {
@@ -101,9 +123,21 @@ public class StatefulSessionComponentInstance extends SessionBeanComponentInstan
         }
     }
 
-    protected void discard() {
-        if (!isDiscarded) {
-            isDiscarded = true;
+    protected void prePassivate() {
+        for (Interceptor interceptor: this.prePassivate) {
+            this.execute(interceptor, null);
+        }
+    }
+
+    protected void postActivate() {
+        for (Interceptor interceptor: this.postActivate) {
+            this.execute(interceptor, null);
+        }
+    }
+
+    public void discard() {
+        if (!isDiscarded()) {
+            super.discard();
             getComponent().getCache().discard(id);
         }
     }
@@ -134,12 +168,27 @@ public class StatefulSessionComponentInstance extends SessionBeanComponentInstan
         return (StatefulSessionComponent) super.getComponent();
     }
 
+    @Override
+    public boolean isModified() {
+        return true;
+    }
+
+    @Override
     public SessionID getId() {
         return id;
+    }
+
+    public Interceptor getEjb2XRemoveInterceptor() {
+        return ejb2XRemoveInterceptor;
     }
 
     @Override
     public String toString() {
         return " Instance of " + getComponent().getComponentName() + " {" + id + "}";
+    }
+
+    private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
+        in.defaultReadObject();
+        this.createInterceptors();
     }
 }

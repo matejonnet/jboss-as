@@ -549,6 +549,16 @@ public abstract class AttributeDefinition {
         }
 
         @Override
+        public ProcessType getProcessType() {
+            return null;
+        }
+
+        @Override
+        public RunningMode getRunningMode() {
+            return null;
+        }
+
+        @Override
         public Type getType() {
             return null;
         }
@@ -632,6 +642,16 @@ public abstract class AttributeDefinition {
 
         @Override
         public void addResource(PathAddress address, Resource toAdd) {
+        }
+
+        @Override
+        public void addStep(ModelNode response, ModelNode operation, OperationStepHandler step, Stage stage, boolean addFirst) throws IllegalArgumentException {
+            //
+        }
+
+        @Override
+        public void addStep(OperationStepHandler step, Stage stage, boolean addFirst) throws IllegalArgumentException {
+            //
         }
 
         @Override

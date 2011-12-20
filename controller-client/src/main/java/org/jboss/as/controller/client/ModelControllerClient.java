@@ -28,8 +28,10 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Map;
 
+import javax.net.ssl.SSLContext;
 import javax.security.auth.callback.CallbackHandler;
 
+import org.jboss.as.controller.client.impl.ClientConfigurationImpl;
 import org.jboss.as.controller.client.impl.RemotingModelControllerClient;
 import org.jboss.dmr.ModelNode;
 import org.jboss.threads.AsyncFuture;
@@ -51,8 +53,12 @@ public interface ModelControllerClient extends Closeable {
      * @throws IOException if an I/O error occurs while executing the operation
      */
     ModelNode execute(ModelNode operation) throws IOException;
+
     /**
      * Execute an operation synchronously.
+     *
+     * Note that associated input-streams have to be closed by the caller, after the
+     * operation completed {@link OperationAttachments#isAutoCloseStreams()}.
      *
      * @param operation the operation to execute
      * @return the result of the operation
@@ -73,6 +79,9 @@ public interface ModelControllerClient extends Closeable {
     /**
      * Execute an operation synchronously, optionally receiving progress reports.
      *
+     * Note that associated input-streams have to be closed by the caller, after the
+     * operation completed {@link OperationAttachments#isAutoCloseStreams()}.
+     *
      * @param operation the operation to execute
      * @param messageHandler the message handler to use for operation progress reporting, or {@code null} for none
      * @return the result of the operation
@@ -92,6 +101,9 @@ public interface ModelControllerClient extends Closeable {
     /**
      * Execute an operation.
      *
+     * Note that associated input-streams have to be closed by the caller, after the
+     * operation completed {@link OperationAttachments#isAutoCloseStreams()}.
+     *
      * @param operation the operation to execute
      * @param messageHandler the message handler to use for operation progress reporting, or {@code null} for none
      * @return the future result of the operation
@@ -108,7 +120,7 @@ public interface ModelControllerClient extends Closeable {
          * @return A model controller client
          */
         public static ModelControllerClient create(final InetAddress address, final int port){
-            return new RemotingModelControllerClient(address.getHostName(), port, null, null);
+            return create(ClientConfigurationImpl.create(address, port));
         }
 
         /**
@@ -120,7 +132,7 @@ public interface ModelControllerClient extends Closeable {
          * @return A model controller client
          */
         public static ModelControllerClient create(final InetAddress address, final int port, final CallbackHandler handler){
-            return new RemotingModelControllerClient(address.getHostName(), port, handler, null);
+            return create(ClientConfigurationImpl.create(address, port, handler));
         }
 
         /**
@@ -133,7 +145,7 @@ public interface ModelControllerClient extends Closeable {
          * @return A model controller client
          */
         public static ModelControllerClient create(final InetAddress address, final int port, final CallbackHandler handler, final Map<String, String> saslOptions){
-            return new RemotingModelControllerClient(address.getHostName(), port, handler, saslOptions);
+            return create(ClientConfigurationImpl.create(address, port, handler, saslOptions));
         }
 
         /**
@@ -145,7 +157,7 @@ public interface ModelControllerClient extends Closeable {
          * @throws UnknownHostException if the host cannot be found
          */
         public static ModelControllerClient create(final String hostName, final int port) throws UnknownHostException {
-            return new RemotingModelControllerClient(hostName, port, null, null);
+            return create(ClientConfigurationImpl.create(hostName, port));
         }
 
         /**
@@ -158,7 +170,21 @@ public interface ModelControllerClient extends Closeable {
          * @throws UnknownHostException if the host cannot be found
          */
         public static ModelControllerClient create(final String hostName, final int port, final CallbackHandler handler) throws UnknownHostException {
-            return new RemotingModelControllerClient(hostName, port, handler, null);
+            return create(ClientConfigurationImpl.create(hostName,  port, handler));
+        }
+
+        /**
+         * Create a client instance for a remote address and port and CallbackHandler.
+         *
+         * @param hostName   the remote host
+         * @param port       the port
+         * @param handler    CallbackHandler to obtain authentication information for the call.
+         * @param sslContext a pre-initialised SSLContext
+         * @return A model controller client
+         * @throws UnknownHostException if the host cannot be found
+         */
+        public static ModelControllerClient create(final String hostName, final int port, final CallbackHandler handler, final SSLContext sslContext) throws UnknownHostException {
+            return create(ClientConfigurationImpl.create(hostName,  port, handler, sslContext));
         }
 
         /**
@@ -172,8 +198,19 @@ public interface ModelControllerClient extends Closeable {
          * @throws UnknownHostException if the host cannot be found
          */
         public static ModelControllerClient create(final String hostName, final int port, final CallbackHandler handler, final Map<String, String> saslOptions) throws UnknownHostException {
-            return new RemotingModelControllerClient(hostName, port, handler, saslOptions);
+            return create(ClientConfigurationImpl.create(hostName, port, handler, saslOptions));
         }
+
+        /**
+         * Create a client instance based on the client configuration.
+         *
+         * @param configuration the controller client configuration
+         * @return the client
+         */
+        public static ModelControllerClient create(final ModelControllerClientConfiguration configuration) {
+            return new RemotingModelControllerClient(configuration);
+        }
+
     }
 
 }

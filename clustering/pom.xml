@@ -29,7 +29,7 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-parent</artifactId>
-        <version>7.1.0.Beta1</version>
+        <version>7.1.0.CR1-SNAPSHOT</version>
     </parent>
 
     <artifactId>jboss-as-clustering</artifactId>
@@ -41,10 +41,13 @@
         <module>api</module>
         <module>common</module>
         <module>impl</module>
-        <module>infinispan</module>
         <module>jgroups</module>
-        <module>web-infinispan</module>
+        <module>infinispan</module>
+        <module>service</module>
+        <module>singleton</module>
         <module>web-spi</module>
+        <module>web-infinispan</module>
+        <module>ejb3-infinispan</module>
     </modules>
 
     <dependencies>

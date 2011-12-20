@@ -22,18 +22,21 @@
 
 package org.jboss.as.ejb3.security;
 
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
+
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Set;
 
 import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ejb3.component.EJBComponentDescription;
 import org.jboss.metadata.javaee.spec.SecurityRolesMetaData;
 
-import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * Holds the EJB component level security metadata.
  * <p/>
- * For per method specific security metadata, take a look at {@link EJBMethodSecurityMetaData}
+ * For per method specific security metadata, take a look at {@link EJBMethodSecurityAttribute}
  * <p/>
  * User: Jaikiran Pai
  */
@@ -69,6 +72,11 @@ public class EJBSecurityMetaData {
     private final SecurityRolesMetaData securityRoles;
 
     /**
+     * Security role links. The key is the "from" role name and the value is a collection of "to" role names of the link.
+     */
+    private final Map<String, Collection<String>> securityRoleLinks;
+
+    /**
      * @param componentConfiguration Component configuration of the EJB component
      */
     public EJBSecurityMetaData(final ComponentConfiguration componentConfiguration) {
@@ -82,10 +90,12 @@ public class EJBSecurityMetaData {
         this.securityDomain = ejbComponentDescription.getSecurityDomain();
         this.runAsPrincipal = ejbComponentDescription.getRunAsPrincipal();
         this.securityRoles = ejbComponentDescription.getSecurityRoles();
+        final Map<String, Collection<String>> links = ejbComponentDescription.getSecurityRoleLinks();
+        // security role links configured via <security-role-ref>
+        this.securityRoleLinks = links == null ? Collections.<String, Collection<String>>emptyMap() : Collections.unmodifiableMap(links);
         // @DeclareRoles
         final Set<String> roles = ejbComponentDescription.getDeclaredRoles();
         this.declaredRoles = roles == null ? Collections.<String>emptySet() : Collections.unmodifiableSet(roles);
-
     }
 
     /**
@@ -133,4 +143,13 @@ public class EJBSecurityMetaData {
         return securityRoles;
     }
 
+    /**
+     * Returns the security role links (configured via <security-role-ref>) applicable for the
+     * EJB. Returns an empty map if no role links are configured
+     *
+     * @return
+     */
+    public Map<String, Collection<String>> getSecurityRoleLinks() {
+        return this.securityRoleLinks;
+    }
 }

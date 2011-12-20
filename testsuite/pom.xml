@@ -25,28 +25,27 @@
 <!--
     1. The testsuite module has a small number of submodules:
 
-    api         - holds all API tests for AS7
-    benchmark   - holds all benchmark tests for AS7
-    domain      - holds all domain management tests for AS7
-    integration - holds all integration tests for AS7
-    spec        - holds all spec tests for AS7
-    stress      - holds all stress tests for AS7
+    integration - holds all integration tests for AS7.
+    compat      - holds all compatibility management tests for AS7.
+    domain      - holds all domain management tests for AS7.
+    benchmark   - holds all benchmark tests for AS7.
+    stress      - holds all stress tests for AS7.
 
     All tests should fit into one of these four categories.
 
     2. This pom is inherited by all submodules and should be used to do the following:
-    - set defaults for common testsuite system properties (which can then be overridden on the command line)
-    - define dependencies common to all tests (Arquillian, junit or testng, and container type)
-    - provide a workaround for @Resource(lookup=...) which requires libraries in jbossas/endorsed
-    - defines a default server configuration installed into target/jboasas in each submodule, which
-    represents an unmodified copy of the AS server. Custom server configurations are defined in the submodules.
-    - define profiles to allow selection of which test modules will be executed
+       - Set defaults for common testsuite system properties (which can then be overridden on the command line).
+       - Define dependencies common to all tests (Arquillian, junit or testng, and container type).
+       - Provide a workaround for @Resource(lookup=...) which requires libraries in jbossas/endorsed.
+       - Define a default server configuration installed into target/jboasas in each submodule, which
+         represents an unmodified copy of the AS server. Custom server configurations are defined in the submodules.
+       - Define profiles to allow selection of which test modules will be executed.
 
     3. This pom should not be used to do the following:
-    - define module-specific server configuration build steps
-    - define module-specific surefire executions
-    These elements should be defined in logical profiles associated with each logical grouping of tests,
-    in the pom for the module which contains the tests. See the submodule poms for more details.
+       - Define module-specific server configuration build steps.
+       - Define module-specific surefire executions.
+       These elements should be defined in logical profiles associated with each logical grouping of tests,
+       in the pom for the module which contains the tests. See the submodule poms for more details.
 
 -->
 
@@ -58,12 +57,13 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-parent</artifactId>
-        <version>7.1.0.Beta1</version>
+        <version>7.1.0.CR1-SNAPSHOT</version>
     </parent>
 
     <groupId>org.jboss.as</groupId>
     <artifactId>jboss-as-testsuite</artifactId>
-    <version>7.1.0.Beta1</version>
+    <version>7.1.0.CR1-SNAPSHOT</version>
+    <packaging>pom</packaging>
 
     <name>JBoss Application Server Test Suite: Aggregator</name>
 
@@ -71,34 +71,48 @@
         <module>integration</module>
     </modules>
 
-    <packaging>pom</packaging>
 
-    <!-- global testsuite system property defaults -->
+    <!-- Global testsuite system properties defaults. -->
 
     <properties>
-        <!-- used to provide an absolute location for the distribution under test -->
-        <!-- this value is overridden in modules with the correct relative pathname -->
+        <!-- Used to provide an absolute location for the distribution under test. -->
+        <!-- This value is overridden in modules with the correct relative pathname. -->
         <jboss.dist>${project.basedir}/../build/target/jboss-as-${jboss.as.release.version}</jboss.dist>
         <jboss.home>${jboss.dist}</jboss.home>
 
-        <!-- used to provide an absolute location for the XSLT scripts -->
-        <!-- this value is overridden in modules with the correct relative pathname -->
+        <!-- Used to provide an absolute location for the XSLT scripts. -->
+        <!-- This value is overridden in modules with the correct relative pathname. -->
         <xslt.scripts.dir>${basedir}/integration/src/test/xslt</xslt.scripts.dir>
 
-        <!-- IP address defaults -->
+        <!-- IP address defaults. -->
         <node0>127.0.0.1</node0>
         <node1>127.0.0.1</node1>
         <udpGroup>230.0.0.4</udpGroup>
 
-        <!-- IP stack configs -->
-        <ip.client.stack>-Djava.net.preferIPv4Stack=true</ip.client.stack>
-        <ip.server.stack>-Djava.net.preferIPv4Stack=true</ip.server.stack>
+        <!-- IP stack configs. -->
+        <jvm.args.ip>-Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false</jvm.args.ip>
+        <jvm.args.ip.server>${jvm.args.ip}</jvm.args.ip.server>
+        <jvm.args.ip.client>${jvm.args.ip}</jvm.args.ip.client>
+        
+        <!-- Security. -->
+        <jvm.args.securityManager></jvm.args.securityManager>
+        <jvm.args.securityPolicy></jvm.args.securityPolicy>
+        <jvm.args.security>${jvm.args.securityManager} ${jvm.args.securityPolicy}</jvm.args.security>
+        
+        <!-- Timeout ratios. 100 will leave the timeout as it was coded. -->
+        <timeout.ratio.fsio>100</timeout.ratio.fsio>
+        <timeout.ratio.netio>100</timeout.ratio.netio>
+        <timeout.ratio.memio>100</timeout.ratio.memio>
+        <timeout.ratio.proc>100</timeout.ratio.proc>
+        <timeout.ratio.db>100</timeout.ratio.db>
+        <jvm.args.timeouts>
+            -Dts.tr.fsio=${timeout.ratio.fsio}
+            -Dts.tr.netio=${timeout.ratio.netio}
+            -Dts.tr.memio=${timeout.ratio.memio}
+            -Dts.tr.db=${timeout.ratio.db}
+        </jvm.args.timeouts>
 
-        <!-- security properties -->
-        <security.manager>-Djava.security.manager</security.manager>
-        <security.policy></security.policy>
-
-        <!-- database properties -->
+        <!-- Database properties. -->
         <ds.db></ds.db>
         <ds.jdbc.driver></ds.jdbc.driver>
         <ds.jdbc.driver.version></ds.jdbc.driver.version>
@@ -107,15 +121,15 @@
         <ds.jdbc.pass>test</ds.jdbc.pass>
         <ds.jdbc.driver.jar>${ds.db}-jdbc-driver.jar</ds.jdbc.driver.jar>
 
-        <!-- common surefire properties -->
+        <!-- Common surefire properties. -->
         <surefire.memory.args>-Xmx512m -XX:MaxPermSize=256m</surefire.memory.args>
         <surefire.jpda.args></surefire.jpda.args>
-        <surefire.system.args>${surefire.memory.args} ${surefire.jpda.args}</surefire.system.args>
+        <surefire.system.args>${surefire.memory.args} ${surefire.jpda.args} -Djboss.dist=${jboss.dist}</surefire.system.args>
         <surefire.forked.process.timeout>900</surefire.forked.process.timeout>
         <surefire.test.failure.ignore>false</surefire.test.failure.ignore>
 
         <!-- Arquillian dependency versions -->
-        <version.arquillian_core>1.0.0.CR5</version.arquillian_core>
+        <version.arquillian_core>${version.org.jboss.arquillian.core}</version.arquillian_core>
         <version.arquillian_as7>${project.parent.version}</version.arquillian_as7>
         <version.xml.maven.plugin>1.0</version.xml.maven.plugin>
         <version.saxon>8.7</version.saxon>
@@ -137,6 +151,12 @@
     <dependencies>
         <dependency>
             <groupId>org.jboss.as</groupId>
+            <artifactId>jboss-as-testsuite-shared</artifactId>
+            <scope>test</scope>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.jboss.as</groupId>
             <artifactId>jboss-as-build</artifactId>
             <type>pom</type>
             <exclusions>
@@ -154,7 +174,7 @@
             <groupId>org.projectodd.stilts</groupId>
             <artifactId>stilts-stomplet-server-core</artifactId>
         </dependency>
-        <!-- Needed for @Resource(lookup=) -->
+        <!-- Needed for @Resource(lookup=). -->
         <dependency>
             <groupId>org.jboss.spec.javax.annotation</groupId>
             <artifactId>jboss-annotations-api_1.1_spec</artifactId>
@@ -190,6 +210,7 @@
 
         <plugins>
             
+            <!-- Testsuite debugging info. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-help-plugin</artifactId>
@@ -218,9 +239,22 @@
                     </execution>
                 </executions>
             </plugin>
+            
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>properties-maven-plugin</artifactId>
+                <version>1.0-alpha-2</version>
+                <executions>
+                    <execution>
+                        <phase>initialize</phase>
+                        <goals><goal>write-project-properties</goal></goals>
+                        <configuration><outputFile>target/help.properties.txt</outputFile></configuration>
+                    </execution>
+                </executions>
+            </plugin>
 
             <!--
-            Big complex hack just to get @Resource(lookup="foo")
+                Big complex hack just to get @Resource(lookup="foo").
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -251,8 +285,8 @@
                 </configuration>
             </plugin>
 
-            <!-- a build of target/jbossas which is shared by all modules -->
-            <!-- modules and bundles not copied as they are read-only (see surefire props) -->
+            <!-- A build of target/jbossas which is shared by all modules. -->
+            <!-- Modules and bundles are not copied as they are read-only (see surefire props). -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
@@ -281,7 +315,7 @@
             </plugin>
 
             <!--
-            adjust IP addresses used in server config files
+                Adjust IP addresses used in server config files.
              -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
@@ -302,6 +336,7 @@
                                     </stylesheet>
                                     <includes>
                                         <include>standalone.xml</include>
+                                        <include>standalone-full.xml</include>
                                         <include>standalone-preview.xml</include>
                                         <include>standalone-xts.xml</include>
                                     </includes>
@@ -330,8 +365,8 @@
             </plugin>
 
             <!--
-            sets general surefire system properties
-            (these can be overridden by inheriting plugin configurations)
+                Sets general surefire system properties.
+                These can be overridden by inheriting plugin configurations.
              -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -344,9 +379,14 @@
                     <systemPropertyVariables>
                         <jboss.options>${surefire.system.args}</jboss.options>
                         <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+                        <jboss.dist>${jboss.dist}</jboss.dist>
                         <jboss.home>${basedir}/target/jbossas</jboss.home>
                         <module.path>${jboss.dist}/modules</module.path>
                     </systemPropertyVariables>
+                    <!-- Arquillian's config files. -->
+                    <additionalClasspathElements combine.children="append">
+                        <additionalClasspathElement>${basedir}/src/test/config/arq</additionalClasspathElement>
+                    </additionalClasspathElements>
                 </configuration>
             </plugin>
             
@@ -408,79 +448,49 @@
         -->
         <profile>
             <id>all-modules.module.profile</id>
-            <activation>
-                <property>
-                    <name>all-modules</name>
-                </property>
-            </activation>
+            <activation><property><name>allTests</name></property></activation>
             <modules>
-                <module>benchmark</module>
+                <module>integration</module>
                 <module>compat</module>
                 <module>domain</module>
-                <module>integration</module>
+                <module>benchmark</module>
                 <module>stress</module>
             </modules>
         </profile>
-
+        
         <profile>
             <id>benchmark.module.profile</id>
-            <activation>
-                <property>
-                    <name>benchmark.module</name>
-                </property>
-            </activation>
-            <modules>
-                <module>benchmark</module>
-            </modules>
+            <activation><property><name>benchmark.module</name></property></activation>
+            <modules><module>benchmark</module></modules>
         </profile>
 
         <profile>
             <id>compat.module.profile</id>
-            <activation>
-                <property>
-                    <name>compat.module</name>
-                </property>
-            </activation>
-            <modules>
-                <module>compat</module>
-            </modules>
+            <activation><property><name>compat.module</name></property></activation>
+            <modules><module>compat</module></modules>
         </profile>
 
         <profile>
             <id>domain.module.profile</id>
-            <activation>
-                <property>
-                    <name>domain.module</name>
-                </property>
-            </activation>
-            <modules>
-                <module>domain</module>
-            </modules>
+            <activation><property><name>domain.module</name></property></activation>
+            <modules><module>domain</module></modules>
         </profile>
 
+        <!-- Included by default.
         <profile>
             <id>integration.module.profile</id>
-            <activation>
-                <property>
-                    <name>integration.module</name>
-                </property>
-            </activation>
-            <modules>
-                <module>integration</module>
-            </modules>
+            <activation><property><name>integration.module</name></property></activation>
+            <modules><module>integration</module></modules>
         </profile>
+        -->
 
         <profile>
             <id>stress.module.profile</id>
-            <activation>
-                <property>
-                    <name>stress.module</name>
-                </property>
-            </activation>
-            <modules>
-                <module>stress</module>
-            </modules>
+            <activation><property><name>stress.module</name></property></activation>
+            <modules><module>stress</module></modules>
         </profile>
+
+
 
         <!--
           Debugging profiles
@@ -496,6 +506,38 @@
                 <surefire.jpda.args>-Xrunjdwp:transport=dt_socket,address=8787,server=y,suspend=y</surefire.jpda.args>
             </properties>
         </profile>
+
+
+        <!-- IPv6. -->
+        <profile>
+            <id>ts.ipv6</id>
+            <activation><property><name>ipv6</name></property></activation>
+            <properties>
+                <jvm.args.ip>-Djava.net.preferIPv4Stack=false -Djava.net.preferIPv6Addresses=true</jvm.args.ip>
+            </properties>
+        </profile>
+
+
+        <!-- Security policy. -->
+        <profile>
+            <id>ts.security.policy</id>
+            <activation><property><name>security.policy</name></property></activation>
+            <properties>
+                <jvm.args.securityManager>-Djava.security.manager</jvm.args.securityManager>
+                <jvm.args.securityPolicy>-Djava.security.policy=${security.policy}</jvm.args.securityPolicy>
+            </properties>
+        </profile>
+
+        <!-- Security manager. -->
+        <profile>
+            <id>ts.security.manager</id>
+            <activation><property><name>security.manager</name></property></activation>
+            <properties>
+                <jvm.args.securityManager>-Djava.security.manager</jvm.args.securityManager>
+            </properties>
+        </profile>
+
+
 
         <!--
           Database profiles
@@ -578,6 +620,7 @@
                                             <stylesheet>${xslt.scripts.dir}/changeDatabase.xsl</stylesheet>
                                             <includes>
                                                 <include>standalone.xml</include>
+                                                <include>standalone-full.xml</include>
                                                 <include>standalone-preview.xml</include>
                                                 <include>standalone-xts.xml</include>
                                             </includes>

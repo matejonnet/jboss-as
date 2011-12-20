@@ -25,22 +25,17 @@ import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.ejb.Timer;
-
 import org.jboss.as.ee.component.BasicComponent;
 import org.jboss.as.ee.component.BasicComponentInstance;
 import org.jboss.as.ejb3.context.EJBContextImpl;
 import org.jboss.as.naming.ManagedReference;
 import org.jboss.invocation.Interceptor;
-import org.jboss.invocation.InterceptorContext;
-import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 /**
  * @author Stuart Douglas
  */
 public abstract class EjbComponentInstance extends BasicComponentInstance {
 
-
-    private final Map<Method, Interceptor> timeoutInterceptors;
+    private volatile boolean discarded = false;
 
     private static final Object[] EMPTY_OBJECT_ARRAY = {};
     /**
@@ -48,44 +43,8 @@ public abstract class EjbComponentInstance extends BasicComponentInstance {
      *
      * @param component the component
      */
-    protected EjbComponentInstance(final BasicComponent component, final AtomicReference<ManagedReference> instanceReference, final Interceptor preDestroyInterceptor, final Map<Method, Interceptor> methodInterceptors, final Map<Method, Interceptor> timeoutInterceptors) {
+    protected EjbComponentInstance(final BasicComponent component, final AtomicReference<ManagedReference> instanceReference, final Interceptor preDestroyInterceptor, final Map<Method, Interceptor> methodInterceptors) {
         super(component, instanceReference, preDestroyInterceptor, methodInterceptors);
-        this.timeoutInterceptors = timeoutInterceptors;
-    }
-
-
-    public void invokeTimeoutMethod(final Method method, final Timer timer) {
-        final Interceptor interceptor = timeoutInterceptors.get(method);
-        if (interceptor == null) {
-            throw MESSAGES.failToCallTimeOutMethod(method);
-        }
-        try {
-            InterceptorContext context = prepareInterceptorContext();
-            context.putPrivateData(MethodIntf.class, MethodIntf.TIMER);
-            context.setMethod(method);
-            context.setTimer(timer);
-            context.setTarget(getInstance());
-            final Object[] params;
-            if (method.getParameterTypes().length == 1) {
-                params = new Object[1];
-                params[0] = timer;
-            } else {
-                params = EMPTY_OBJECT_ARRAY;
-            }
-            context.setParameters(params);
-            interceptor.processInvocation(context);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public void invokeTimeoutMethod(final Timer timer) {
-        final EJBComponent component = (EJBComponent) getComponent();
-        final Method method = component.getTimeoutMethod();
-        if (method == null) {
-            throw MESSAGES.componentTimeoutMethodNotSet(component.getComponentName());
-        }
-        invokeTimeoutMethod(method, timer);
     }
 
     @Override
@@ -94,4 +53,12 @@ public abstract class EjbComponentInstance extends BasicComponentInstance {
     }
 
     public abstract EJBContextImpl getEjbContext();
+
+    public boolean isDiscarded() {
+        return discarded;
+    }
+
+    public void discard() {
+        this.discarded = true;
+    }
 }

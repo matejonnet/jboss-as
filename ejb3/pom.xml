@@ -31,7 +31,7 @@ vi:ts=4:sw=4:expandtab
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-parent</artifactId>
-        <version>7.1.0.Beta1</version>
+        <version>7.1.0.CR1-SNAPSHOT</version>
     </parent>
 
     <artifactId>jboss-as-ejb3</artifactId>
@@ -119,8 +119,19 @@ vi:ts=4:sw=4:expandtab
         </dependency>
 
         <dependency>
+            <groupId>org.jboss.classfilewriter</groupId>
+            <artifactId>jboss-classfilewriter</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>org.jboss</groupId>
             <artifactId>jboss-ejb-client</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jboss</groupId>
+            <artifactId>jboss-iiop-client</artifactId>
+            <version>${version.org.jboss.iiop-client}</version>
         </dependency>
 
         <dependency>

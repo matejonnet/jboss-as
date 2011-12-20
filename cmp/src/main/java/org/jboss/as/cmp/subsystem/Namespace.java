@@ -33,8 +33,6 @@ enum Namespace {
     UNKNOWN(null),
     CMP_1_0("urn:jboss:domain:cmp:1.0");
 
-    public static final Namespace CURRENT = CMP_1_0;
-
     private final String name;
 
     Namespace(final String name) {

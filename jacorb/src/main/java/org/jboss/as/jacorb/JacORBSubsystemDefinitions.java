@@ -150,12 +150,6 @@ class JacORBSubsystemDefinitions {
             .build();
 
     // initializers attribute definitions.
-    public static final SimpleAttributeDefinition ORB_INIT_CODEBASE = new SimpleAttributeDefinitionBuilder(
-            JacORBSubsystemConstants.ORB_INIT_CODEBASE, ModelType.STRING, true)
-            .setDefaultValue(DEFAULT_ENABLED_PROPERTY)
-            .setFlags(AttributeAccess.Flag.RESTART_ALL_SERVICES)
-            .build();
-
     public static final SimpleAttributeDefinition ORB_INIT_SECURITY = new SimpleAttributeDefinitionBuilder(
             JacORBSubsystemConstants.ORB_INIT_SECURITY, ModelType.STRING, true)
             .setDefaultValue(DEFAULT_DISABLED_PROPERTY)
@@ -273,6 +267,11 @@ class JacORBSubsystemDefinitions {
             .setFlags(AttributeAccess.Flag.RESTART_ALL_SERVICES)
             .build();
 
+    public static final SimpleAttributeDefinition SECURITY_SECURITY_DOMAIN = new SimpleAttributeDefinitionBuilder(
+            JacORBSubsystemConstants.SECURITY_SECURITY_DOMAIN, ModelType.STRING, true)
+            .setFlags(AttributeAccess.Flag.RESTART_ALL_SERVICES)
+            .build();
+
     public static final SimpleAttributeDefinition SECURITY_ADD_COMPONENT_INTERCEPTOR = new SimpleAttributeDefinitionBuilder(
             JacORBSubsystemConstants.SECURITY_ADD_COMP_VIA_INTERCEPTOR, ModelType.STRING, true)
             .setDefaultValue(DEFAULT_ENABLED_PROPERTY)
@@ -329,8 +328,7 @@ class JacORBSubsystemDefinitions {
             ORB_CONN_MAX_MANAGED_BUF_SIZE, ORB_CONN_OUTBUF_SIZE, ORB_CONN_OUTBUF_CACHE_TIMEOUT);
 
     // list that contains the orb initializer attribute definitions.
-    static final List<SimpleAttributeDefinition> ORB_INIT_ATTRIBUTES = Arrays.asList(ORB_INIT_CODEBASE,
-            ORB_INIT_SECURITY, ORB_INIT_TX);
+    static final List<SimpleAttributeDefinition> ORB_INIT_ATTRIBUTES = Arrays.asList(ORB_INIT_SECURITY, ORB_INIT_TX);
 
     // list that contains the poa attribute definitions.
     static final List<SimpleAttributeDefinition> POA_ATTRIBUTES = Arrays.asList(POA_MONITORING, POA_QUEUE_WAIT,
@@ -351,8 +349,9 @@ class JacORBSubsystemDefinitions {
 
     // list that contains the security attribute definitions.
     static final List<SimpleAttributeDefinition> SECURITY_ATTRIBUTES = Arrays.asList(SECURITY_SUPPORT_SSL,
-            SECURITY_ADD_COMPONENT_INTERCEPTOR, SECURITY_CLIENT_SUPPORTS, SECURITY_CLIENT_REQUIRES,
-            SECURITY_SERVER_SUPPORTS, SECURITY_SERVER_REQUIRES, SECURITY_USE_DOMAIN_SF, SECURITY_USE_DOMAIN_SSF);
+            SECURITY_SECURITY_DOMAIN, SECURITY_ADD_COMPONENT_INTERCEPTOR, SECURITY_CLIENT_SUPPORTS,
+            SECURITY_CLIENT_REQUIRES, SECURITY_SERVER_SUPPORTS, SECURITY_SERVER_REQUIRES, SECURITY_USE_DOMAIN_SF,
+            SECURITY_USE_DOMAIN_SSF);
 
     // list that contains all attribute definitions.
     static final List<SimpleAttributeDefinition> SUBSYSTEM_ATTRIBUTES;

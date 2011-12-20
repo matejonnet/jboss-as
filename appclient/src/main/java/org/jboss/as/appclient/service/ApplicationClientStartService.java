@@ -116,7 +116,7 @@ public class ApplicationClientStartService implements Service<ApplicationClientS
                                     applicationClientDeploymentServiceInjectedValue.getValue().getDeploymentCompleteLatch().await();
 
                                     try {
-                                        NamespaceContextSelector.pushCurrentSelector(namespaceContextSelectorInjectedValue);
+                                        NamespaceContextSelector.setDefault(namespaceContextSelectorInjectedValue);
                                         //do static injection etc
                                         //TODO: this should be better
                                         instance = applicationClientComponent.getValue().createInstance();
@@ -125,9 +125,8 @@ public class ApplicationClientStartService implements Service<ApplicationClientS
                                         if (previousSelector != null) {
                                             EJBClientContext.setSelector(previousSelector);
                                         }
-                                        NamespaceContextSelector.popCurrentSelector();
                                     }
-                                }  catch (Exception e) {
+                                } catch (Exception e) {
                                     ROOT_LOGGER.exceptionRunningAppClient(e, e.getClass().getSimpleName());
                                 } finally {
                                     SecurityActions.setContextClassLoader(oldTccl);
@@ -136,10 +135,18 @@ public class ApplicationClientStartService implements Service<ApplicationClientS
                                 CurrentServiceContainer.getServiceContainer().shutdown();
                             }
                         } finally {
-                            connection.close();
+                            try {
+                                connection.close();
+                            } catch (Throwable e) {
+                                ROOT_LOGGER.exceptionClosingConnection(e);
+                            }
                         }
                     } finally {
-                        endpoint.close();
+                        try {
+                            endpoint.close();
+                        } catch (Throwable e) {
+                            ROOT_LOGGER.exceptionClosingConnection(e);
+                        }
                     }
                 } catch (IOException e) {
                     throw new RuntimeException(e);
@@ -154,7 +161,7 @@ public class ApplicationClientStartService implements Service<ApplicationClientS
 
     @Override
     public synchronized void stop(final StopContext context) {
-        if(instance != null) {
+        if (instance != null) {
             instance.destroy();
         }
         thread.interrupt();

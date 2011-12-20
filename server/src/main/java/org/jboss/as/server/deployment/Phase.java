@@ -198,18 +198,16 @@ public enum Phase {
     public static final int STRUCTURE_SAR_SUB_DEPLOY_CHECK              = 0x0D00;
     public static final int STRUCTURE_ADDITIONAL_MANIFEST               = 0x0E00;
     public static final int STRUCTURE_SUB_DEPLOYMENT                    = 0x0F00;
+    public static final int STRUCTURE_JBOSS_DEPLOYMENT_STRUCTURE_DESCRIPTOR = 0x0F50;
+    public static final int STRUCTURE_CLASS_PATH                        = 0x0FA0;
     public static final int STRUCTURE_MODULE_IDENTIFIERS                = 0x1000;
     public static final int STRUCTURE_EE_MODULE_INIT                    = 0x1100;
 
     // PARSE
     public static final int PARSE_EE_MODULE_NAME                        = 0x0100;
     public static final int PARSE_EAR_SUBDEPLOYMENTS_ISOLATION_DEFAULT  = 0x0200;
-    public static final int PARSE_STRUCTURE_DESCRIPTOR                  = 0x0201;
     public static final int PARSE_DEPENDENCIES_MANIFEST                 = 0x0300;
     public static final int PARSE_COMPOSITE_ANNOTATION_INDEX            = 0x0301;
-    public static final int PARSE_EAR_LIB_CLASS_PATH                    = 0x0400;
-    public static final int PARSE_ADDITIONAL_MODULES                    = 0x0500;
-    public static final int PARSE_CLASS_PATH                            = 0x0600;
     public static final int PARSE_EXTENSION_LIST                        = 0x0700;
     public static final int PARSE_EXTENSION_NAME                        = 0x0800;
     public static final int PARSE_OSGI_BUNDLE_INFO                      = 0x0900;
@@ -273,6 +271,7 @@ public enum Phase {
     public static final int PARSE_EJB_REMOTE_CLIENT_CONTEXT             = 0x3900;
     public static final int PARSE_JACORB                                = 0x3A00;
     public static final int PARSE_TRANSACTION_ROLLBACK_ACTION           = 0x3B00;
+    public static final int PARSE_WEB_INITIALIZE_IN_ORDER               = 0x3C00;
 
     // DEPENDENCIES
     public static final int DEPENDENCIES_EJB                            = 0x0000;
@@ -294,10 +293,11 @@ public enum Phase {
     public static final int DEPENDENCIES_JDK                            = 0x1200;
     public static final int DEPENDENCIES_JACORB                         = 0x1300;
     public static final int DEPENDENCIES_CMP                            = 0x1500;
+    public static final int DEPENDENCIES_JAXR                           = 0x1600;
     //these must be last, and in this specific order
-    public static final int DEPENDENCIES_APPLICATION_CLIENT             = 0x1600;
-    public static final int DEPENDENCIES_VISIBLE_MODULES                = 0x1700;
-    public static final int DEPENDENCIES_EE_CLASS_DESCRIPTIONS          = 0x1800;
+    public static final int DEPENDENCIES_APPLICATION_CLIENT             = 0x2000;
+    public static final int DEPENDENCIES_VISIBLE_MODULES                = 0x2100;
+    public static final int DEPENDENCIES_EE_CLASS_DESCRIPTIONS          = 0x2200;
 
 
     // CONFIGURE_MODULE
@@ -331,6 +331,11 @@ public enum Phase {
     public static final int POST_MODULE_EJB_ASYNCHRONOUS_MERGE          = 0x060E;
     public static final int POST_MODULE_EJB_SESSION_SYNCHRONIZATION     = 0x060F;
     public static final int POST_MODULE_EJB_INIT_METHOD                 = 0x0610;
+    public static final int POST_MODULE_EJB_SESSION_BEAN                = 0x0611;
+    public static final int POST_MODULE_EJB_SECURITY_PRINCIPAL_ROLE_MAPPING_MERGE   = 0x0612;
+    public static final int POST_MODULE_EJB_SESSION_PASSIVATION         = 0x0613;
+    public static final int POST_MODULE_EJB_CACHE                       = 0x0614;
+    public static final int POST_MODULE_EJB_CLUSTERED                   = 0x0615;
     public static final int POST_MODULE_WELD_COMPONENT_INTEGRATION      = 0x0800;
     public static final int POST_MODULE_INSTALL_EXTENSION               = 0x0A00;
     public static final int POST_MODULE_VALIDATOR_FACTORY               = 0x0B00;
@@ -371,15 +376,11 @@ public enum Phase {
     public static final int INSTALL_JPA_INTERCEPTORS                    = 0x0200;
     public static final int INSTALL_JACC_POLICY                         = 0x0350;
     public static final int INSTALL_COMPONENT_AGGREGATION               = 0x0400;
-    public static final int INSTALL_RESOLVE_EJB_INJECTIONS              = 0x0402;
+    public static final int INSTALL_RESOLVE_MESSAGE_DESTINATIONS        = 0x0403;
     public static final int INSTALL_EJB_JACC_PROCESSING                 = 0x0403;
     public static final int INSTALL_SERVICE_ACTIVATOR                   = 0x0500;
     public static final int INSTALL_OSGI_DEPLOYMENT                     = 0x0600;
     public static final int INSTALL_OSGI_MODULE                         = 0x0650;
-    public static final int INSTALL_WS_UNIVERSAL_META_DATA_MODEL        = 0x0701;
-    public static final int INSTALL_WS_DEPLOYMENT_ASPECTS               = 0x0710;
-    // IMPORTANT: WS integration installs deployment aspects dynamically
-    // so consider INSTALL 0x0710 - 0x07FF reserved for WS subsystem!
     public static final int INSTALL_RA_NATIVE                           = 0x0800;
     public static final int INSTALL_RA_DEPLOYMENT                       = 0x0801;
     public static final int INSTALL_SERVICE_DEPLOYMENT                  = 0x0900;
@@ -400,6 +401,10 @@ public enum Phase {
     public static final int INSTALL_WELD_DEPLOYMENT                     = 0x1B00;
     public static final int INSTALL_WELD_BEAN_MANAGER                   = 0x1C00;
     public static final int INSTALL_JNDI_DEPENDENCIES                   = 0x1C01;
+    public static final int INSTALL_WS_UNIVERSAL_META_DATA_MODEL        = 0x1C10;
+    public static final int INSTALL_WS_DEPLOYMENT_ASPECTS               = 0x1C11;
+    // IMPORTANT: WS integration installs deployment aspects dynamically
+    // so consider INSTALL 0x1C10 - 0x1CFF reserved for WS subsystem!
     public static final int INSTALL_WAR_DEPLOYMENT                      = 0x1D00;
     public static final int INSTALL_DEPLOYMENT_REPOSITORY               = 0x1E00;
     public static final int INSTALL_EJB_MANAGEMENT_RESOURCES            = 0x1F00;

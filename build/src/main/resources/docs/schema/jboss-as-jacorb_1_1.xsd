@@ -125,15 +125,19 @@
                 <![CDATA[
                 The orbInitializersConfigType specifies the attributes used to configure the ORB initializers.
 
-                * codebase: indicates whether the codebase initializer should be installed (on) or not (off).
                 * security: indicates whether the security (SAS and CSIv2) initializers should be installed (on) or not (off).
-                * transactions: indicates whether the transaction initializers should be installed (on) or not (off).
+                * transactions: indicates which transaction initializers should be installed. There are three possibilities:
+                    on   - This requires JTS to be enabled in the transactions subsystem config, and will enable full transaction
+                           interaoprability with other JBoss AS instances.
+                    spec - This does not require JTS to be enabled, but will install the minimum set of transaction interceptors
+                           required for EJB spec compliance. These interceptors detect an incoming transaction and throw an
+                           exception if the invocation should be run in the incoming transaction context.
+                    off  - No transaction initalizers will be installed.
                         ]]>
             </xs:documentation>
         </xs:annotation>
-        <xs:attribute name="codebase" type="xs:string" use="optional" default="on"/>
-        <xs:attribute name="security" type="xs:string" use="optional" default="off"/>
-        <xs:attribute name="transactions" type="xs:string" use="optional" default="off"/>
+        <xs:attribute name="security" type="securityEnabledType" use="optional" default="off"/>
+        <xs:attribute name="transactions" type="transactionEnabledType" use="optional" default="off"/>
     </xs:complexType>
 
     <xs:complexType name="poaConfigType">
@@ -211,7 +215,7 @@
                 * lax-boolean-encoding: indicates whether any non-zero CDR encoded boolean value should be interpreted as
                                         true (on) or not (off).
                 * indirection-encoding-disabled: indicates whether indirection encoding for repeated typecodes should be
-                                                 enabled (on) or not (off).
+                                                 disabled (on) or not (off).
                 * strict-check-on-tc-creation: indicates whether the method create_abstract_interface_tc should perform
                                                a validation check on the name parameter (on) or not (off).
                         ]]>
@@ -233,6 +237,8 @@
                 The securityConfigType specifies the attributes used to configure the ORB security features.
 
                 * support-ssl: indicates whether SSL is to be supported (on) or not (off).
+                * security-domain: the name of the security domain that holds the key and trust stores that will be used
+                                   to establish SSL connections.
                 * add-component-via-interceptor: indicates whether SSL components should be added by an IOR interceptor
                                                  (on) or not (off).
                 * client-supports: value that indicates the client SSL supported parameters (EstablishTrustInTarget=20,
@@ -251,6 +257,7 @@
             </xs:documentation>
         </xs:annotation>
         <xs:attribute name="support-ssl" type="xs:string" use="optional" default="off"/>
+        <xs:attribute name="security-domain" type="xs:string" use="optional"/>
         <xs:attribute name="add-component-via-interceptor" type="xs:string" use="optional" default="on"/>
         <xs:attribute name="client-supports" type="xs:integer" use="optional" default="60"/>
         <xs:attribute name="client-requires" type="xs:integer" use="optional" default="0"/>
@@ -285,5 +292,30 @@
         <xs:attribute name="name" type="xs:string" use="required"/>
         <xs:attribute name="value" type="xs:string" use="required"/>
     </xs:complexType>
+
+    <xs:simpleType name="securityEnabledType">
+        <xs:annotation>
+            <xs:documentation>
+                Enumeration for the security interceptor config.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:token">
+            <xs:enumeration value="on"/>
+            <xs:enumeration value="off"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="transactionEnabledType">
+        <xs:annotation>
+            <xs:documentation>
+                Enumeration for the transaction interceptor config.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:token">
+            <xs:enumeration value="on"/>
+            <xs:enumeration value="off"/>
+            <xs:enumeration value="spec"/>
+        </xs:restriction>
+    </xs:simpleType>
 
 </xs:schema>

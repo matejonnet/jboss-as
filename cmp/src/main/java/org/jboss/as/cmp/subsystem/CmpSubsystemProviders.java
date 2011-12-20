@@ -23,6 +23,7 @@
 package org.jboss.as.cmp.subsystem;
 
 import java.util.Locale;
+import java.util.ResourceBundle;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.dmr.ModelNode;
 
@@ -37,4 +38,22 @@ public class CmpSubsystemProviders {
         }
     };
 
+    static final DescriptionProvider SUBSYSTEM_REMOVE = new DescriptionProvider() {
+
+        public ModelNode getModelDescription(final Locale locale) {
+            return CmpSubsystemDescriptions.getSubsystemRemoveDescription(locale);
+        }
+    };
+
+    public static DescriptionProvider HILO_KEY_GENERATOR_DESC = new DescriptionProvider() {
+        public ModelNode getModelDescription(Locale locale) {
+            return CmpSubsystemDescriptions.getHiLoKeyGeneratorDescription(locale);
+        }
+    };
+
+    public static DescriptionProvider UUID_KEY_GENERATOR_DESC = new DescriptionProvider() {
+        public ModelNode getModelDescription(Locale locale) {
+            return CmpSubsystemDescriptions.getUuidKeyGeneratorDescription(locale);
+        }
+    };
 }

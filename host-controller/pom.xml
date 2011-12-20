@@ -29,7 +29,7 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-parent</artifactId>
-        <version>7.1.0.Beta1</version>
+        <version>7.1.0.CR1-SNAPSHOT</version>
     </parent>
 
     <groupId>org.jboss.as</groupId>
@@ -62,15 +62,15 @@
         </dependency>
         <dependency>
             <groupId>org.jboss.as</groupId>
+            <artifactId>jboss-as-deployment-repository</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.as</groupId>
             <artifactId>jboss-as-process-controller</artifactId>
         </dependency>
         <dependency>
             <groupId>org.jboss.as</groupId>
             <artifactId>jboss-as-protocol</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.jboss.as</groupId>
-            <artifactId>jboss-as-domain-controller</artifactId>
         </dependency>
         <dependency>
             <groupId>org.jboss.as</groupId>
@@ -91,6 +91,10 @@
                   projects that depend on this project.-->
             <scope>provided</scope>
             <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.as</groupId>
+            <artifactId>jboss-as-management-client-content</artifactId>
         </dependency>
         <dependency>
             <groupId>org.jboss.as</groupId>

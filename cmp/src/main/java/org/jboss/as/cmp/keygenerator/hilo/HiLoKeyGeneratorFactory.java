@@ -21,13 +21,10 @@
  */
 package org.jboss.as.cmp.keygenerator.hilo;
 
-import java.io.Serializable;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
 import javax.sql.DataSource;
 import javax.transaction.TransactionManager;
 import org.jboss.as.cmp.jdbc.JDBCUtil;
@@ -35,20 +32,27 @@ import org.jboss.as.cmp.jdbc.SQLUtil;
 import org.jboss.as.cmp.keygenerator.KeyGenerator;
 import org.jboss.as.cmp.keygenerator.KeyGeneratorFactory;
 import org.jboss.logging.Logger;
+import org.jboss.msc.inject.Injector;
+import org.jboss.msc.service.Service;
+import org.jboss.msc.service.ServiceName;
+import org.jboss.msc.service.StartContext;
+import org.jboss.msc.service.StartException;
+import org.jboss.msc.service.StopContext;
+import org.jboss.msc.value.InjectedValue;
 
 /**
  * @author <a href="mailto:alex@jboss.org">Alexey Loubyansky</a>
  * @version <tt>$Revision: 81030 $</tt>
- * @jmx.mbean name="jboss.system:service=KeyGeneratorFactory,type=HiLo"
  * extends="org.jboss.system.ServiceMBean"
  */
-public class HiLoKeyGeneratorFactory implements KeyGeneratorFactory, Serializable {
-    private static final Logger log = Logger.getLogger(HiLoKeyGeneratorFactory.class);
-    private String dataSourceJndi;
-    private transient DataSource ds;
-    private transient TransactionManager tm;
+public class HiLoKeyGeneratorFactory implements KeyGeneratorFactory, Service<KeyGeneratorFactory> {
+    public static final ServiceName SERVICE_NAME = ServiceName.JBOSS.append("cmp", "keygen", HiLoKeyGeneratorFactory.class.getSimpleName());
 
-    private String jndiName;
+    private static final Logger log = Logger.getLogger(HiLoKeyGeneratorFactory.class);
+
+    private final InjectedValue<DataSource> ds = new InjectedValue<DataSource>();
+    private final InjectedValue<TransactionManager> tm = new InjectedValue<TransactionManager>();
+
     private String tableName;
     private String sequenceColumn;
     private String sequenceName;
@@ -60,93 +64,31 @@ public class HiLoKeyGeneratorFactory implements KeyGeneratorFactory, Serializabl
     private boolean createTable = true;
     private boolean dropTable;
 
-    public String getFactoryName() {
-        return jndiName;
+    public synchronized void start(StartContext context) throws StartException {
+        try {
+            initSequence(tableName, sequenceColumn, sequenceName, idColumnName);
+        } catch (SQLException e) {
+            throw new StartException("Failed to start HiLoKeyGeneratorFactory", e);
+        }
     }
 
-
-    public String getTableName() {
-        return tableName;
+    public synchronized void stop(StopContext context) {
+        if (dropTable) {
+            try {
+                dropTableIfExists(tableName);
+            } catch (SQLException e) {
+                throw new IllegalStateException("Failed to stop HiLoKeyGeneratorFactory", e);
+            }
+        }
     }
 
-    public void setTableName(String tableName) throws Exception {
-//        if (getState() == STARTED && !tableName.equals(this.tableName)) {
-//            initSequence(tableName, sequenceColumn, sequenceName, idColumnName);
-//        }
-        this.tableName = tableName;
+    public KeyGeneratorFactory getValue() throws IllegalStateException, IllegalArgumentException {
+        return this;
     }
-
-    public String getSequenceColumn() {
-        return sequenceColumn;
-    }
-
-    public void setSequenceColumn(String sequenceColumn) {
-        this.sequenceColumn = sequenceColumn;
-    }
-
-    public String getSequenceName() {
-        return sequenceName;
-    }
-
-    public void setSequenceName(String sequenceName) {
-        this.sequenceName = sequenceName;
-    }
-
-    public String getIdColumnName() {
-        return idColumnName;
-    }
-
-    public void setIdColumnName(String idColumnName) {
-        this.idColumnName = idColumnName;
-    }
-
-    public String getCreateTableDdl() {
-        return createTableDdl;
-    }
-
-    public void setCreateTableDdl(String createTableDdl) {
-        this.createTableDdl = createTableDdl;
-    }
-
-    public String getSelectHiSql() {
-        return selectHiSql;
-    }
-
-    public void setSelectHiSql(String selectHiSql) {
-        this.selectHiSql = selectHiSql;
-    }
-
-    public long getBlockSize() {
-        return blockSize;
-    }
-
-    public void setBlockSize(long blockSize) {
-        this.blockSize = blockSize;
-    }
-
-    public boolean isCreateTable() {
-        return createTable;
-    }
-
-    public void setCreateTable(boolean createTable) {
-        this.createTable = createTable;
-    }
-
-    public boolean isDropTable() {
-        return dropTable;
-    }
-
-    public void setDropTable(boolean dropTable) {
-        this.dropTable = dropTable;
-    }
-
-    // KeyGeneratorFactory implementation
 
     public KeyGenerator getKeyGenerator() throws Exception {
-        return new HiLoKeyGenerator(ds, tableName, sequenceColumn, sequenceName, idColumnName, selectHiSql, blockSize, tm);
+        return new HiLoKeyGenerator(ds.getValue(), tableName, sequenceColumn, sequenceName, idColumnName, selectHiSql, blockSize, tm.getValue());
     }
-
-    // Private
 
     private void initSequence(String tableName, String sequenceColumn, String sequenceName, String idColumnName) throws SQLException {
         if (createTable) {
@@ -160,7 +102,7 @@ public class HiLoKeyGeneratorFactory implements KeyGeneratorFactory, Serializabl
             String sql = "select " + idColumnName + " from " + tableName + " where " + sequenceColumn + "='" + sequenceName + "'";
             log.debug("Executing SQL: " + sql);
 
-            con = ds.getConnection();
+            con = ds.getValue().getConnection();
             st = con.createStatement();
             rs = st.executeQuery(sql);
             if (!rs.next()) {
@@ -196,10 +138,10 @@ public class HiLoKeyGeneratorFactory implements KeyGeneratorFactory, Serializabl
         Connection con = null;
         Statement st = null;
         try {
-            if (!SQLUtil.tableExists(tableName, ds)) {
+            if (!SQLUtil.tableExists(tableName, ds.getValue())) {
                 log.debug("Executing DDL: " + createTableDdl);
 
-                con = ds.getConnection();
+                con = ds.getValue().getConnection();
                 st = con.createStatement();
                 st.executeUpdate(createTableDdl);
             }
@@ -213,11 +155,11 @@ public class HiLoKeyGeneratorFactory implements KeyGeneratorFactory, Serializabl
         Connection con = null;
         Statement st = null;
         try {
-            if (SQLUtil.tableExists(tableName, ds)) {
+            if (SQLUtil.tableExists(tableName, ds.getValue())) {
                 final String ddl = "drop table " + tableName;
                 log.debug("Executing DDL: " + ddl);
 
-                con = ds.getConnection();
+                con = ds.getValue().getConnection();
                 st = con.createStatement();
                 st.executeUpdate(ddl);
             }
@@ -227,11 +169,47 @@ public class HiLoKeyGeneratorFactory implements KeyGeneratorFactory, Serializabl
         }
     }
 
-    private DataSource lookupDataSource(String dataSource) throws Exception {
-        try {
-            return (DataSource) new InitialContext().lookup(dataSource);
-        } catch (NamingException e) {
-            throw new Exception("Failed to lookup data source: " + dataSource);
-        }
+    public void setTableName(final String tableName) {
+        this.tableName = tableName;
+    }
+
+    public void setSequenceColumn(final String sequenceColumn) {
+        this.sequenceColumn = sequenceColumn;
+    }
+
+    public void setSequenceName(final String sequenceName) {
+        this.sequenceName = sequenceName;
+    }
+
+    public void setIdColumnName(final String idColumnName) {
+        this.idColumnName = idColumnName;
+    }
+
+    public void setCreateTableDdl(final String createTableDdl) {
+        this.createTableDdl = createTableDdl;
+    }
+
+    public void setSelectHiSql(final String selectHiSql) {
+        this.selectHiSql = selectHiSql;
+    }
+
+    public void setBlockSize(final long blockSize) {
+        this.blockSize = blockSize;
+    }
+
+    public void setCreateTable(final boolean createTable) {
+        this.createTable = createTable;
+    }
+
+    public void setDropTable(final boolean dropTable) {
+        this.dropTable = dropTable;
+    }
+
+    public Injector<TransactionManager> getTransactionManagerInjector() {
+        return tm;
+    }
+
+    public Injector<DataSource> getDataSourceInjector() {
+        return ds;
     }
 }

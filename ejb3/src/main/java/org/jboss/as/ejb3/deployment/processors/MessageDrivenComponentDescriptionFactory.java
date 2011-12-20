@@ -22,19 +22,21 @@
 
 package org.jboss.as.ejb3.deployment.processors;
 
+import static org.jboss.as.ejb3.deployment.processors.ViewInterfaces.getPotentialViewInterfaces;
+
+import javax.ejb.MessageDriven;
+import javax.jms.MessageListener;
 import java.lang.reflect.Modifier;
 import java.util.Collection;
 import java.util.Properties;
 import java.util.Set;
-
-import javax.ejb.MessageDriven;
-import javax.jms.MessageListener;
 
 import org.jboss.as.ee.component.Attachments;
 import org.jboss.as.ee.component.ComponentDescription;
 import org.jboss.as.ee.component.DeploymentDescriptorEnvironment;
 import org.jboss.as.ee.component.EEModuleDescription;
 import org.jboss.as.ee.metadata.MetadataCompleteMarker;
+import org.jboss.as.ejb3.component.messagedriven.DefaultResourceAdapterService;
 import org.jboss.as.ejb3.component.messagedriven.MessageDrivenComponentDescription;
 import org.jboss.as.ejb3.deployment.EjbDeploymentMarker;
 import org.jboss.as.ejb3.deployment.EjbJarDescription;
@@ -53,9 +55,9 @@ import org.jboss.metadata.ejb.spec.ActivationConfigPropertiesMetaData;
 import org.jboss.metadata.ejb.spec.ActivationConfigPropertyMetaData;
 import org.jboss.metadata.ejb.spec.EnterpriseBeanMetaData;
 import org.jboss.metadata.ejb.spec.MessageDrivenBeanMetaData;
+import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceName;
-
-import static org.jboss.as.ejb3.deployment.processors.ViewInterfaces.getPotentialViewInterfaces;
+import org.jboss.msc.service.ServiceRegistry;
 
 /**
  * User: jpai
@@ -106,7 +108,8 @@ public class MessageDrivenComponentDescriptionFactory extends EJBComponentDescri
             final String messagingType;
             if (beanMetaData != null) {
                 beanClassName = override(beanClassInfo.name().toString(), beanMetaData.getEjbClass());
-                deploymentDescriptorEnvironment = new DeploymentDescriptorEnvironment("java:comp/env/",beanMetaData);
+                deploymentDescriptorEnvironment = new DeploymentDescriptorEnvironment("java:comp/env/", beanMetaData);
+
                 if (beanMetaData instanceof MessageDrivenBeanMetaData) {
                     //It may actually be GenericBeanMetadata instance
                     final MessageDrivenBeanMetaData mdb = (MessageDrivenBeanMetaData) beanMetaData;
@@ -115,7 +118,20 @@ public class MessageDrivenComponentDescriptionFactory extends EJBComponentDescri
                     if (activationConfigMetaData != null) {
                         final ActivationConfigPropertiesMetaData propertiesMetaData = activationConfigMetaData.getActivationConfigProperties();
                         if (propertiesMetaData != null) {
-                            for (ActivationConfigPropertyMetaData propertyMetaData : propertiesMetaData) {
+                            for (final ActivationConfigPropertyMetaData propertyMetaData : propertiesMetaData) {
+                                activationConfigProperties.put(propertyMetaData.getKey(), propertyMetaData.getValue());
+                            }
+                        }
+                    }
+                } else if (beanMetaData instanceof JBossGenericBeanMetaData) {
+                    //TODO: fix the heirachy so this is not needed
+                    final JBossGenericBeanMetaData mdb = (JBossGenericBeanMetaData) beanMetaData;
+                    messagingType = mdb.getMessagingType();
+                    final ActivationConfigMetaData activationConfigMetaData = mdb.getActivationConfig();
+                    if (activationConfigMetaData != null) {
+                        final ActivationConfigPropertiesMetaData propertiesMetaData = activationConfigMetaData.getActivationConfigProperties();
+                        if (propertiesMetaData != null) {
+                            for (final ActivationConfigPropertyMetaData propertyMetaData : propertiesMetaData) {
                                 activationConfigProperties.put(propertyMetaData.getKey(), propertyMetaData.getValue());
                             }
                         }
@@ -123,21 +139,14 @@ public class MessageDrivenComponentDescriptionFactory extends EJBComponentDescri
                 } else {
                     messagingType = null;
                 }
-                if(beanMetaData instanceof JBossGenericBeanMetaData) {
-                    //This allows is to override the destination in jboss-ejb3.xml
-                    final String destination = ((JBossGenericBeanMetaData) beanMetaData).getDestinationJndiName();
-                    if(destination != null && !destination.isEmpty()) {
-                        activationConfigProperties.put("destination", destination);
-                    }
-                }
                 messageListenerInterfaceName = messagingType != null ? messagingType : getMessageListenerInterface(messageBeanAnnotation);
 
             } else {
                 beanClassName = beanClassInfo.name().toString();
                 messageListenerInterfaceName = getMessageListenerInterface(messageBeanAnnotation);
             }
-
-            final MessageDrivenComponentDescription beanDescription = new MessageDrivenComponentDescription(beanName, beanClassName, ejbJarDescription, deploymentUnitServiceName, messageListenerInterfaceName, activationConfigProperties);
+            final String defaultResourceAdapterName = this.getDefaultResourceAdapterName(deploymentUnit.getServiceRegistry());
+            final MessageDrivenComponentDescription beanDescription = new MessageDrivenComponentDescription(beanName, beanClassName, ejbJarDescription, deploymentUnitServiceName, messageListenerInterfaceName, activationConfigProperties, defaultResourceAdapterName);
             beanDescription.setDeploymentDescriptorEnvironment(deploymentDescriptorEnvironment);
 
             // Add this component description to module description
@@ -229,11 +238,12 @@ public class MessageDrivenComponentDescriptionFactory extends EJBComponentDescri
             messageListenerInterface = MessageListener.class.getName();
         }
         final Properties activationConfigProps = getActivationConfigProperties(mdb.getActivationConfig());
-        final MessageDrivenComponentDescription mdbComponentDescription = new MessageDrivenComponentDescription(beanName, beanClassName, ejbJarDescription, deploymentUnit.getServiceName(), messageListenerInterface, activationConfigProps);
+        final String defaultResourceAdapterName = this.getDefaultResourceAdapterName(deploymentUnit.getServiceRegistry());
+        final MessageDrivenComponentDescription mdbComponentDescription = new MessageDrivenComponentDescription(beanName, beanClassName, ejbJarDescription, deploymentUnit.getServiceName(), messageListenerInterface, activationConfigProps, defaultResourceAdapterName);
         // add it to the ejb jar description
         ejbJarDescription.getEEModuleDescription().addComponent(mdbComponentDescription);
         mdbComponentDescription.setDescriptorData(mdb);
-        mdbComponentDescription.setDeploymentDescriptorEnvironment(new DeploymentDescriptorEnvironment("java:comp/env/",mdb));
+        mdbComponentDescription.setDeploymentDescriptorEnvironment(new DeploymentDescriptorEnvironment("java:comp/env/", mdb));
     }
 
     private Properties getActivationConfigProperties(final AnnotationInstance messageBeanAnnotation) {
@@ -247,5 +257,16 @@ public class MessageDrivenComponentDescriptionFactory extends EJBComponentDescri
         return props;
     }
 
+    /**
+     * Returns the name of the resource adapter which will be used as the default RA for MDBs (unless overriden by
+     * the MDBs).
+     *
+     * @param serviceRegistry
+     * @return
+     */
+    private String getDefaultResourceAdapterName(final ServiceRegistry serviceRegistry) {
+        final ServiceController<DefaultResourceAdapterService> serviceController = (ServiceController<DefaultResourceAdapterService>) serviceRegistry.getRequiredService(DefaultResourceAdapterService.DEFAULT_RA_NAME_SERVICE_NAME);
+        return serviceController.getValue().getDefaultResourceAdapterName();
+    }
 
 }

@@ -42,10 +42,12 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REA
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_RESOURCE_DESCRIPTION_OPERATION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_RESOURCE_OPERATION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RECURSIVE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RECURSIVE_DEPTH;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REPLY_PROPERTIES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUEST_PROPERTIES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUIRED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.UNDEFINE_ATTRIBUTE_OPERATION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE_TYPE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.WRITE_ATTRIBUTE_OPERATION;
@@ -76,6 +78,10 @@ public class GlobalDescriptions {
         node.get(REQUEST_PROPERTIES, RECURSIVE, REQUIRED).set(false);
         node.get(REQUEST_PROPERTIES, RECURSIVE, NILLABLE).set(true);
         node.get(REQUEST_PROPERTIES, RECURSIVE, DEFAULT).set(false);
+        node.get(REQUEST_PROPERTIES, RECURSIVE_DEPTH, TYPE).set(ModelType.INT);
+        node.get(REQUEST_PROPERTIES, RECURSIVE_DEPTH, DESCRIPTION).set(bundle.getString("global.read-resource.recursive-depth"));
+        node.get(REQUEST_PROPERTIES, RECURSIVE_DEPTH, REQUIRED).set(false);
+        node.get(REQUEST_PROPERTIES, RECURSIVE_DEPTH, NILLABLE).set(true);
         node.get(REQUEST_PROPERTIES, PROXIES, TYPE).set(ModelType.BOOLEAN);
         node.get(REQUEST_PROPERTIES, PROXIES, DESCRIPTION).set(bundle.getString("global.read-resource.proxies"));
         node.get(REQUEST_PROPERTIES, PROXIES, REQUIRED).set(false);
@@ -182,6 +188,10 @@ public class GlobalDescriptions {
         node.get(REQUEST_PROPERTIES, RECURSIVE, TYPE).set(ModelType.BOOLEAN);
         node.get(REQUEST_PROPERTIES, RECURSIVE, DESCRIPTION).set(bundle.getString("global.read-children-resources.recursive"));
         node.get(REQUEST_PROPERTIES, RECURSIVE, NILLABLE).set(true);
+        node.get(REQUEST_PROPERTIES, RECURSIVE_DEPTH, TYPE).set(ModelType.INT);
+        node.get(REQUEST_PROPERTIES, RECURSIVE_DEPTH, DESCRIPTION).set(bundle.getString("global.read-children-resources.recursive-depth"));
+        node.get(REQUEST_PROPERTIES, RECURSIVE_DEPTH, REQUIRED).set(false);
+        node.get(REQUEST_PROPERTIES, RECURSIVE_DEPTH, NILLABLE).set(true);
         node.get(REQUEST_PROPERTIES, PROXIES, TYPE).set(ModelType.BOOLEAN);
         node.get(REQUEST_PROPERTIES, PROXIES, DESCRIPTION).set(bundle.getString("global.read-children-resources.proxies"));
         node.get(REQUEST_PROPERTIES, PROXIES, NILLABLE).set(true);
@@ -250,12 +260,17 @@ public class GlobalDescriptions {
         node.get(REQUEST_PROPERTIES, OPERATIONS, NILLABLE).set(true);
         node.get(REQUEST_PROPERTIES, INHERITED, TYPE).set(ModelType.BOOLEAN);
         node.get(REQUEST_PROPERTIES, INHERITED, DESCRIPTION).set(bundle.getString("global.read-resource-description.inherited"));
-        node.get(REQUEST_PROPERTIES, RECURSIVE, REQUIRED).set(false);
+        node.get(REQUEST_PROPERTIES, INHERITED, REQUIRED).set(false);
         node.get(REQUEST_PROPERTIES, INHERITED, NILLABLE).set(true);
         node.get(REQUEST_PROPERTIES, RECURSIVE, TYPE).set(ModelType.BOOLEAN);
         node.get(REQUEST_PROPERTIES, RECURSIVE, DESCRIPTION).set(bundle.getString("global.read-resource-description.recursive"));
         node.get(REQUEST_PROPERTIES, RECURSIVE, REQUIRED).set(false);
         node.get(REQUEST_PROPERTIES, RECURSIVE, NILLABLE).set(true);
+        node.get(REQUEST_PROPERTIES, RECURSIVE, REQUIRED).set(false);
+        node.get(REQUEST_PROPERTIES, RECURSIVE_DEPTH, TYPE).set(ModelType.INT);
+        node.get(REQUEST_PROPERTIES, RECURSIVE_DEPTH, DESCRIPTION).set(bundle.getString("global.read-resource-description.recursive-depth"));
+        node.get(REQUEST_PROPERTIES, RECURSIVE_DEPTH, REQUIRED).set(false);
+        node.get(REQUEST_PROPERTIES, RECURSIVE_DEPTH, NILLABLE).set(true);
         node.get(REQUEST_PROPERTIES, LOCALE, TYPE).set(ModelType.STRING);
         node.get(REQUEST_PROPERTIES, LOCALE, REQUIRED).set(false);
         node.get(REQUEST_PROPERTIES, LOCALE, NILLABLE).set(true);
@@ -267,6 +282,19 @@ public class GlobalDescriptions {
         return node;
     }
 
+    public static ModelNode getUndefineAttributeOperationDescription(Locale locale) {
+        ResourceBundle bundle = getResourceBundle(locale);
+
+        ModelNode node = new ModelNode();
+        node.get(OPERATION_NAME).set(UNDEFINE_ATTRIBUTE_OPERATION);
+        node.get(DESCRIPTION).set(bundle.getString("global.undefine-attribute"));
+
+        node.get(REQUEST_PROPERTIES, NAME, TYPE).set(ModelType.STRING);
+        node.get(REQUEST_PROPERTIES, NAME, DESCRIPTION).set(bundle.getString("global.undefine-attribute.name"));
+        node.get(REQUEST_PROPERTIES, NAME, NILLABLE).set(false);
+
+        return node;
+    }
 
     private static ResourceBundle getResourceBundle(Locale locale) {
         if (locale == null) {

@@ -39,8 +39,10 @@ import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.ControlledProcessState;
 import org.jboss.as.controller.ExpressionResolver;
 import org.jboss.as.controller.ModelController;
-import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.PathAddress;
+import org.jboss.as.controller.ProcessType;
+import org.jboss.as.controller.RunningMode;
+import org.jboss.as.controller.RunningModeControl;
 import org.jboss.as.controller.client.ModelControllerClient;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.descriptions.common.InterfaceDescription;
@@ -81,7 +83,7 @@ public class ServerControllerUnitTestCase {
         final ServiceTarget target = container.subTarget();
         final StringConfigurationPersister persister = new StringConfigurationPersister(Collections.<ModelNode>emptyList(), new StandaloneXml(null, null));
         final ControlledProcessState processState = new ControlledProcessState(true);
-        final ModelControllerService svc = new ModelControllerService(OperationContext.Type.MANAGEMENT, processState, persister);
+        final ModelControllerService svc = new ModelControllerService(processState, persister);
         final ServiceBuilder<ModelController> builder = target.addService(Services.JBOSS_SERVER_CONTROLLER, svc);
         builder.install();
 
@@ -195,13 +197,26 @@ public class ServerControllerUnitTestCase {
 
     protected void populateCritieria(final ModelNode model, final boolean nested) {
         for(final AttributeDefinition def : InterfaceDescription.NESTED_ATTRIBUTES) {
+            final ModelNode node = model.get(def.getName());
             if(def.getType() == ModelType.BOOLEAN) {
-                model.get(def.getName()).set(true);
-            } else {
-                if(nested) {
-                    model.get(def.getName()).add("127.0.0.1");
+                node.set(true);
+            } else if (def == InterfaceDescription.INET_ADDRESS || def == InterfaceDescription.LOOPBACK_ADDRESS) {
+                if (nested && def == InterfaceDescription.INET_ADDRESS) {
+                    node.add("127.0.0.1");
                 } else {
-                    model.get(def.getName()).set("127.0.0.1");
+                    node.set("127.0.0.1");
+                }
+            } else if (def == InterfaceDescription.NIC || def == InterfaceDescription.NIC_MATCH) {
+                if (nested) {
+                    node.add("lo");
+                } else {
+                    node.set("lo");
+                }
+            } else if (def == InterfaceDescription.SUBNET_MATCH) {
+                if (nested) {
+                    node.add("127.0.0.1/24");
+                } else {
+                    node.set("127.0.0.0/24");
                 }
             }
         }
@@ -215,8 +230,8 @@ public class ServerControllerUnitTestCase {
         volatile ManagementResourceRegistration rootRegistration;
         volatile Exception error;
 
-        ModelControllerService(final OperationContext.Type type, final ControlledProcessState processState, final StringConfigurationPersister persister) {
-            super(type, persister, processState, ServerDescriptionProviders.ROOT_PROVIDER, null, ExpressionResolver.DEFAULT);
+        ModelControllerService(final ControlledProcessState processState, final StringConfigurationPersister persister) {
+            super(ProcessType.EMBEDDED_SERVER, new RunningModeControl(RunningMode.ADMIN_ONLY), persister, processState, ServerDescriptionProviders.ROOT_PROVIDER, null, ExpressionResolver.DEFAULT);
             this.persister = persister;
             this.processState = processState;
         }
@@ -226,8 +241,10 @@ public class ServerControllerUnitTestCase {
             this.rootRegistration = rootRegistration;
             Properties properties = new Properties();
             properties.put("jboss.home.dir", ".");
-            final ServerEnvironment environment = new ServerEnvironment(properties, new HashMap<String, String>(), null, ServerEnvironment.LaunchType.DOMAIN);
-            ServerControllerModelUtil.initOperations(rootRegistration, null, persister, environment, processState, null, false);
+
+            final String hostControllerName = "hostControllerName"; // Host Controller name may not be null when in a managed domain
+            final ServerEnvironment environment = new ServerEnvironment(hostControllerName, properties, new HashMap<String, String>(), null, ServerEnvironment.LaunchType.DOMAIN, null);
+            ServerControllerModelUtil.initOperations(rootRegistration, null, persister, environment, processState, null, null, false);
         }
 
         @Override

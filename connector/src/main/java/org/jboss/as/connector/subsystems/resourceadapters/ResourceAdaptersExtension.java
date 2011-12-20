@@ -48,7 +48,6 @@ import static org.jboss.as.connector.subsystems.resourceadapters.Constants.JNDIN
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.NOTXSEPARATEPOOL;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.NO_RECOVERY;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.PAD_XID;
-import static org.jboss.as.connector.subsystems.resourceadapters.Constants.POOL_NAME;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.RECOVERLUGIN_CLASSNAME;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.RECOVERLUGIN_PROPERTIES;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.RECOVERY_PASSWORD;
@@ -80,42 +79,30 @@ import static org.jboss.as.connector.subsystems.resourceadapters.ResourceAdapter
 import static org.jboss.as.connector.subsystems.resourceadapters.ResourceAdaptersSubsystemProviders.RESOURCEADAPTER_DESC;
 import static org.jboss.as.connector.subsystems.resourceadapters.ResourceAdaptersSubsystemProviders.SUBSYSTEM;
 import static org.jboss.as.connector.subsystems.resourceadapters.ResourceAdaptersSubsystemProviders.SUBSYSTEM_ADD_DESC;
+import static org.jboss.as.connector.subsystems.resourceadapters.ResourceAdaptersSubsystemProviders.SUBSYSTEM_REMOVE_DESC;
 import static org.jboss.as.connector.subsystems.resourceadapters.ResourceAdaptersSubsystemProviders.TEST_CONNECTION_DESC;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIBE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.WRITE_ATTRIBUTE_OPERATION;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
 
-import org.jboss.as.connector.pool.PoolConfigurationRWHandler;
-import org.jboss.as.connector.pool.PoolConfigurationRWHandler.PoolConfigurationReadHandler;
-import org.jboss.as.connector.pool.PoolConfigurationRWHandler.RaPoolConfigurationWriteHandler;
 import org.jboss.as.connector.pool.PoolMetrics;
 import org.jboss.as.connector.pool.PoolOperations;
 import org.jboss.as.controller.Extension;
 import org.jboss.as.controller.ExtensionContext;
-import org.jboss.as.controller.OperationContext;
-import org.jboss.as.controller.OperationFailedException;
-import org.jboss.as.controller.OperationStepHandler;
-import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.ReloadRequiredWriteAttributeHandler;
 import org.jboss.as.controller.SimpleAttributeDefinition;
 import org.jboss.as.controller.SubsystemRegistration;
-import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
-import org.jboss.as.controller.descriptions.common.CommonDescriptions;
-import org.jboss.as.controller.descriptions.common.CommonProviders;
 import org.jboss.as.controller.operations.common.GenericSubsystemDescribeHandler;
-import org.jboss.as.controller.operations.global.GlobalOperationHandlers;
 import org.jboss.as.controller.parsing.ExtensionParsingContext;
 import org.jboss.as.controller.parsing.ParseUtils;
 import org.jboss.as.controller.persistence.SubsystemMarshallingContext;
@@ -126,6 +113,7 @@ import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
 import org.jboss.jca.common.api.metadata.common.CommonConnDef;
 import org.jboss.jca.common.api.metadata.common.Recovery;
+import org.jboss.jca.common.api.metadata.common.TransactionSupportEnum;
 import org.jboss.jca.common.api.metadata.resourceadapter.ResourceAdapter;
 import org.jboss.jca.common.api.metadata.resourceadapter.ResourceAdapters;
 import org.jboss.staxmapper.XMLElementReader;
@@ -155,6 +143,7 @@ public class ResourceAdaptersExtension implements Extension {
         // Remoting subsystem description and operation handlers
         final ManagementResourceRegistration subsystem = registration.registerSubsystemModel(SUBSYSTEM);
         subsystem.registerOperationHandler(ADD, ResourceAdaptersSubSystemAdd.INSTANCE, SUBSYSTEM_ADD_DESC, false);
+        subsystem.registerOperationHandler(REMOVE, ReloadRequiredRemoveStepHandler.INSTANCE, SUBSYSTEM_REMOVE_DESC, false);
         subsystem.registerOperationHandler(DESCRIBE, GenericSubsystemDescribeHandler.INSTANCE, GenericSubsystemDescribeHandler.INSTANCE, false, OperationEntry.EntryType.PRIVATE);
 
         final ManagementResourceRegistration resourceadapter = subsystem.registerSubModel(PathElement.pathElement(RESOURCEADAPTER_NAME),
@@ -173,7 +162,6 @@ public class ResourceAdaptersExtension implements Extension {
         final ManagementResourceRegistration connectionDefinition = resourceadapter.registerSubModel(PathElement.pathElement(CONNECTIONDEFINITIONS_NAME), CONNECTION_DEFINITION_DESC);
         connectionDefinition.registerOperationHandler(ADD, ConnectionDefinitionAdd.INSTANCE, ADD_CONNECTION_DEFINITION_DESC, false);
         connectionDefinition.registerOperationHandler(REMOVE, ReloadRequiredRemoveStepHandler.INSTANCE, REMOVE_CONNECTION_DEFINITION_DESC, false);
-        connectionDefinition.registerOperationHandler(WRITE_ATTRIBUTE_OPERATION, GlobalOperationHandlers.WRITE_ATTRIBUTE, CommonProviders.WRITE_ATTRIBUTE_PROVIDER, true);
 
         final ManagementResourceRegistration configCF = connectionDefinition.registerSubModel(PathElement.pathElement(CONFIG_PROPERTIES.getName()), CONFIG_PROPERTIES_DESC);
         configCF.registerOperationHandler(ADD, CDConfigPropertyAdd.INSTANCE, ADD_CONFIG_PROPERTIES_DESC, false);
@@ -195,17 +183,12 @@ public class ResourceAdaptersExtension implements Extension {
                     reloadRequiredWriteAttributeHandler, Storage.CONFIGURATION);
         }
 
-        resourceadapter.registerOperationHandler("flush-idle-connection-in-pool",
+        connectionDefinition.registerOperationHandler("flush-idle-connection-in-pool",
                 PoolOperations.FlushIdleConnectionInPool.RA_INSTANCE, FLUSH_IDLE_CONNECTION_DESC, false);
-        resourceadapter.registerOperationHandler("flush-all-connection-in-pool",
+        connectionDefinition.registerOperationHandler("flush-all-connection-in-pool",
                 PoolOperations.FlushAllConnectionInPool.RA_INSTANCE, FLUSH_ALL_CONNECTION_DESC, false);
-        resourceadapter.registerOperationHandler("test-connection-in-pool", PoolOperations.TestConnectionInPool.RA_INSTANCE,
+        connectionDefinition.registerOperationHandler("test-connection-in-pool", PoolOperations.TestConnectionInPool.RA_INSTANCE,
                 TEST_CONNECTION_DESC, false);
-
-        for (final String attributeName : PoolMetrics.ATTRIBUTES) {
-            resourceadapter.registerMetric(attributeName, PoolMetrics.RaPoolMetricsHandler.INSTANCE);
-
-        }
 
     }
 
@@ -214,7 +197,7 @@ public class ResourceAdaptersExtension implements Extension {
         context.setSubsystemXmlMapping(Namespace.CURRENT.getUriString(), ResourceAdapterSubsystemParser.INSTANCE);
     }
 
-    static final class ResourceAdapterSubsystemParser implements XMLStreamConstants, XMLElementReader<List<ModelNode>>,
+    public static final class ResourceAdapterSubsystemParser implements XMLStreamConstants, XMLElementReader<List<ModelNode>>,
             XMLElementWriter<SubsystemMarshallingContext> {
 
         static final ResourceAdapterSubsystemParser INSTANCE = new ResourceAdapterSubsystemParser();
@@ -243,22 +226,27 @@ public class ResourceAdaptersExtension implements Extension {
         private void writeRaElement(XMLExtendedStreamWriter streamWriter, ModelNode ra) throws XMLStreamException {
             streamWriter.writeStartElement(ResourceAdapters.Tag.RESOURCE_ADAPTER.getLocalName());
 
-            ARCHIVE.marshallAsElement(ra, false, streamWriter);
+            ARCHIVE.marshallAsElement(ra, streamWriter);
 
             if (ra.hasDefined(BEANVALIDATIONGROUPS.getName())) {
                 for (ModelNode bvg : ra.get(BEANVALIDATIONGROUPS.getName()).asList()) {
-                    BEANVALIDATIONGROUPS.marshallAsElement(bvg, false, streamWriter);
+                    BEANVALIDATIONGROUPS.marshallAsElement(bvg, streamWriter);
                 }
             }
 
-            BOOTSTRAPCONTEXT.marshallAsElement(ra, false, streamWriter);
-            TRANSACTIONSUPPORT.marshallAsElement(ra, false, streamWriter);
+            BOOTSTRAPCONTEXT.marshallAsElement(ra, streamWriter);
+            TRANSACTIONSUPPORT.marshallAsElement(ra, streamWriter);
             writeNewConfigProperties(streamWriter, ra);
-
+            TransactionSupportEnum transactionSupport = ra.hasDefined(TRANSACTIONSUPPORT.getName()) ? TransactionSupportEnum
+                .valueOf(ra.get(TRANSACTIONSUPPORT.getName()).asString()) : null;
+            boolean isXa = false;
+            if (transactionSupport == TransactionSupportEnum.XATransaction) {
+                isXa = true;
+            }
             if (ra.hasDefined(CONNECTIONDEFINITIONS_NAME)) {
                 streamWriter.writeStartElement(ResourceAdapter.Tag.CONNECTION_DEFINITIONS.getLocalName());
                 for (Property conDef : ra.get(CONNECTIONDEFINITIONS_NAME).asPropertyList()) {
-                    writeConDef(streamWriter, conDef.getValue());
+                    writeConDef(streamWriter, conDef.getValue(), conDef.getName(), isXa);
                 }
                 streamWriter.writeEndElement();
             }
@@ -266,7 +254,7 @@ public class ResourceAdaptersExtension implements Extension {
             if (ra.hasDefined(ADMIN_OBJECTS_NAME)) {
                 streamWriter.writeStartElement(ResourceAdapter.Tag.ADMIN_OBJECTS.getLocalName());
                 for (Property adminObject : ra.get(ADMIN_OBJECTS_NAME).asPropertyList()) {
-                    writeAdminObject(streamWriter, adminObject.getValue());
+                    writeAdminObject(streamWriter, adminObject.getValue(), adminObject.getName());
                 }
                 streamWriter.writeEndElement();
             }
@@ -306,27 +294,27 @@ public class ResourceAdaptersExtension implements Extension {
         }
 
 
-        private void writeAdminObject(XMLExtendedStreamWriter streamWriter, ModelNode adminObject) throws XMLStreamException {
+        private void writeAdminObject(XMLExtendedStreamWriter streamWriter, ModelNode adminObject, final String poolName) throws XMLStreamException {
             streamWriter.writeStartElement(ResourceAdapter.Tag.ADMIN_OBJECT.getLocalName());
-            CLASS_NAME.marshallAsAttribute(adminObject, false, streamWriter);
-            JNDINAME.marshallAsAttribute(adminObject, false, streamWriter);
-            ENABLED.marshallAsAttribute(adminObject, false, streamWriter);
-            USE_JAVA_CONTEXT.marshallAsAttribute(adminObject, false, streamWriter);
-            POOL_NAME.marshallAsAttribute(adminObject, false, streamWriter);
+            CLASS_NAME.marshallAsAttribute(adminObject, streamWriter);
+            JNDINAME.marshallAsAttribute(adminObject, streamWriter);
+            ENABLED.marshallAsAttribute(adminObject, streamWriter);
+            USE_JAVA_CONTEXT.marshallAsAttribute(adminObject, streamWriter);
+            streamWriter.writeAttribute("pool-name", poolName);
 
             writeNewConfigProperties(streamWriter, adminObject);
             streamWriter.writeEndElement();
 
         }
 
-        private void writeConDef(XMLExtendedStreamWriter streamWriter, ModelNode conDef) throws XMLStreamException {
+        private void writeConDef(XMLExtendedStreamWriter streamWriter, ModelNode conDef, final String poolName, final boolean isXa) throws XMLStreamException {
             streamWriter.writeStartElement(ResourceAdapter.Tag.CONNECTION_DEFINITION.getLocalName());
-            CLASS_NAME.marshallAsAttribute(conDef, false, streamWriter);
-            JNDINAME.marshallAsAttribute(conDef, false, streamWriter);
-            ENABLED.marshallAsAttribute(conDef, false, streamWriter);
-            USE_JAVA_CONTEXT.marshallAsAttribute(conDef, false, streamWriter);
-            POOL_NAME.marshallAsAttribute(conDef, false, streamWriter);
-            USE_CCM.marshallAsAttribute(conDef, false, streamWriter);
+            CLASS_NAME.marshallAsAttribute(conDef, streamWriter);
+            JNDINAME.marshallAsAttribute(conDef, streamWriter);
+            ENABLED.marshallAsAttribute(conDef, streamWriter);
+            USE_JAVA_CONTEXT.marshallAsAttribute(conDef, streamWriter);
+            streamWriter.writeAttribute("pool-name", poolName);
+            USE_CCM.marshallAsAttribute(conDef, streamWriter);
 
 
             writeNewConfigProperties(streamWriter, conDef);
@@ -334,31 +322,29 @@ public class ResourceAdaptersExtension implements Extension {
             if (conDef.hasDefined(MAX_POOL_SIZE.getName()) || conDef.hasDefined(MIN_POOL_SIZE.getName()) ||
                 conDef.hasDefined(POOL_USE_STRICT_MIN.getName()) || conDef.hasDefined(POOL_PREFILL.getName()) ||
                 conDef.hasDefined(POOL_FLUSH_STRATEGY.getName())) {
-                if (conDef.hasDefined(INTERLEAVING.getName()) || conDef.hasDefined(WRAP_XA_RESOURCE.getName()) ||
-                    conDef.hasDefined(NOTXSEPARATEPOOL.getName()) || conDef.hasDefined(PAD_XID.getName()) ||
-                    conDef.hasDefined(SAME_RM_OVERRIDE.getName())) {
+                if (isXa) {
 
                     streamWriter.writeStartElement(CommonConnDef.Tag.XA_POOL.getLocalName());
-                    MIN_POOL_SIZE.marshallAsElement(conDef, false, streamWriter);
-                    MAX_POOL_SIZE.marshallAsElement(conDef, false, streamWriter);
-                    POOL_PREFILL.marshallAsElement(conDef, false, streamWriter);
-                    POOL_USE_STRICT_MIN.marshallAsElement(conDef, false, streamWriter);
-                    POOL_FLUSH_STRATEGY.marshallAsElement(conDef, false, streamWriter);
+                    MIN_POOL_SIZE.marshallAsElement(conDef, streamWriter);
+                    MAX_POOL_SIZE.marshallAsElement(conDef, streamWriter);
+                    POOL_PREFILL.marshallAsElement(conDef, streamWriter);
+                    POOL_USE_STRICT_MIN.marshallAsElement(conDef, streamWriter);
+                    POOL_FLUSH_STRATEGY.marshallAsElement(conDef, streamWriter);
 
-                    SAME_RM_OVERRIDE.marshallAsElement(conDef, false, streamWriter);
-                    INTERLEAVING.marshallAsElement(conDef, false, streamWriter);
-                    NOTXSEPARATEPOOL.marshallAsElement(conDef, false, streamWriter);
-                    PAD_XID.marshallAsElement(conDef, false, streamWriter);
-                    WRAP_XA_RESOURCE.marshallAsElement(conDef, false, streamWriter);
+                    SAME_RM_OVERRIDE.marshallAsElement(conDef, streamWriter);
+                    INTERLEAVING.marshallAsElement(conDef, streamWriter);
+                    NOTXSEPARATEPOOL.marshallAsElement(conDef, streamWriter);
+                    PAD_XID.marshallAsElement(conDef, streamWriter);
+                    WRAP_XA_RESOURCE.marshallAsElement(conDef, streamWriter);
 
                     streamWriter.writeEndElement();
                 } else {
                     streamWriter.writeStartElement(CommonConnDef.Tag.POOL.getLocalName());
-                    MIN_POOL_SIZE.marshallAsElement(conDef, false, streamWriter);
-                    MAX_POOL_SIZE.marshallAsElement(conDef, false, streamWriter);
-                    POOL_PREFILL.marshallAsElement(conDef, false, streamWriter);
-                    POOL_USE_STRICT_MIN.marshallAsElement(conDef, false, streamWriter);
-                    POOL_FLUSH_STRATEGY.marshallAsElement(conDef, false, streamWriter);
+                    MIN_POOL_SIZE.marshallAsElement(conDef, streamWriter);
+                    MAX_POOL_SIZE.marshallAsElement(conDef, streamWriter);
+                    POOL_PREFILL.marshallAsElement(conDef, streamWriter);
+                    POOL_USE_STRICT_MIN.marshallAsElement(conDef, streamWriter);
+                    POOL_FLUSH_STRATEGY.marshallAsElement(conDef, streamWriter);
                     streamWriter.writeEndElement();
                 }
             }
@@ -366,9 +352,9 @@ public class ResourceAdaptersExtension implements Extension {
             if (conDef.hasDefined(APPLICATION.getName()) || conDef.hasDefined(SECURITY_DOMAIN.getName())
                     || conDef.hasDefined(SECURITY_DOMAIN_AND_APPLICATION.getName())) {
                 streamWriter.writeStartElement(CommonConnDef.Tag.SECURITY.getLocalName());
-                APPLICATION.marshallAsElement(conDef, false, streamWriter);
-                SECURITY_DOMAIN.marshallAsElement(conDef, false, streamWriter);
-                SECURITY_DOMAIN_AND_APPLICATION.marshallAsElement(conDef, false, streamWriter);
+                APPLICATION.marshallAsElement(conDef, streamWriter);
+                SECURITY_DOMAIN.marshallAsElement(conDef, streamWriter);
+                SECURITY_DOMAIN_AND_APPLICATION.marshallAsElement(conDef, streamWriter);
 
                 streamWriter.writeEndElement();
             }
@@ -376,19 +362,19 @@ public class ResourceAdaptersExtension implements Extension {
             if (conDef.hasDefined(BLOCKING_TIMEOUT_WAIT_MILLIS.getName()) || conDef.hasDefined(IDLETIMEOUTMINUTES.getName()) || conDef.hasDefined(ALLOCATION_RETRY.getName())
                     || conDef.hasDefined(ALLOCATION_RETRY_WAIT_MILLIS.getName()) || conDef.hasDefined(XA_RESOURCE_TIMEOUT.getName())) {
                 streamWriter.writeStartElement(CommonConnDef.Tag.TIMEOUT.getLocalName());
-                BLOCKING_TIMEOUT_WAIT_MILLIS.marshallAsElement(conDef, false, streamWriter);
-                IDLETIMEOUTMINUTES.marshallAsElement(conDef, false, streamWriter);
-                ALLOCATION_RETRY.marshallAsElement(conDef, false, streamWriter);
-                ALLOCATION_RETRY_WAIT_MILLIS.marshallAsElement(conDef, false, streamWriter);
-                XA_RESOURCE_TIMEOUT.marshallAsElement(conDef, false, streamWriter);
+                BLOCKING_TIMEOUT_WAIT_MILLIS.marshallAsElement(conDef, streamWriter);
+                IDLETIMEOUTMINUTES.marshallAsElement(conDef, streamWriter);
+                ALLOCATION_RETRY.marshallAsElement(conDef, streamWriter);
+                ALLOCATION_RETRY_WAIT_MILLIS.marshallAsElement(conDef, streamWriter);
+                XA_RESOURCE_TIMEOUT.marshallAsElement(conDef, streamWriter);
                 streamWriter.writeEndElement();
             }
 
             if (conDef.hasDefined(BACKGROUNDVALIDATION.getName()) || conDef.hasDefined(BACKGROUNDVALIDATIONMILLIS.getName()) || conDef.hasDefined(USE_FAST_FAIL.getName()) ) {
                 streamWriter.writeStartElement(CommonConnDef.Tag.VALIDATION.getLocalName());
-                BACKGROUNDVALIDATION.marshallAsElement(conDef, false, streamWriter);
-                BACKGROUNDVALIDATIONMILLIS.marshallAsElement(conDef, false, streamWriter);
-                USE_FAST_FAIL.marshallAsElement(conDef, false, streamWriter);
+                BACKGROUNDVALIDATION.marshallAsElement(conDef, streamWriter);
+                BACKGROUNDVALIDATIONMILLIS.marshallAsElement(conDef, streamWriter);
+                USE_FAST_FAIL.marshallAsElement(conDef, streamWriter);
                 streamWriter.writeEndElement();
             }
 
@@ -400,14 +386,14 @@ public class ResourceAdaptersExtension implements Extension {
                 if (conDef.hasDefined(RECOVERY_USERNAME.getName()) || conDef.hasDefined(RECOVERY_PASSWORD.getName())
                         || conDef.hasDefined(RECOVERY_SECURITY_DOMAIN.getName())) {
                     streamWriter.writeStartElement(Recovery.Tag.RECOVER_CREDENTIAL.getLocalName());
-                    RECOVERY_USERNAME.marshallAsElement(conDef, false, streamWriter);
-                    RECOVERY_PASSWORD.marshallAsElement(conDef, false, streamWriter);
-                    RECOVERY_SECURITY_DOMAIN.marshallAsElement(conDef, false, streamWriter);
+                    RECOVERY_USERNAME.marshallAsElement(conDef, streamWriter);
+                    RECOVERY_PASSWORD.marshallAsElement(conDef, streamWriter);
+                    RECOVERY_SECURITY_DOMAIN.marshallAsElement(conDef, streamWriter);
                     streamWriter.writeEndElement();
                 }
                 if (conDef.hasDefined(RECOVERLUGIN_CLASSNAME.getName()) || conDef.hasDefined(RECOVERLUGIN_PROPERTIES.getName())) {
                     streamWriter.writeStartElement(Recovery.Tag.RECOVER_PLUGIN.getLocalName());
-                    RECOVERLUGIN_CLASSNAME.marshallAsAttribute(conDef, false, streamWriter);
+                    RECOVERLUGIN_CLASSNAME.marshallAsAttribute(conDef, streamWriter);
                     if (conDef.hasDefined(RECOVERLUGIN_PROPERTIES.getName())) {
                         for (Property property : conDef.get(RECOVERLUGIN_PROPERTIES.getName()).asPropertyList()) {
                             writeProperty(streamWriter, conDef, property.getName(), property
@@ -416,7 +402,7 @@ public class ResourceAdaptersExtension implements Extension {
                     }
                     streamWriter.writeEndElement();
                 }
-                NO_RECOVERY.marshallAsAttribute(conDef, false, streamWriter);
+                NO_RECOVERY.marshallAsAttribute(conDef, streamWriter);
 
             }
 

@@ -25,8 +25,6 @@ package org.jboss.as.osgi.service;
 import java.util.Dictionary;
 import java.util.Set;
 
-import org.jboss.msc.service.ServiceName;
-
 /**
  * A configuration listener for the {@link ConfigAdminService}.
  *
@@ -39,8 +37,6 @@ import org.jboss.msc.service.ServiceName;
  * @since 11-Dec-2010
  */
 public interface ConfigAdminListener {
-
-    ServiceName SERVICE_NAME_BASE = ConfigAdminService.SERVICE_NAME.append("listener");
 
     /**
      * Called when the {@code ConfigAdminService} receives an update for

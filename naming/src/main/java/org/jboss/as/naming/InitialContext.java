@@ -22,7 +22,10 @@
 
 package org.jboss.as.naming;
 
-import org.jboss.as.naming.context.NamespaceContextSelector;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Hashtable;
+import java.util.Map;
 
 import javax.naming.Binding;
 import javax.naming.Context;
@@ -32,10 +35,8 @@ import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
 import javax.naming.spi.ObjectFactory;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Hashtable;
-import java.util.Map;
+
+import org.jboss.as.naming.context.NamespaceContextSelector;
 
 /**
  * @author John Bailey
@@ -70,9 +71,13 @@ public class InitialContext extends NamingContext {
                     ObjectFactory factory = urlContextFactories.get(scheme);
                     if (factory != null) {
                         try {
-                            return ((Context)factory.getObjectInstance(null, name, this, getEnvironment())).lookup(name);
+                            return ((Context) factory.getObjectInstance(null, name, this, getEnvironment())).lookup(name);
+                        }catch(NamingException e) {
+                            throw e;
                         } catch (Exception e) {
-                            throw new RuntimeException(e);
+                            NamingException n = new NamingException(e.getMessage());
+                            n.initCause(e);
+                            throw n;
                         }
                     }
                 }
@@ -122,6 +127,90 @@ public class InitialContext extends NamingContext {
             throw new NameNotFoundException(name.toString());
         }
         return namespaceContext.list(parsedName.remaining());
+    }
+
+    public void bind(Name name, Object object) throws NamingException {
+        final ParsedName parsedName = parse(name);
+        if (parsedName.namespace() == null || parsedName.namespace().equals("")) {
+            super.bind(parsedName.remaining(), object);
+            return;
+        }
+        final NamespaceContextSelector selector = NamespaceContextSelector.getCurrentSelector();
+        if (selector == null) {
+            throw new NameNotFoundException(name.toString());
+        }
+        final Context namespaceContext = selector.getContext(parsedName.namespace());
+        if (namespaceContext == null) {
+            throw new NameNotFoundException(name.toString());
+        }
+        namespaceContext.bind(parsedName.remaining(), object);
+    }
+
+    public void rebind(Name name, Object object) throws NamingException {
+        final ParsedName parsedName = parse(name);
+        if (parsedName.namespace() == null || parsedName.namespace().equals("")) {
+            super.rebind(parsedName.remaining(), object);
+            return;
+        }
+        final NamespaceContextSelector selector = NamespaceContextSelector.getCurrentSelector();
+        if (selector == null) {
+            throw new NameNotFoundException(name.toString());
+        }
+        final Context namespaceContext = selector.getContext(parsedName.namespace());
+        if (namespaceContext == null) {
+            throw new NameNotFoundException(name.toString());
+        }
+        namespaceContext.rebind(parsedName.remaining(), object);
+    }
+
+    public void unbind(Name name) throws NamingException {
+        final ParsedName parsedName = parse(name);
+        if (parsedName.namespace() == null || parsedName.namespace().equals("")) {
+            super.unbind(parsedName.remaining());
+            return;
+        }
+        final NamespaceContextSelector selector = NamespaceContextSelector.getCurrentSelector();
+        if (selector == null) {
+            throw new NameNotFoundException(name.toString());
+        }
+        final Context namespaceContext = selector.getContext(parsedName.namespace());
+        if (namespaceContext == null) {
+            throw new NameNotFoundException(name.toString());
+        }
+        namespaceContext.unbind(parsedName.remaining());
+    }
+
+    public void destroySubcontext(Name name) throws NamingException {
+        final ParsedName parsedName = parse(name);
+        if (parsedName.namespace() == null || parsedName.namespace().equals("")) {
+            super.destroySubcontext(parsedName.remaining());
+            return;
+        }
+        final NamespaceContextSelector selector = NamespaceContextSelector.getCurrentSelector();
+        if (selector == null) {
+            throw new NameNotFoundException(name.toString());
+        }
+        final Context namespaceContext = selector.getContext(parsedName.namespace());
+        if (namespaceContext == null) {
+            throw new NameNotFoundException(name.toString());
+        }
+        namespaceContext.destroySubcontext(parsedName.remaining());
+    }
+
+    public Context createSubcontext(Name name) throws NamingException {
+        final ParsedName parsedName = parse(name);
+        if (parsedName.namespace() == null || parsedName.namespace().equals("")) {
+            return super.createSubcontext(parsedName.remaining());
+        }
+        final NamespaceContextSelector selector = NamespaceContextSelector.getCurrentSelector();
+        if (selector == null) {
+            throw new NameNotFoundException(name.toString());
+        }
+        final Context namespaceContext = selector.getContext(parsedName.namespace());
+        if (namespaceContext == null) {
+            throw new NameNotFoundException(name.toString());
+        }
+        return namespaceContext.createSubcontext(parsedName.remaining());
     }
 
     private interface ParsedName {

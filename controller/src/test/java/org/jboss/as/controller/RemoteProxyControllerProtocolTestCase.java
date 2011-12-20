@@ -30,6 +30,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RES
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUCCESS;
 
 import java.io.ByteArrayInputStream;
+import java.io.DataInput;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -38,6 +39,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -53,8 +55,12 @@ import org.jboss.as.controller.client.OperationMessageHandler;
 import org.jboss.as.controller.remote.RemoteProxyController;
 import org.jboss.as.controller.remote.TransactionalModelControllerOperationHandler;
 import org.jboss.as.controller.support.RemoteChannelPairSetup;
-import org.jboss.as.protocol.mgmt.ManagementChannel;
+import org.jboss.as.protocol.mgmt.ManagementChannelReceiver;
+import org.jboss.as.protocol.mgmt.ManagementMessageHandler;
+import org.jboss.as.protocol.mgmt.ManagementProtocolHeader;
 import org.jboss.dmr.ModelNode;
+import org.jboss.remoting3.Channel;
+import org.jboss.remoting3.CloseHandler;
 import org.jboss.threads.AsyncFutureTask;
 import org.junit.After;
 import org.junit.Before;
@@ -67,12 +73,13 @@ import org.junit.Test;
  */
 public class RemoteProxyControllerProtocolTestCase {
 
+    final DelegatingChannelHandler handler = new DelegatingChannelHandler();
     RemoteChannelPairSetup channels;
     @Before
     public void start() throws Exception {
         channels = new RemoteChannelPairSetup();
-        channels.setupRemoting();
-        channels.startChannels();
+        channels.setupRemoting(handler);
+        channels.startClientConnetion();
     }
 
     @After
@@ -434,6 +441,16 @@ public class RemoteProxyControllerProtocolTestCase {
                 streams.add(null);
                 return streams;
             }
+
+            @Override
+            public boolean isAutoCloseStreams() {
+                return false;
+            }
+
+            @Override
+            public void close() throws IOException {
+                //
+            }
         };
 
         CommitProxyOperationControl commitControl = new CommitProxyOperationControl();
@@ -449,7 +466,7 @@ public class RemoteProxyControllerProtocolTestCase {
         assertArrays(new byte[0], thirdResult.get());
     }
 
-    @Test @Ignore("AS7-2707")
+    @Test
     public void testClosesBeforePrepare() throws Exception {
 
         final CountDownLatch latch = new CountDownLatch(1);
@@ -506,16 +523,18 @@ public class RemoteProxyControllerProtocolTestCase {
     }
 
     private RemoteProxyController setupProxyHandlers(MockModelController controller) {
-        ManagementChannel serverChannel = channels.getServerChannel();
-        ManagementChannel clientChannel = channels.getClientChannel();
-        clientChannel.startReceiving();
 
-        TransactionalModelControllerOperationHandler operationHandler = new TransactionalModelControllerOperationHandler(channels.getExecutorService(), controller);
-        serverChannel.setOperationHandler(operationHandler);
+        handler.setDelegate(new TransactionalModelControllerOperationHandler(controller, channels.getExecutorService()));
 
-        RemoteProxyController proxyController = RemoteProxyController.create(channels.getExecutorService(), PathAddress.pathAddress(), ProxyOperationAddressTranslator.HOST, channels.getClientChannel());
-        clientChannel.setOperationHandler(proxyController);
-
+        final Channel clientChannel = channels.getClientChannel();
+        final RemoteProxyController proxyController = RemoteProxyController.create(channels.getExecutorService(), PathAddress.pathAddress(), ProxyOperationAddressTranslator.HOST, channels.getClientChannel());
+        clientChannel.addCloseHandler(new CloseHandler<Channel>() {
+            @Override
+            public void handleClose(Channel closed, IOException exception) {
+                proxyController.shutdownNow();
+            }
+        });
+        clientChannel.receiveMessage(ManagementChannelReceiver.createDelegating(proxyController));
         return proxyController;
     }
 
@@ -565,6 +584,45 @@ public class RemoteProxyControllerProtocolTestCase {
 
         void done(T result) {
             super.setResult(result);
+        }
+    }
+
+    static class DelegatingChannelHandler implements ManagementMessageHandler {
+
+        private ManagementMessageHandler delegate;
+
+        @Override
+        public synchronized void handleMessage(Channel channel, DataInput input, ManagementProtocolHeader header) throws IOException {
+            if(delegate == null) {
+                throw new IllegalStateException();
+            }
+            delegate.handleMessage(channel, input, header);
+        }
+
+        public synchronized void setDelegate(ManagementMessageHandler delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void shutdown() {
+            if(delegate != null) {
+                delegate.shutdown();
+            }
+        }
+
+        @Override
+        public boolean awaitCompletion(long timeout, TimeUnit unit) throws InterruptedException {
+            if(delegate != null) {
+                return delegate.awaitCompletion(timeout, unit);
+            }
+            return true;
+        }
+
+        @Override
+        public void shutdownNow() {
+            if(delegate != null) {
+                delegate.shutdownNow();
+            }
         }
     }
 

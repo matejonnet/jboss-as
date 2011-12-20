@@ -21,11 +21,14 @@
  */
 package org.jboss.as.ejb3.component.entity.interceptors;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicReference;
+
 import javax.transaction.Status;
 import javax.transaction.Synchronization;
 import javax.transaction.TransactionSynchronizationRegistry;
+
 import org.jboss.as.ee.component.Component;
 import org.jboss.as.ejb3.component.entity.EntityBeanComponent;
 import org.jboss.as.ejb3.component.entity.EntityBeanComponentInstance;
@@ -33,7 +36,10 @@ import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
+import org.jboss.invocation.Interceptors;
+
 import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
+
 /**
  * Interceptor factory for entity beans that class the corresponding ejbCreate method.
  * <p/>
@@ -65,12 +71,11 @@ public class EntityBeanEjbCreateMethodInterceptorFactory implements InterceptorF
 
                 if (existing != null) {
                     primaryKeyReference.set(existing);
-                    return context.proceed();
+                    return existing;
                 }
-
                 final Component component = context.getPrivateData(Component.class);
                 if (!(component instanceof EntityBeanComponent)) {
-                    throw MESSAGES.unexpectedComponent(component,EntityBeanComponent.class);
+                    throw MESSAGES.unexpectedComponent(component, EntityBeanComponent.class);
                 }
                 final EntityBeanComponent entityBeanComponent = (EntityBeanComponent) component;
                 //grab an unasociated entity bean from the pool
@@ -84,31 +89,48 @@ public class EntityBeanEjbCreateMethodInterceptorFactory implements InterceptorF
                 //now add the instance to the cache, so it is usable
                 //note that we do not release it back to the pool
                 //the cache will do that when it is expired or removed
+
+                boolean synchronizationRegistered = false;
+                boolean exception = false;
                 entityBeanComponent.getCache().create(instance);
 
-                invokeEjbPostCreate(context, ejbPostCreate, instance, params);
+                //we reference the entity immedietly
+                //and release our reference once the create method or the current tx finishes
+                entityBeanComponent.getCache().reference(instance);
+                try {
 
-                //if a transaction is active we register a sync
-                //and if the transaction is rolled back we release the instance back into the pool
+                    invokeEjbPostCreate(context, ejbPostCreate, instance, params);
 
-                final TransactionSynchronizationRegistry transactionSynchronizationRegistry = entityBeanComponent.getTransactionSynchronizationRegistry();
-                if (transactionSynchronizationRegistry.getTransactionKey() != null) {
-                    transactionSynchronizationRegistry.registerInterposedSynchronization(new Synchronization() {
-                        @Override
-                        public void beforeCompletion() {
+                    //if a transaction is active we register a sync
+                    //and if the transaction is rolled back we release the instance back into the pool
 
-                        }
+                    final TransactionSynchronizationRegistry transactionSynchronizationRegistry = entityBeanComponent.getTransactionSynchronizationRegistry();
+                    if (transactionSynchronizationRegistry.getTransactionKey() != null) {
+                        transactionSynchronizationRegistry.registerInterposedSynchronization(new Synchronization() {
+                            @Override
+                            public void beforeCompletion() {
 
-                        @Override
-                        public void afterCompletion(final int status) {
-                            if (status != Status.STATUS_COMMITTED) {
-                                //if the transaction is rolled back we release the instance back into the pool
-                                entityBeanComponent.getPool().release(instance);
                             }
-                        }
-                    });
+
+                            @Override
+                            public void afterCompletion(final int status) {
+                                entityBeanComponent.getCache().release(instance, status == Status.STATUS_COMMITTED);
+                                if (status != Status.STATUS_COMMITTED) {
+                                    entityBeanComponent.getPool().release(instance);
+                                }
+                            }
+                        });
+                        synchronizationRegistered = true;
+                    }
+                    return context.proceed();
+                } catch (Exception e) {
+                    entityBeanComponent.getCache().release(instance, false);
+                    throw e;
+                } finally {
+                    if (!synchronizationRegistered && !exception) {
+                        entityBeanComponent.getCache().release(instance, true);
+                    }
                 }
-                return context.proceed();
             }
 
 
@@ -117,10 +139,18 @@ public class EntityBeanEjbCreateMethodInterceptorFactory implements InterceptorF
     }
 
     protected void invokeEjbPostCreate(final InterceptorContext context, final Method ejbPostCreate, final EntityBeanComponentInstance instance, final Object[] params) throws Exception {
-        ejbPostCreate.invoke(instance.getInstance(), params);
+        try {
+            ejbPostCreate.invoke(instance.getInstance(), params);
+        } catch (InvocationTargetException e) {
+            throw Interceptors.rethrow(e.getCause());
+        }
     }
 
     protected Object invokeEjbCreate(final InterceptorContext context, final Method ejbCreate, final EntityBeanComponentInstance instance, final Object[] params) throws Exception {
-        return ejbCreate.invoke(instance.getInstance(), params);
+        try {
+            return ejbCreate.invoke(instance.getInstance(), params);
+        } catch (InvocationTargetException e) {
+            throw Interceptors.rethrow(e.getCause());
+        }
     }
 }

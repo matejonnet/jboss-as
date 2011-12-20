@@ -34,10 +34,11 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
 import org.jboss.as.controller.PathAddress;
-import org.jboss.as.server.parsing.StandaloneXml;
+import org.jboss.as.controller.RunningMode;
 import org.jboss.as.controller.persistence.AbstractConfigurationPersister;
 import org.jboss.as.controller.persistence.ConfigurationPersistenceException;
 import org.jboss.as.controller.persistence.ExtensibleConfigurationPersister;
+import org.jboss.as.server.parsing.StandaloneXml;
 import org.jboss.dmr.ModelNode;
 import org.jboss.msc.service.ServiceActivator;
 import org.jboss.msc.service.ServiceContainer;
@@ -48,6 +49,7 @@ import org.jboss.threads.AsyncFuture;
  * in order to bootstrap it from a remote source process.
  *
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
+ * @author Mike M. Clark
  */
 public final class ServerStartTask implements ServerTask, Serializable, ObjectInputValidation {
 
@@ -59,19 +61,26 @@ public final class ServerStartTask implements ServerTask, Serializable, ObjectIn
     private final List<ModelNode> updates;
     private final ServerEnvironment providedEnvironment;
 
-    public ServerStartTask(final String serverName, final int portOffset, final List<ServiceActivator> startServices, final List<ModelNode> updates) {
+
+    public ServerStartTask(final String hostControllerName, final String serverName, final int portOffset, final List<ServiceActivator> startServices, final List<ModelNode> updates) {
         if (serverName == null || serverName.length() == 0) {
-            throw new IllegalArgumentException("Server name " + serverName + " is invalid; cannot be null or blank");
+            throw new IllegalArgumentException("Server name \"" + serverName + "\" is invalid; cannot be null or blank");
+        }
+        if (hostControllerName == null || hostControllerName.length() == 0) {
+            throw new IllegalArgumentException("Host Controller name \"" + hostControllerName + "\" is invalid; cannot be null or blank");
         }
         this.serverName = serverName;
         this.portOffset = portOffset;
         this.startServices = startServices;
         this.updates = updates;
-        final Properties properties = new Properties(System.getProperties());
-        properties.setProperty("jboss.server.name", serverName);
-        properties.setProperty("jboss.server.deploy.dir", properties.getProperty("jboss.domain.deployment.dir"));
-        properties.setProperty("jboss.server.base.dir", properties.getProperty("jboss.domain.servers.dir") + File.separatorChar + serverName);
-        providedEnvironment = new ServerEnvironment(properties, System.getenv(), null, ServerEnvironment.LaunchType.DOMAIN);
+
+        final Properties properties = new Properties();
+        properties.setProperty(ServerEnvironment.SERVER_NAME, serverName);
+        properties.setProperty(ServerEnvironment.HOME_DIR, SecurityActions.getSystemProperty("jboss.home.dir"));
+        properties.setProperty(ServerEnvironment.SERVER_DEPLOY_DIR, SecurityActions.getSystemProperty("jboss.domain.deployment.dir"));
+        properties.setProperty(ServerEnvironment.SERVER_BASE_DIR, SecurityActions.getSystemProperty("jboss.domain.servers.dir") + File.separatorChar + serverName);
+        properties.setProperty(ServerEnvironment.CONTROLLER_TEMP_DIR, SecurityActions.getSystemProperty("jboss.domain.temp.dir"));
+        providedEnvironment = new ServerEnvironment(hostControllerName, properties, SecurityActions.getSystemEnvironment(), null, ServerEnvironment.LaunchType.DOMAIN, RunningMode.NORMAL);
     }
 
     @Override

@@ -28,11 +28,46 @@ import java.util.List;
  */
 public interface TimerPersistence {
 
+    /**
+     * Called when a timer is being persisted
+     *
+     * @param timerEntity
+     */
     void persistTimer(TimerEntity timerEntity);
 
+    /**
+     * Signals that a timer is being undeployed, and all cached data relating to this object should
+     * be dropped to prevent a class loader leak
+     *
+     * @param timedObjectId
+     */
+    void timerUndeployed(String timedObjectId);
+
+    /**
+     * Load a timer from persistent storage
+     *
+     * @param id
+     * @param timedObjectId
+     * @return
+     */
     TimerEntity loadTimer(String id, String timedObjectId);
 
-    void removeTimer(TimerEntity timerEntity);
+    /**
+     * Load all active timers for the given entity bean with the given primary key
+     *
+     * @param timedObjectId The timed object id to load timers for
+     * @param  primaryKey The primary key of the entity bean, or null for all timers
+     * @return A list of all active timers
+     */
+    List<TimerEntity> loadActiveTimers(String timedObjectId, Object primaryKey);
 
+
+    /**
+     * Load all active timers for the given object. If the object is an entity bean timers for all beans will be returned.
+     *
+     * @param timedObjectId The timed object id to load timers for
+     * @return A list of all active timers
+     */
     List<TimerEntity> loadActiveTimers(String timedObjectId);
+
 }

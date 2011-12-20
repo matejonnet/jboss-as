@@ -102,6 +102,11 @@ public class CommandLineConstants {
     public static final String SHORT_HOST = "-H";
     public static final String HOST = "--host";
 
+    public static final String ADMIN_ONLY = "--admin-only";
+
+    public static final String MASTER_ADDRESS = "--master-address";
+    public static final String MASTER_PORT = "--master-port";
+
     private CommandLineConstants() {
     }
 }

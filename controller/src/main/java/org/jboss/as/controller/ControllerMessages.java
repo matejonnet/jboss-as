@@ -25,6 +25,7 @@ package org.jboss.as.controller;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 
@@ -50,6 +51,9 @@ import org.jboss.msc.service.StartException;
 
 /**
  * Date: 02.11.2011
+ *
+ * Reserved logging id ranges from: http://community.jboss.org/wiki/LoggingIds: 14600 - 14899
+ *
  *
  * @author <a href="mailto:jperkins@redhat.com">James R. Perkins</a>
  */
@@ -182,7 +186,7 @@ public interface ControllerMessages {
     String attributeNotWritable(String attributeName);
 
     /**
-     * A message indicating the attribute, represented by the {@code attributeName} parameter,  is a registered child of
+     * A message indicating the attribute, represented by the {@code attributeName} parameter, is a registered child of
      * the resource.
      *
      * @param attributeName the name of the attribute.
@@ -244,10 +248,10 @@ public interface ControllerMessages {
      *
      * @param name the name.
      *
-     * @return an {@link IllegalArgumentException} for the error.
+     * @return an {@link OperationFailedRuntimeException} for the error.
      */
     @Message(id = 14646, value = "Cannot remove %s")
-    IllegalArgumentException cannotRemove(String name);
+    OperationFailedRuntimeException cannotRemove(String name);
 
     /**
      * Creates an exception indicating the file could not be renamed.
@@ -415,10 +419,10 @@ public interface ControllerMessages {
      *
      * @param name the name of the duplicate entry.
      *
-     * @return an {@link IllegalArgumentException} for the error.
+     * @return an {@link OperationFailedRuntimeException} for the error.
      */
     @Message(id = 14662, value = "Duplicate path element '%s' found")
-    IllegalArgumentException duplicateElement(String name);
+    OperationFailedRuntimeException duplicateElement(String name);
 
     /**
      * Creates an exception indicating a duplicate interface declaration.
@@ -461,15 +465,6 @@ public interface ControllerMessages {
      */
     @Message(id = 14666, value = "Duplicate resource %s")
     IllegalStateException duplicateResource(String name);
-
-    /**
-     * Creates an exception indicating the resource is a duplicate.
-     *
-     * @param address the address of the resource.
-     *
-     * @return an {@link IllegalStateException} for the error.
-     */
-    IllegalStateException duplicateResource(PathAddress address);
 
     /**
      * Creates an exception indicating the resource type is a duplicate.
@@ -629,15 +624,14 @@ public interface ControllerMessages {
     ConfigurationPersistenceException failedToWriteConfiguration(@Cause Throwable cause);
 
     /**
-     * Creates an exception indicating neither {@code path1} nor {@code path2} exist.
+     * Creates an exception indicating {@code path1} does not exist.
      *
      * @param path1 the first non-existing path.
-     * @param path2 the second non-existing path.
      *
      * @return an {@link IllegalArgumentException} for the error.
      */
-    @Message(id = 14681, value = "Neither %s nor %s exist")
-    IllegalArgumentException fileNotFound(String path1, String path2);
+    @Message(id = 14681, value = "%s does not exist")
+    IllegalArgumentException fileNotFound(String path1);
 
     /**
      * Creates an exception indicating no files beginning with the {@code prefix} were found in the directory,
@@ -862,10 +856,10 @@ public interface ControllerMessages {
      *
      * @param key the invalid value.
      *
-     * @return an {@link IllegalArgumentException} for the error.
+     * @return an {@link OperationFailedRuntimeException} for the error.
      */
     @Message(id = 14701, value = "Invalid key specification %s")
-    IllegalArgumentException invalidKey(String key);
+    String invalidPathElementKey(String key);
 
     /**
      * Creates an exception indicating the load factor must be greater than 0 and less than or equal to 1.
@@ -1097,10 +1091,10 @@ public interface ControllerMessages {
      *
      * @param value the invalid value.
      *
-     * @return an {@link IllegalArgumentException} for the error.
+     * @return an {@link OperationFailedRuntimeException} for the error.
      */
     @Message(id = 14719, value = "Invalid value specification %s")
-    IllegalArgumentException invalidValue(String value);
+    String invalidPathElementValue(String value);
 
     /**
      * A message indicating the {@code value} for the parameter, represented by the {@code name} parameter, is invalid.
@@ -1285,7 +1279,7 @@ public interface ControllerMessages {
      * @return a {@link RequestProcessingException} for the error.
      */
     @Message(id = 14736, value = "No active tx found for id %d")
-    RequestProcessingException noActiveTransaction(int id);
+    RuntimeException noActiveTransaction(int id);
 
     /**
      * A message indicating there is no child registry for the child, represented by the {@code childType} and
@@ -1304,10 +1298,10 @@ public interface ControllerMessages {
      *
      * @param name the name.
      *
-     * @return an {@link IllegalStateException} for the error.
+     * @return an {@link OperationFailedRuntimeException} for the error.
      */
     @Message(id = 14738, value = "No child type %s")
-    IllegalStateException noChildType(String name);
+    OperationFailedRuntimeException noChildType(String name);
 
     /**
      * A message indicating no handler for the step operation, represented by the {@code stepOpName} parameter, at
@@ -1478,6 +1472,7 @@ public interface ControllerMessages {
     @Message(id = 14753, value = "There is no operation %s registered at address %s")
     String operationNotRegistered(String op, PathAddress address);
 
+
     /**
      * Creates an exception indicating an operation reply value type description is required but was not implemented
      * for the operation represented by the {@code operationName} parameter.
@@ -1615,10 +1610,10 @@ public interface ControllerMessages {
      * @param ancestor the ancestor path.
      * @param address  the address.
      *
-     * @return an {@link IllegalStateException} for the error.
+     * @return an {@link OperationFailedRuntimeException} for the error.
      */
     @Message(id = 14766, value = "Resource %s does not exist; a resource at address %s cannot be created until all ancestor resources have been added")
-    IllegalStateException resourceNotFound(PathAddress ancestor, PathAddress address);
+    OperationFailedRuntimeException resourceNotFound(PathAddress ancestor, PathAddress address);
 
     /**
      * Creates an exception indicating the rollback has already been invoked.
@@ -2027,4 +2022,125 @@ public interface ControllerMessages {
      */
     @Message(id = 14802, value = "Cannot resolve expression '%s' -- %s")
     String cannotResolveExpression(ModelNode toResolve, IllegalStateException e);
+
+    /**
+     * Creates an exception indicating the resource is a duplicate.
+     *
+     * @param address the address of the resource.
+     *
+     * @return an {@link OperationFailedRuntimeException} for the error.
+     */
+    @Message(id = 14803, value = "Duplicate resource %s")
+    OperationFailedRuntimeException duplicateResourceAddress(PathAddress address);
+
+    /**
+     * Creates an exception indicating a resource cannot be removed due to the existence of child resources.
+     *
+     * @param children the address elements for the children.
+     *
+     * @return an {@link OperationFailedException} for the error.
+     */
+    @Message(id = 14804, value = "Cannot remove resource before removing child resources %s")
+    OperationFailedException cannotRemoveResourceWithChildren(List<PathElement> children);
+
+    /**
+     * Creates an exception indicating the canonical file for the main file could not be found.
+     *
+     * @param name  the main file.
+     * @param configurationDir the configuration directory
+     *
+     * @return an {@link IllegalStateException} for the error.
+     */
+    @Message(id = 14805, value = "Could not get main file: %s. Specified files must be relative to the configuration dir: %s")
+    IllegalStateException mainFileNotFound(String name, File configurationDir);
+
+    /**
+     * Creates an exception indicating a resource cannot be found.
+     *
+     * @param pathAddress the address for the resource.
+     *
+     * @return an {@link OperationFailedRuntimeException} for the error.
+     */
+    @Message(id = 14807, value = "Management resource '%s' not found")
+    OperationFailedRuntimeException managementResourceNotFound(PathAddress pathAddress);
+
+    /**
+     * Creates an exception message indicating a child resource cannot be found.
+     *
+     * @param childAddress the address element for the child.
+     *
+     * @return an message for the error.
+     */
+    @Message(id = 14808, value = "Child resource '%s' not found")
+    String childResourceNotFound(PathElement childAddress);
+
+    /**
+     * Creates an exception indicating a node is already registered at the location.
+     *
+     * @param location the location of the existing node.
+     *
+     * @return an {@link IllegalArgumentException} for the error.
+     */
+    @Message(id = 14809, value = "A node is already registered at '%s'")
+    IllegalArgumentException nodeAlreadyRegistered(String location);
+
+    /**
+     * Creates an exception indicating that an attempt was made to remove an extension before removing all of its
+     * subsystems.
+     *
+     * @param moduleName the name of the extension
+     * @param subsystem the name of the subsystem
+     *
+     * @return an {@link IllegalStateException} for the error
+     */
+    @Message(id = 14810, value = "An attempt was made to unregister extension %s which still has subsystem %s registered")
+    IllegalStateException removingExtensionWithRegisteredSubsystem(String moduleName, String subsystem);
+
+    /**
+     * Creates an exception indicating that an attempt was made to register an override model for the root model
+     * registration.
+     *
+     * @return an {@link IllegalStateException} for the error
+     */
+    @Message(id = 14811, value = "An override model registration is not allowed for the root model registration")
+    IllegalStateException cannotOverrideRootRegistration();
+
+    /**
+     * Creates an exception indicating that an attempt was made to register an override model for a non-wildcard
+     * registration.
+     *
+     * @param valueName the name of the non-wildcard registration that cannot be overridden
+     * @return an {@link IllegalStateException} for the error
+     */
+    @Message(id = 14812, value = "An override model registration is not allowed for non-wildcard model registrations. This registration is for the non-wildcard name '%s'.")
+    IllegalStateException cannotOverrideNonWildCardRegistration(String valueName);
+
+    /**
+     * Creates an exception indicating that an attempt was made to remove a wildcard model registration via
+     * the unregisterOverrideModel API.
+     *
+     * @return an {@link IllegalArgumentException} for the error
+     */
+    @Message(id = 14813, value = "A registration named '*' is not an override model and cannot be unregistered via the unregisterOverrideModel API.")
+    IllegalArgumentException wildcardRegistrationIsNotAnOverride();
+
+    /**
+     * Creates an exception indicating that an attempt was made to remove a resource registration from the root registration.
+     *
+     * @return an {@link IllegalStateException} for the error
+     */
+    @Message(id = 14814, value = "The root resource registration does not support overrides, so no override can be removed.")
+    IllegalStateException rootRegistrationIsNotOverridable();
+
+    /**
+     * Creates an exception indicating there is no operation, represented by the {@code op} parameter, registered at the address,
+     * represented by the {@code address} parameter.
+     *
+     * @param op      the operation.
+     * @param address the address.
+     * @return the message.
+     */
+    @Message(id = 14815, value = "There is no operation %s registered at address %s")
+    IllegalArgumentException operationNotRegisteredException(String op, PathAddress address);
+
 }

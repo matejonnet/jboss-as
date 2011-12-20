@@ -22,7 +22,7 @@
 
 package org.jboss.as.controller;
 
-import static org.jboss.as.controller.ControllerLogger.ROOT_LOGGER;
+import static org.jboss.as.controller.ControllerLogger.MGMT_OP_LOGGER;
 import static org.jboss.as.controller.ControllerMessages.MESSAGES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CANCELLED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.FAILED;
@@ -41,6 +41,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUC
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.EnumMap;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.jboss.as.controller.client.MessageSeverity;
@@ -62,6 +63,9 @@ abstract class AbstractOperationContext implements OperationContext {
     private final EnumMap<Stage, Deque<Step>> steps;
     private final ModelController.OperationTransactionControl transactionControl;
     private final ControlledProcessState processState;
+    private final boolean booting;
+    private final ProcessType processType;
+    private final RunningMode runningMode;
 
     boolean respectInterruption = true;
 
@@ -78,22 +82,35 @@ abstract class AbstractOperationContext implements OperationContext {
         ALLOW_RESOURCE_SERVICE_RESTART,
     }
 
-    AbstractOperationContext(final Type contextType,
+    AbstractOperationContext(final ProcessType processType,
+                             final RunningMode runningMode,
                              final ModelController.OperationTransactionControl transactionControl,
-                             final ControlledProcessState processState) {
-        this.contextType = contextType;
+                             final ControlledProcessState processState, boolean booting) {
+        this.processType = processType;
+        this.runningMode = runningMode;
+        this.contextType = Type.getType(processType, runningMode);
         this.transactionControl = transactionControl;
         this.processState = processState;
+        this.booting = booting;
         steps = new EnumMap<Stage, Deque<Step>>(Stage.class);
         for (Stage stage : Stage.values()) {
-            steps.put(stage, new ArrayDeque<Step>());
+            if (booting && stage == Stage.VERIFY) {
+                // Use a concurrent structure as the parallel boot threads will concurrently add steps
+                steps.put(stage, new LinkedBlockingDeque<Step>());
+            } else {
+                steps.put(stage, new ArrayDeque<Step>());
+            }
         }
         initiatingThread = Thread.currentThread();
     }
 
+    @Override
+    public boolean isBooting() {
+        return booting;
+    }
+
     public void addStep(final OperationStepHandler step, final Stage stage) throws IllegalArgumentException {
-        final ModelNode response = activeStep == null ? new ModelNode().setEmptyObject() : activeStep.response;
-        addStep(response, activeStep.operation, activeStep.address, step, stage);
+        addStep(step, stage, false);
     }
 
     public void addStep(final ModelNode operation, final OperationStepHandler step, final Stage stage) throws IllegalArgumentException {
@@ -105,8 +122,24 @@ abstract class AbstractOperationContext implements OperationContext {
         addStep(response, operation, null, step, stage);
     }
 
+    @Override
+    public void addStep(OperationStepHandler step, Stage stage, boolean addFirst) throws IllegalArgumentException {
+        final ModelNode response = activeStep == null ? new ModelNode().setEmptyObject() : activeStep.response;
+        addStep(response, activeStep.operation, activeStep.address, step, stage, addFirst);
+    }
+
     void addStep(final ModelNode response, final ModelNode operation, final PathAddress address,
                          final OperationStepHandler step, final Stage stage) throws IllegalArgumentException {
+        addStep(response, operation, address, step, stage, false);
+    }
+
+    @Override
+    public void addStep(ModelNode response, ModelNode operation, OperationStepHandler step, Stage stage, boolean addFirst) throws IllegalArgumentException {
+        addStep(response, operation, null, step, stage, addFirst);
+    }
+
+    void addStep(final ModelNode response, final ModelNode operation, final PathAddress address,
+                         final OperationStepHandler step, final Stage stage, boolean addFirst) throws IllegalArgumentException {
         assert isControllingThread();
         if (response == null) {
             throw MESSAGES.nullVar("response");
@@ -135,7 +168,12 @@ abstract class AbstractOperationContext implements OperationContext {
         if (stage == Stage.IMMEDIATE) {
             steps.get(currentStage).addFirst(new Step(step, response, operation, address));
         } else {
-            steps.get(stage).addLast(new Step(step, response, operation, address));
+            final Deque<Step> deque = steps.get(stage);
+            if(addFirst) {
+                deque.addFirst(new Step(step, response, operation, address));
+            } else {
+                deque.addLast(new Step(step, response, operation, address));
+            }
         }
     }
 
@@ -242,7 +280,7 @@ abstract class AbstractOperationContext implements OperationContext {
             try {
                 persistenceResource = createPersistenceResource();
             } catch (ConfigurationPersistenceException e) {
-                ROOT_LOGGER.failedToPersistConfigurationChange(e);
+                MGMT_OP_LOGGER.failedToPersistConfigurationChange(e);
                 if (response != null) {
                     response.get(OUTCOME).set(FAILED);
                     response.get(FAILURE_DESCRIPTION).set(MESSAGES.failedToPersistConfigurationChange(e.getLocalizedMessage()));
@@ -255,8 +293,8 @@ abstract class AbstractOperationContext implements OperationContext {
         // Allow any containing TransactionControl to vote
         final AtomicReference<ResultAction> ref = new AtomicReference<ResultAction>(transactionControl == null ? ResultAction.KEEP : ResultAction.ROLLBACK);
         if (transactionControl != null) {
-            if (ROOT_LOGGER.isTraceEnabled()) {
-                ROOT_LOGGER.trace("Prepared response is " + response);
+            if (MGMT_OP_LOGGER.isTraceEnabled()) {
+                MGMT_OP_LOGGER.trace("Prepared response is " + response);
             }
             transactionControl.operationPrepared(new ModelController.OperationTransaction() {
                 public void commit() {
@@ -311,7 +349,6 @@ abstract class AbstractOperationContext implements OperationContext {
     }
 
     private void executeStep(final Step step) {
-
         step.predecessor = this.activeStep;
         this.activeStep = step;
 
@@ -324,26 +361,34 @@ abstract class AbstractOperationContext implements OperationContext {
                     SecurityActions.setThreadContextClassLoader(oldTccl);
                 }
 
-            } catch (OperationFailedException ofe) {
-                if (currentStage != Stage.DONE) {
-                    // Handler threw OFE before calling completeStep(); that's equivalent to
+            } catch (Throwable t) {
+                if (! (t instanceof OperationClientException)) {
+                    throw t;
+                } else if (currentStage != Stage.DONE) {
+                    // Handler threw OCE before calling completeStep(); that's equivalent to
                     // a request that we set the failure description and call completeStep()
-                    step.response.get(FAILURE_DESCRIPTION).set(ofe.getFailureDescription());
-                    ROOT_LOGGER.operationFailed(step.operation.get(OP), step.operation.get(OP_ADDR), step.response.get(FAILURE_DESCRIPTION));
+                    final ModelNode failDesc = ((OperationClientException) t).getFailureDescription();
+                    step.response.get(FAILURE_DESCRIPTION).set(failDesc);
+                    if (isBooting()) {
+                        // An OCE on boot needs to be logged as an ERROR
+                        MGMT_OP_LOGGER.operationFailed(step.operation.get(OP), step.operation.get(OP_ADDR), step.response.get(FAILURE_DESCRIPTION));
+                    } else {
+                        // An OFE post-boot is a client-side mistake and is logged at DEBUG
+                        MGMT_OP_LOGGER.operationFailedOnClientError(step.operation.get(OP), step.operation.get(OP_ADDR), step.response.get(FAILURE_DESCRIPTION));
+                    }
                     completeStep();
-                }
-                else {
-                    // Handler threw OFE after calling completeStep()
+                } else {
+                    // Handler threw OCE after calling completeStep()
                     // Throw it on and let standard error handling deal with it
-                    throw ofe;
+                    throw t;
                 }
             }
         } catch (Throwable t) {
             if (t instanceof StackOverflowError) {
-                ROOT_LOGGER.operationFailed(t, step.operation.get(OP), step.operation.get(OP_ADDR), AbstractControllerService.BOOT_STACK_SIZE_PROPERTY,
+                MGMT_OP_LOGGER.operationFailed(t, step.operation.get(OP), step.operation.get(OP_ADDR), AbstractControllerService.BOOT_STACK_SIZE_PROPERTY,
                         AbstractControllerService.DEFAULT_BOOT_STACK_SIZE);
             } else {
-                ROOT_LOGGER.operationFailed(t, step.operation.get(OP), step.operation.get(OP_ADDR));
+                MGMT_OP_LOGGER.operationFailed(t, step.operation.get(OP), step.operation.get(OP_ADDR));
             }
             // If this block is entered, then the step failed
             // The question is, did it fail before or after calling completeStep()?
@@ -387,6 +432,20 @@ abstract class AbstractOperationContext implements OperationContext {
         }
     }
 
+    private void handleOperationFailed(Step step, ModelNode failDesc) {
+        // Handler threw OFE before calling completeStep(); that's equivalent to
+        // a request that we set the failure description and call completeStep()
+        step.response.get(FAILURE_DESCRIPTION).set(failDesc);
+        if (isBooting()) {
+            // An OFE on boot needs to be logged as an ERROR
+            MGMT_OP_LOGGER.operationFailed(step.operation.get(OP), step.operation.get(OP_ADDR), step.response.get(FAILURE_DESCRIPTION));
+        } else {
+            // An OFE post-boot is a client-side mistake and is logged at DEBUG
+            MGMT_OP_LOGGER.operationFailedOnClientError(step.operation.get(OP), step.operation.get(OP_ADDR), step.response.get(FAILURE_DESCRIPTION));
+        }
+        completeStep();
+    }
+
     /**
      * Decide whether failure should trigger a rollback.
      *
@@ -401,8 +460,16 @@ abstract class AbstractOperationContext implements OperationContext {
         return ResultAction.KEEP;
     }
 
+    public final ProcessType getProcessType() {
+        return processType;
+    }
+
+    public final RunningMode getRunningMode() {
+        return runningMode;
+    }
+
+    @SuppressWarnings("deprecation")
     public final Type getType() {
-        assert isControllingThread();
         return contextType;
     }
 

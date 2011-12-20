@@ -21,16 +21,14 @@
  */
 package org.jboss.as.ejb3.component.stateful;
 
-import java.rmi.NoSuchObjectException;
 import java.rmi.RemoteException;
 
 import javax.ejb.ConcurrentAccessException;
 import javax.ejb.ConcurrentAccessTimeoutException;
 import javax.ejb.NoSuchEJBException;
-import javax.ejb.NoSuchObjectLocalException;
+import javax.ejb.RemoveException;
 
 import org.jboss.as.ee.component.ComponentInstance;
-import org.jboss.as.ee.component.ComponentView;
 import org.jboss.as.ejb3.component.interceptors.AbstractEJBInterceptor;
 import org.jboss.ejb.client.SessionID;
 import org.jboss.invocation.Interceptor;
@@ -38,8 +36,10 @@ import org.jboss.invocation.InterceptorContext;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
 import org.jboss.logging.Logger;
-import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
+
 import static org.jboss.as.ejb3.EjbLogger.ROOT_LOGGER;
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
+
 /**
  * Associate the proper component instance to the invocation based on the passed in session identifier.
  *
@@ -55,21 +55,15 @@ public class StatefulComponentInstanceInterceptor extends AbstractEJBInterceptor
     public Object processInvocation(InterceptorContext context) throws Exception {
         StatefulSessionComponent component = getComponent(context, StatefulSessionComponent.class);
         // TODO: this is a contract with the client interceptor
-        SessionID sessionId = (SessionID) context.getPrivateData(SessionID.SESSION_ID_KEY);
+        SessionID sessionId = (SessionID) context.getPrivateData(SessionID.class);
         if (sessionId == null) {
             throw MESSAGES.statefulSessionIdIsNull(component.getComponentName());
         }
         ROOT_LOGGER.debug("Looking for stateful component instance with session id: " + sessionId);
         StatefulSessionComponentInstance instance = component.getCache().get(sessionId);
-        if(instance == null) {
-            final ComponentView view = context.getPrivateData(ComponentView.class);
-            if(view.getViewClass() == component.getEjbLocalObjectType()) {
-                throw new NoSuchObjectLocalException("Could not find SFSB " + component.getComponentName() + " with " + sessionId);
-            } else if(view.getViewClass() == component.getEjbObjectType()) {
-                throw new NoSuchObjectException("Could not find SFSB " + component.getComponentName() + " with " + sessionId);
-            } else {
-                throw new NoSuchEJBException("Could not find SFSB " + component.getComponentName() + " with " + sessionId);
-            }
+        if (instance == null) {
+            //This exception will be transformed into the correct exception type by the exception transforming interceptor
+            throw new NoSuchEJBException("Could not find SFSB " + component.getComponentName() + " with " + sessionId);
         }
         try {
             context.putPrivateData(ComponentInstance.class, instance);
@@ -83,25 +77,24 @@ public class StatefulComponentInstanceInterceptor extends AbstractEJBInterceptor
             if (ex instanceof ConcurrentAccessTimeoutException || ex instanceof ConcurrentAccessException) {
                 throw ex;
             }
-            if (ex instanceof RuntimeException || ex instanceof RemoteException) {
-                if (ROOT_LOGGER.isTraceEnabled())
-                    ROOT_LOGGER.trace("Removing bean " + sessionId + " because of exception", ex);
-                component.getCache().discard(sessionId);
+            if (!(ex instanceof RemoveException)) {
+                if (ex instanceof RuntimeException || ex instanceof RemoteException) {
+                    if (ROOT_LOGGER.isTraceEnabled())
+                        ROOT_LOGGER.trace("Removing bean " + sessionId + " because of exception", ex);
+                    instance.discard();
+                }
             }
             throw ex;
         } catch (final Error e) {
             if (ROOT_LOGGER.isTraceEnabled())
                 ROOT_LOGGER.trace("Removing bean " + sessionId + " because of error", e);
-            component.getCache().discard(sessionId);
+            instance.discard();
             throw e;
         } catch (final Throwable t) {
             if (ROOT_LOGGER.isTraceEnabled())
                 ROOT_LOGGER.trace("Removing bean " + sessionId + " because of Throwable", t);
-            component.getCache().discard(sessionId);
+            instance.discard();
             throw new RuntimeException(t);
-        } finally {
-            // the StatefulSessionSynchronizationInterceptor will take care of releasing
-            context.putPrivateData(ComponentInstance.class, null);
         }
     }
 

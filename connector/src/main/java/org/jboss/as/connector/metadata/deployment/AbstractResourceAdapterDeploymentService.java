@@ -58,6 +58,7 @@ import org.jboss.msc.service.StopContext;
 import org.jboss.msc.value.InjectedValue;
 import org.jboss.security.SubjectFactory;
 
+import javax.naming.Reference;
 import javax.resource.spi.IllegalStateException;
 import javax.resource.spi.ResourceAdapter;
 import javax.transaction.TransactionManager;
@@ -295,6 +296,11 @@ public abstract class AbstractResourceAdapterDeploymentService {
                         }
                     }).setInitialMode(ServiceController.Mode.ACTIVE).install();
 
+            // AS7-2222: Just hack it
+            if (cf instanceof javax.resource.Referenceable) {
+                ((javax.resource.Referenceable)cf).setReference(new Reference(jndi));
+            }
+
             return new String[] { jndi };
         }
 
@@ -348,6 +354,11 @@ public abstract class AbstractResourceAdapterDeploymentService {
                             }
                         }
                     }).setInitialMode(ServiceController.Mode.ACTIVE).install();
+
+            // AS7-2222: Just hack it
+            if (ao instanceof javax.resource.Referenceable) {
+                ((javax.resource.Referenceable)ao).setReference(new Reference(jndi));
+            }
 
             return new String[] { jndi };
         }
@@ -425,7 +436,10 @@ public abstract class AbstractResourceAdapterDeploymentService {
 
         @Override
         protected String registerResourceAdapterToResourceAdapterRepository(ResourceAdapter instance) {
-            return raRepository.getValue().registerResourceAdapter(instance);
+            final String raIdentifer = raRepository.getValue().registerResourceAdapter(instance);
+            // make a note of this identifier for future use
+            ConnectorServices.registerResourceAdapterIdentifier(this.deploymentName, raIdentifer);
+            return raIdentifer;
 
         }
 

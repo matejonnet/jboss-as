@@ -30,28 +30,48 @@ import java.util.Map;
 public enum EJB3SubsystemXMLAttribute {
     UNKNOWN(null),
 
+    ALIASES("aliases"),
+
+    BACKING_CACHE("backing-cache"),
+
+    CACHE_REF("cache-ref"),
+    CLUSTERED_CACHE_REF("clustered-cache-ref"),
     CONNECTOR_REF("connector-ref"),
     CORE_THREADS("core-threads"),
 
     DEFAULT_ACCESS_TIMEOUT("default-access-timeout"),
 
+    ENABLE_BY_DEFAULT("enable-by-default"),
+
+    GROUPS_PATH("groups-path"),
+
+    IDLE_TIMEOUT("idle-timeout"),
+    IDLE_TIMEOUT_UNIT("idle-timeout-unit"),
     INSTANCE_AQUISITION_TIMEOUT("instance-acquisition-timeout"),
     INSTANCE_AQUISITION_TIMEOUT_UNIT("instance-acquisition-timeout-unit"),
 
     KEEPALIVE_TIME("keepalive-time"),
 
     MAX_POOL_SIZE("max-pool-size"),
+    MAX_SIZE("max-size"),
     MAX_THREADS("max-threads"),
 
     NAME("name"),
 
+    PASSIVATE_EVENTS_ON_REPLICATE("passivate-events-on-replicate"),
+    PASSIVATION_STORE_REF("passivation-store-ref"),
     PATH("path"),
     POOL_NAME("pool-name"),
 
     RELATIVE_TO("relative-to"),
     RESOURCE_ADAPTER_NAME("resource-adapter-name"),
 
-    THREAD_POOL_NAME("thread-pool-name")
+    SESSIONS_PATH("sessions-path"),
+    SUBDIRECTORY_COUNT("subdirectory-count"),
+
+    THREAD_POOL_NAME("thread-pool-name"),
+
+    USE_QUALIFIED_NAME("use-qualified-name"),
     ;
 
     private final String name;

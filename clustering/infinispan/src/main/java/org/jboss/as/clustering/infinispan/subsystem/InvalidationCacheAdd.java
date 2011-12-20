@@ -1,0 +1,77 @@
+package org.jboss.as.clustering.infinispan.subsystem;
+
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
+
+import java.util.List;
+import java.util.Locale;
+
+import org.infinispan.config.Configuration;
+import org.infinispan.config.Configuration.CacheMode;
+import org.infinispan.config.FluentConfiguration;
+import org.jboss.as.controller.descriptions.DescriptionProvider;
+import org.jboss.as.controller.operations.common.Util;
+import org.jboss.dmr.ModelNode;
+
+/**
+ * @author Richard Achmatowicz (c) 2011 Red Hat Inc.
+ */
+public class InvalidationCacheAdd extends ClusteredCacheAdd implements DescriptionProvider {
+
+    static final InvalidationCacheAdd INSTANCE = new InvalidationCacheAdd();
+
+    // used to create subsystem description
+    static ModelNode createOperation(ModelNode address, ModelNode model) {
+        ModelNode operation = Util.getEmptyOperation(ADD, address);
+        INSTANCE.populateMode(model, operation);
+        INSTANCE.populate(model, operation);
+        return operation;
+    }
+
+    private InvalidationCacheAdd() {
+        super(CacheMode.INVALIDATION_SYNC);
+    }
+
+    @Override
+    void populate(ModelNode fromModel, ModelNode toModel) {
+        super.populate(fromModel, toModel);
+        // additional child node
+        if (fromModel.hasDefined(ModelKeys.STATE_TRANSFER)) {
+            toModel.get(ModelKeys.STATE_TRANSFER).set(fromModel.get(ModelKeys.STATE_TRANSFER)) ;
+        }
+    }
+
+    /**
+     * Implementation of abstract method processModelNode suitable for invalidation cache
+     *
+     * @param cache
+     * @param configuration
+     * @param additionalDeps
+     * @return
+     */
+    @Override
+    void processModelNode(ModelNode cache, Configuration configuration, List<AdditionalDependency<?>> additionalDeps) {
+        // process the basic clustered configuration
+        super.processModelNode(cache, configuration, additionalDeps);
+
+        // process the invalidation-cache attributes and elements
+        FluentConfiguration fluent = configuration.fluent();
+        if (cache.hasDefined(ModelKeys.STATE_TRANSFER)) {
+            ModelNode stateTransfer = cache.get(ModelKeys.STATE_TRANSFER) ;
+            FluentConfiguration.StateRetrievalConfig fluentStateTransfer = fluent.stateRetrieval();
+            if (stateTransfer.hasDefined(ModelKeys.ENABLED)) {
+                fluentStateTransfer.fetchInMemoryState(stateTransfer.get(ModelKeys.ENABLED).asBoolean());
+            }
+            if (stateTransfer.hasDefined(ModelKeys.TIMEOUT)) {
+                fluentStateTransfer.timeout(stateTransfer.get(ModelKeys.TIMEOUT).asLong());
+            }
+            if (stateTransfer.hasDefined(ModelKeys.FLUSH_TIMEOUT)) {
+                fluentStateTransfer.logFlushTimeout(stateTransfer.get(ModelKeys.FLUSH_TIMEOUT).asLong());
+            }
+        }
+    }
+
+    @Override
+    public ModelNode getModelDescription(Locale locale) {
+        return InfinispanDescriptions.getInvalidationCacheAddDescription(locale);
+    }
+}

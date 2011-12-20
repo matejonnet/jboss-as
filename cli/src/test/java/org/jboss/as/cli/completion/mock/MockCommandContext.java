@@ -23,6 +23,8 @@ package org.jboss.as.cli.completion.mock;
 
 import java.util.Collection;
 
+import org.jboss.as.cli.CliConfig;
+import org.jboss.as.cli.CliEventListener;
 import org.jboss.as.cli.CommandContext;
 import org.jboss.as.cli.CommandFormatException;
 import org.jboss.as.cli.CommandHistory;
@@ -48,6 +50,7 @@ import org.jboss.as.controller.client.ModelControllerClient;
  */
 public class MockCommandContext implements CommandContext {
 
+    private MockCliConfig config = new MockCliConfig();
     private ModelControllerClient mcc;
     //private CommandLineParser operationParser;
     private OperationRequestAddress prefix;
@@ -248,5 +251,22 @@ public class MockCommandContext implements CommandContext {
     public void clearScreen() {
         // TODO Auto-generated method stub
 
+    }
+
+    @Override
+    public boolean isTerminated() {
+        // TODO Auto-generated method stub
+        return false;
+    }
+
+    @Override
+    public void addEventListener(CliEventListener listener) {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public CliConfig getConfig() {
+        return config;
     }
 }

@@ -22,20 +22,22 @@
 
 package org.jboss.as.ee.component;
 
-import static org.jboss.as.ee.EeMessages.MESSAGES;
+import java.lang.reflect.Method;
+import java.util.IdentityHashMap;
+import java.util.Map;
 
+import org.jboss.as.naming.context.NamespaceContextSelector;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.Interceptors;
 import org.jboss.msc.service.Service;
+import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
 import org.jboss.msc.value.InjectedValue;
 
-import java.lang.reflect.Method;
-import java.util.IdentityHashMap;
-import java.util.Map;
+import static org.jboss.as.ee.EeMessages.MESSAGES;
 
 /**
  * A service for creating a component.
@@ -45,14 +47,16 @@ import java.util.Map;
 public class BasicComponentCreateService implements Service<Component> {
     private final InjectedValue<DeploymentUnit> deploymentUnit = new InjectedValue<DeploymentUnit>();
 
+    private final ServiceName serviceName;
     private final String componentName;
     private final Class<?> componentClass;
     private final InterceptorFactory postConstruct;
     private final InterceptorFactory preDestroy;
     private final Map<Method, InterceptorFactory> componentInterceptors;
+    private final NamespaceContextSelector namespaceContextSelector;
 
-    // TODO resource injections
     private BasicComponent component;
+
 
     /**
      * Construct a new instance.
@@ -60,6 +64,7 @@ public class BasicComponentCreateService implements Service<Component> {
      * @param componentConfiguration the component configuration
      */
     public BasicComponentCreateService(final ComponentConfiguration componentConfiguration) {
+        serviceName = componentConfiguration.getComponentDescription().getCreateServiceName();
         componentName = componentConfiguration.getComponentName();
         postConstruct = Interceptors.getChainedInterceptorFactory(componentConfiguration.getPostConstructInterceptors());
         preDestroy = Interceptors.getChainedInterceptorFactory(componentConfiguration.getPreDestroyInterceptors());
@@ -69,8 +74,7 @@ public class BasicComponentCreateService implements Service<Component> {
         }
         componentClass = componentConfiguration.getComponentClass();
         this.componentInterceptors = componentInterceptors;
-
-        // TODO resource injections
+        this.namespaceContextSelector = componentConfiguration.getNamespaceContextSelector();
     }
 
     /**
@@ -159,5 +163,17 @@ public class BasicComponentCreateService implements Service<Component> {
      */
     public Class<?> getComponentClass() {
         return componentClass;
+    }
+
+    /**
+     *
+     * @return the namespace context selector for the component, or null if it does not have one
+     */
+    public NamespaceContextSelector getNamespaceContextSelector() {
+        return namespaceContextSelector;
+    }
+
+    public ServiceName getServiceName() {
+        return this.serviceName;
     }
 }

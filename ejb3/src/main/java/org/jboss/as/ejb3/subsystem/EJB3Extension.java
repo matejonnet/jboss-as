@@ -22,22 +22,14 @@
 
 package org.jboss.as.ejb3.subsystem;
 
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIBE;
-
-import java.util.Locale;
 
 import org.jboss.as.controller.Extension;
 import org.jboss.as.controller.ExtensionContext;
-import org.jboss.as.controller.OperationContext;
-import org.jboss.as.controller.OperationFailedException;
-import org.jboss.as.controller.OperationStepHandler;
-import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.ResourceDefinition;
 import org.jboss.as.controller.SimpleResourceDefinition;
 import org.jboss.as.controller.SubsystemRegistration;
-import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.descriptions.ResourceDescriptionResolver;
 import org.jboss.as.controller.descriptions.StandardResourceDescriptionResolver;
@@ -45,13 +37,11 @@ import org.jboss.as.controller.operations.common.GenericSubsystemDescribeHandler
 import org.jboss.as.controller.parsing.ExtensionParsingContext;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.OperationEntry;
-import org.jboss.as.controller.registry.Resource;
 import org.jboss.as.ejb3.subsystem.deployment.EntityBeanResourceDefinition;
 import org.jboss.as.ejb3.subsystem.deployment.MessageDrivenBeanResourceDefinition;
 import org.jboss.as.ejb3.subsystem.deployment.SingletonBeanDeploymentResourceDefinition;
 import org.jboss.as.ejb3.subsystem.deployment.StatefulSessionBeanDeploymentResourceDefinition;
 import org.jboss.as.ejb3.subsystem.deployment.StatelessSessionBeanDeploymentResourceDefinition;
-import org.jboss.dmr.ModelNode;
 
 /**
  * Extension that provides the EJB3 subsystem.
@@ -95,11 +85,18 @@ public class EJB3Extension implements Extension {
         // subsystem=ejb3/strict-max-bean-instance-pool=*
         subsystemRegistration.registerSubModel(StrictMaxPoolResourceDefinition.INSTANCE);
 
+        subsystemRegistration.registerSubModel(CacheFactoryResourceDefinition.INSTANCE);
+        subsystemRegistration.registerSubModel(FilePassivationStoreResourceDefinition.INSTANCE);
+        subsystemRegistration.registerSubModel(ClusterPassivationStoreResourceDefinition.INSTANCE);
+
         // subsystem=ejb3/service=timerservice
         subsystemRegistration.registerSubModel(TimerServiceResourceDefinition.INSTANCE);
 
         // subsystem=ejb3/thread-pool=*
         subsystemRegistration.registerSubModel(EJB3ThreadPoolResourceDefinition.INSTANCE);
+
+        // subsystem=ejb3/service=iiop
+        subsystemRegistration.registerSubModel(EJB3IIOPResourceDefinition.INSTANCE);
 
         ResourceDefinition deploymentsDef = new SimpleResourceDefinition(PathElement.pathElement(ModelDescriptionConstants.SUBSYSTEM, SUBSYSTEM_NAME),
                 getResourceDescriptionResolver("deployed"));

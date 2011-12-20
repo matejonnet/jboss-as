@@ -24,16 +24,21 @@
 
 package org.jboss.as.ejb3;
 
+import static org.jboss.logging.Logger.Level.ERROR;
+import static org.jboss.logging.Logger.Level.INFO;
+import static org.jboss.logging.Logger.Level.TRACE;
+import static org.jboss.logging.Logger.Level.WARN;
+
 import java.io.File;
+import java.io.Serializable;
 import java.lang.reflect.Method;
 
 import javax.ejb.Timer;
 
 import org.jboss.as.ejb3.component.entity.EntityBeanComponentInstance;
 import org.jboss.as.ejb3.component.stateful.StatefulSessionComponentInstance;
-import org.jboss.as.ejb3.timerservice.CalendarTimer;
 import org.jboss.as.ejb3.timerservice.TimerImpl;
-import org.jboss.as.ejb3.timerservice.spi.MultiTimeoutMethodTimedObjectInvoker;
+import org.jboss.ejb.client.EJBLocator;
 import org.jboss.ejb.client.SessionID;
 import org.jboss.logging.BasicLogger;
 import org.jboss.logging.Cause;
@@ -41,10 +46,7 @@ import org.jboss.logging.LogMessage;
 import org.jboss.logging.Logger;
 import org.jboss.logging.Message;
 import org.jboss.logging.MessageLogger;
-
-import static org.jboss.logging.Logger.Level.ERROR;
-import static org.jboss.logging.Logger.Level.INFO;
-import static org.jboss.logging.Logger.Level.WARN;
+import org.jboss.remoting3.Channel;
 
 /**
  * Date: 19.10.2011
@@ -73,17 +75,17 @@ public interface EjbLogger extends BasicLogger {
      * @param cause the cause of the error.
      */
     @LogMessage(level = ERROR)
-    @Message(id = 14100, value = "Exception removing stateful bean %s")
-    void errorRemovingStatefulBean(SessionID id, @Cause Throwable cause);
+    @Message(id = 14100, value = "Failed to remove %s from cache")
+    void cacheRemoveFailed(Object id);
 
     /**
      * Logs an warning message indicating the it could not find a EJB for the specific id
      *
      * @param id the session id that could not be released
      */
-    @LogMessage(level = WARN)
-    @Message(id = 14101, value = "Could not find stateful bean to release %s")
-    void couldNotFindStatefulBean(SessionID id);
+    @LogMessage(level = INFO)
+    @Message(id = 14101, value = "Failed to find %s in cache")
+    void cacheEntryNotFound(Object id);
 
     /**
      * Logs an error message indicating an exception occurred while executing an invocation
@@ -152,13 +154,6 @@ public interface EjbLogger extends BasicLogger {
     @LogMessage(level = INFO)
     @Message(id = 14108, value = "Could not find stateful session bean instance with id: %s for bean: %s during destruction. Probably already removed")
     void failToFindSfsbWithId(SessionID sessionId, String componentName);
-
-    /**
-     * Logs an warning message indicating security-role-ref for message driven beans isn't yet implemented
-     */
-    @LogMessage(level = WARN)
-    @Message(id = 14109, value = "security-role-ref for message driven beans isn't yet implemented")
-    void securityRoleForMdbNotImplemented();
 
     /**
      * Logs an warning message indicating Default interceptor class is not listed in the <interceptors> section of ejb-jar.xml and will not be applied"
@@ -267,14 +262,6 @@ public interface EjbLogger extends BasicLogger {
     void timerNotActive(Timer timer);
 
     /**
-     * Logs an error message indicating Cannot invoke timeout method because timer is an auto timer,
-     * but invoker is not of type specified
-     */
-    @LogMessage(level = ERROR)
-    @Message(id = 14125, value = "Cannot invoke timeout method because timer: %s is an auto timer, but invoker is not of type %s")
-    void failToInvokeTimeout(CalendarTimer calendarTimer, Class<MultiTimeoutMethodTimedObjectInvoker> multiTimeoutMethodTimedObjectInvokerClass);
-
-    /**
      * Logs an warning message indicating could not read timer information for EJB component
      */
     @LogMessage(level = WARN)
@@ -336,4 +323,66 @@ public interface EjbLogger extends BasicLogger {
     @LogMessage(level = ERROR)
     @Message(id = 14134, value = "EJB Invocation failed on component %s for method %s")
     void invocationFailed(String component, Method method, @Cause Throwable t);
+
+    /**
+     * Logs an error message indicating that an ejb client proxy could not be swapped out in a RMI invocation
+     */
+    @LogMessage(level = WARN)
+    @Message(id = 14135, value = "Could not find EJB for locator %s, EJB client proxy will not be replaced")
+    void couldNotFindEjbForLocatorIIOP(EJBLocator locator);
+
+
+    /**
+     * Logs an error message indicating that an ejb client proxy could not be swapped out in a RMI invocation
+     */
+    @LogMessage(level = WARN)
+    @Message(id = 14136, value = "EJB %s is not being replaced with a Stub as it is not exposed over IIOP")
+    void ejbNotExposedOverIIOP(EJBLocator locator);
+
+    /**
+     * Logs an error message indicating that dynamic stub creation failed
+     */
+    @LogMessage(level = ERROR)
+    @Message(id = 14137, value = "Dynamic stub creation failed for class %s")
+    void dynamicStubCreationFailed(String clazz, @Cause Throwable t);
+
+
+    /**
+     */
+    @LogMessage(level = ERROR)
+    @Message(id = 14138, value = "Exception releasing entity")
+    void exceptionReleasingEntity(@Cause Throwable t);
+
+    /**
+     * Log message indicating that a unsupported client marshalling strategy was received from a remote client
+     *
+     * @param strategy The client marshalling strategy
+     * @param channel The channel on which the client marshalling strategy was received
+     */
+    @LogMessage(level = INFO)
+    @Message(id = 14139, value = "Unsupported client marshalling strategy %s received on channel %s ,no further communication will take place")
+    void unsupportedClientMarshallingStrategy(String strategy, Channel channel);
+
+
+    /**
+     * Log message indicating that some error caused a channel to be closed
+     *
+     * @param channel The channel being closed
+     * @param t The cause
+     */
+    @LogMessage(level = ERROR)
+    @Message(id = 14140, value = "Closing channel %s due to an error")
+    void closingChannel(Channel channel, @Cause Throwable t);
+
+    /**
+     * Log message indicating that a {@link Channel.Receiver#handleEnd(org.jboss.remoting3.Channel)} notification
+     * was received and the channel is being closed
+     *
+     * @param channel The channel for which the {@link Channel.Receiver#handleEnd(org.jboss.remoting3.Channel)} notification
+     *                was received
+     */
+    @LogMessage(level = ERROR)
+    @Message(id = 14141, value = "Channel end notification received, closing channel %s")
+    void closingChannelOnChannelEnd(Channel channel);
+
 }

@@ -29,14 +29,16 @@ import java.io.IOException;
 import static org.jboss.as.protocol.ProtocolMessages.MESSAGES;
 
 /**
- * DomainClientProtocol header used for management operation responses. Provides the default header fields from
+ * ManagementProtocol header used for management operation responses. Provides the default header fields from
  * {@link ManagementProtocolHeader}.
  *
  * @author John Bailey
  * @author Kabir Khan
  */
-class ManagementResponseHeader extends ManagementProtocolHeader {
+public class ManagementResponseHeader extends ManagementProtocolHeader {
+
     private int responseId;
+    private boolean failed = false;
     private String error;
 
     /**
@@ -49,6 +51,7 @@ class ManagementResponseHeader extends ManagementProtocolHeader {
         super(version);
         this.responseId = responseId;
         this.error = error;
+        this.failed = error != null;
     }
 
     ManagementResponseHeader(final int version, final DataInput input) throws IOException {
@@ -62,6 +65,7 @@ class ManagementResponseHeader extends ManagementProtocolHeader {
         ProtocolUtils.expectHeader(input, ManagementProtocol.RESPONSE_TYPE);
         byte type = input.readByte();
         if (type == ManagementProtocol.RESPONSE_ERROR) {
+            this.failed = true;
             error = input.readUTF();
         } else if (type != ManagementProtocol.RESPONSE_BODY) {
             throw MESSAGES.invalidType("RESPONSE_ERROR", "RESPONSE_BODY", type);
@@ -79,6 +83,15 @@ class ManagementResponseHeader extends ManagementProtocolHeader {
         } else {
             output.write(ManagementProtocol.RESPONSE_BODY);
         }
+    }
+
+    /**
+     * Whether this is an error response.
+     *
+     * @return {@code true} if the request failed, {@code false} otherwise
+     */
+    public boolean isFailed() {
+        return failed;
     }
 
     /**
@@ -100,7 +113,22 @@ class ManagementResponseHeader extends ManagementProtocolHeader {
     }
 
     @Override
-    byte getType() {
+    public byte getType() {
         return ManagementProtocol.TYPE_RESPONSE;
     }
+
+    public static ManagementResponseHeader create(final ManagementProtocolHeader header) {
+        return create(ManagementRequestHeader.class.cast(header));
+    }
+
+    public static ManagementResponseHeader create(final ManagementRequestHeader header) {
+        final int workingVersion = Math.min(ManagementProtocol.VERSION, header.getVersion());
+        return new ManagementResponseHeader(workingVersion, header.getRequestId(), null);
+    }
+
+    public static ManagementResponseHeader create(final ManagementRequestHeader header, Exception error) {
+        final int workingVersion = Math.min(ManagementProtocol.VERSION, header.getVersion());
+        return new ManagementResponseHeader(workingVersion, header.getRequestId(), error != null ? error.getMessage() : null);
+    }
+
 }

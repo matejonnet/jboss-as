@@ -83,6 +83,10 @@ public class ServiceBasedNamingStore implements NamingStore {
 
             final ServiceName ceiling = boundServices.ceiling(lookupName);
             if (ceiling != null && lookupName.isParentOf(ceiling)) {
+                if(lookupName.equals(ceiling)) {
+                    //the binder service returned null
+                    return null;
+                }
                 return new NamingContext((Name) name.clone(), this, null);
             }
             throw new NameNotFoundException(name.toString() + " -- " + lookupName);
@@ -106,22 +110,29 @@ public class ServiceBasedNamingStore implements NamingStore {
         return cpe;
     }
 
-    private Object lookup(final String name, final ServiceName lookupName) throws NameNotFoundException {
+    private Object lookup(final String name, final ServiceName lookupName) throws NamingException {
         final ServiceController<?> controller = serviceRegistry.getService(lookupName);
+        final Object object;
         if (controller != null) {
             try {
-                final Object object = controller.getValue();
-                if (object instanceof ManagedReferenceFactory) {
-                    return ManagedReferenceFactory.class.cast(object).getReference().getInstance();
-                }
-
-                return object;
+                object = controller.getValue();
             } catch (IllegalStateException e) {
                 //occurs if the service is not actually up
                 throw new NameNotFoundException("Error looking up " + name + ", service " + lookupName + " is not started");
             }
+        } else {
+            return null;
         }
-        return null;
+        if (object instanceof ManagedReferenceFactory) {
+            try {
+                return ManagedReferenceFactory.class.cast(object).getReference().getInstance();
+            } catch (Exception e) {
+                NamingException n = new NamingException(e.getMessage());
+                n.initCause(e);
+                throw n;
+            }
+        }
+        return object;
     }
 
     public List<NameClassPair> list(final Name name) throws NamingException {
@@ -220,7 +231,7 @@ public class ServiceBasedNamingStore implements NamingStore {
         boundServices.remove(serviceName);
     }
 
-    private ServiceName buildServiceName(final Name name) {
+    protected ServiceName buildServiceName(final Name name) {
         final Enumeration<String> parts = name.getAll();
         ServiceName current = serviceNameBase;
         while (parts.hasMoreElements()) {
@@ -262,5 +273,11 @@ public class ServiceBasedNamingStore implements NamingStore {
         return name;
     }
 
+    protected ServiceName getServiceNameBase() {
+        return serviceNameBase;
+    }
 
+    protected ServiceRegistry getServiceRegistry() {
+        return serviceRegistry;
+    }
 }

@@ -10,6 +10,7 @@ import java.net.InetAddress;
 import java.util.Collections;
 import java.util.Map;
 
+import org.jboss.as.controller.RunningMode;
 import org.jboss.as.controller.persistence.ConfigurationFile;
 import org.jboss.as.process.DefaultJvmUtils;
 
@@ -98,6 +99,12 @@ public class HostControllerEnvironment {
     public static final String DOMAIN_TEMP_DIR = "jboss.domain.temp.dir";
 
     /**
+     * Common alias between domain and standalone mode. Uses jboss.domain.temp.dir on domain mode,
+     * and jboss.server.temp.dir on standalone server mode.
+     */
+    public static final String CONTROLLER_TEMP_DIR = "jboss.controller.temp.dir";
+
+    /**
      * The default system property used to store bind address information from the command-line (-b).
      */
     public static final String JBOSS_BIND_ADDRESS = "jboss.bind.address";
@@ -108,9 +115,20 @@ public class HostControllerEnvironment {
     public static final String JBOSS_BIND_ADDRESS_PREFIX = JBOSS_BIND_ADDRESS + ".";
 
     /**
-     * The default system property used to store bind address information from the command-line (-b).
+     * The default system property used to store multicast address information from the command-line (-u).
      */
     public static final String JBOSS_DEFAULT_MULTICAST_ADDRESS = "jboss.default.multicast.address";
+
+    /**
+     * The default system property used to store the master Host Controller's native management interface address
+     * from the command line.
+     */
+    public static final String JBOSS_DOMAIN_MASTER_ADDRESS = "jboss.domain.master.address";
+
+    /**
+     * The default system property used to store the master Host Controller's native of the master port from the command line.
+     */
+    public static final String JBOSS_DOMAIN_MASTER_PORT = "jboss.domain.master.port";
 
     private final Map<String, String> hostSystemProperties;
     private final InetAddress processControllerAddress;
@@ -137,10 +155,13 @@ public class HostControllerEnvironment {
     private final PrintStream stdout;
     private final PrintStream stderr;
 
+    private final RunningMode initialRunningMode;
+
 
     public HostControllerEnvironment(Map<String, String> hostSystemProperties, boolean isRestart, InputStream stdin, PrintStream stdout, PrintStream stderr,
                                      InetAddress processControllerAddress, Integer processControllerPort, InetAddress hostControllerAddress,
-                                     Integer hostControllerPort, String defaultJVM, String domainConfig, String hostConfig, boolean backupDomainFiles, boolean useCachedDc) {
+                                     Integer hostControllerPort, String defaultJVM, String domainConfig, String hostConfig,
+                                     RunningMode initialRunningMode, boolean backupDomainFiles, boolean useCachedDc) {
         if (hostSystemProperties == null) {
             throw new IllegalArgumentException("hostSystemProperties is null");
         }
@@ -258,6 +279,7 @@ public class HostControllerEnvironment {
 
         this.backupDomainFiles = backupDomainFiles;
         this.useCachedDc = useCachedDc;
+        this.initialRunningMode = initialRunningMode;
     }
 
     /**
@@ -355,6 +377,10 @@ public class HostControllerEnvironment {
      */
     public boolean isUseCachedDc() {
         return useCachedDc;
+    }
+
+    public RunningMode getInitialRunningMode() {
+        return initialRunningMode;
     }
 
     public File getHomeDir() {

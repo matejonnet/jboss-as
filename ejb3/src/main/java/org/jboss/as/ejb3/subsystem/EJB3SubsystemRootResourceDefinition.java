@@ -52,6 +52,7 @@ public class EJB3SubsystemRootResourceDefinition extends SimpleResourceDefinitio
                     .setAllowExpression(true).build();
     public static final SimpleAttributeDefinition DEFAULT_RESOURCE_ADAPTER_NAME =
             new SimpleAttributeDefinitionBuilder(EJB3SubsystemModel.DEFAULT_RESOURCE_ADAPTER_NAME, ModelType.STRING, true)
+                    .setDefaultValue(new ModelNode().set("hornetq-ra"))
                     .setAllowExpression(true).build();
     public static final SimpleAttributeDefinition DEFAULT_STATEFUL_BEAN_ACCESS_TIMEOUT =
             new SimpleAttributeDefinitionBuilder(EJB3SubsystemModel.DEFAULT_STATEFUL_BEAN_ACCESS_TIMEOUT, ModelType.LONG, true)
@@ -70,7 +71,15 @@ public class EJB3SubsystemRootResourceDefinition extends SimpleResourceDefinitio
                     .setValidator(new LongRangeValidator(1, Integer.MAX_VALUE, false, false))
                     .setFlags(AttributeAccess.Flag.RESTART_NONE)
                     .build();
-
+    public static final SimpleAttributeDefinition DEFAULT_SFSB_CACHE =
+            new SimpleAttributeDefinitionBuilder(EJB3SubsystemModel.DEFAULT_SFSB_CACHE, ModelType.STRING, true)
+                    .setAllowExpression(true)
+                    .build();
+    public static final SimpleAttributeDefinition DEFAULT_CLUSTERED_SFSB_CACHE =
+            new SimpleAttributeDefinitionBuilder(EJB3SubsystemModel.DEFAULT_CLUSTERED_SFSB_CACHE, ModelType.STRING, true)
+                    .setAllowExpression(true)
+//                    .setAllowNull(true)
+                    .build();
 
     private EJB3SubsystemRootResourceDefinition() {
         super(PathElement.pathElement(ModelDescriptionConstants.SUBSYSTEM, EJB3Extension.SUBSYSTEM_NAME),
@@ -81,6 +90,8 @@ public class EJB3SubsystemRootResourceDefinition extends SimpleResourceDefinitio
 
     @Override
     public void registerAttributes(ManagementResourceRegistration resourceRegistration) {
+        resourceRegistration.registerReadWriteAttribute(DEFAULT_SFSB_CACHE, null, EJB3SubsystemDefaultCacheWriteHandler.SFSB_CACHE);
+        resourceRegistration.registerReadWriteAttribute(DEFAULT_CLUSTERED_SFSB_CACHE, null, EJB3SubsystemDefaultCacheWriteHandler.CLUSTERED_SFSB_CACHE);
         resourceRegistration.registerReadWriteAttribute(DEFAULT_SLSB_INSTANCE_POOL, null, EJB3SubsystemDefaultPoolWriteHandler.SLSB_POOL);
         resourceRegistration.registerReadWriteAttribute(DEFAULT_MDB_INSTANCE_POOL, null, EJB3SubsystemDefaultPoolWriteHandler.MDB_POOL);
         resourceRegistration.registerReadWriteAttribute(DEFAULT_RESOURCE_ADAPTER_NAME, null, DefaultResourceAdapterWriteHandler.INSTANCE);

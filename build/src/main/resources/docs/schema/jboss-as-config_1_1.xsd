@@ -49,6 +49,7 @@
                 <xs:element name="socket-binding-groups" type="socket-binding-groupsType" minOccurs="0" maxOccurs="1"/>
                 <xs:element name="deployments" type="domain-deploymentsType" minOccurs="0" maxOccurs="1"/>
                 <xs:element name="server-groups" type="server-groupsType" minOccurs="0" maxOccurs="1"/>
+                <xs:element name="management-client-content" type="management-client-contentType" minOccurs="0" maxOccurs="1"/>
             </xs:sequence>
         </xs:complexType>
     </xs:element>
@@ -70,7 +71,7 @@
                 <xs:element name="system-properties" type="properties-with-boottime" minOccurs="0"/>
                 <xs:element name="paths" type="specified-pathsType" minOccurs="0" maxOccurs="1" />
                 <xs:element name="vault" type="vaultType" minOccurs="0" maxOccurs="1"/>
-                <xs:element name="management" type="host-managementType" minOccurs="0" maxOccurs="1"/>
+                <xs:element name="management" type="host-managementType" minOccurs="1" maxOccurs="1"/>
                 <xs:element name="domain-controller" type="domain-controllerType"/>
                 <xs:element name="interfaces" type="specified-interfacesType" minOccurs="0"/>
                 <xs:element name="jvms" type="jvmsType" minOccurs="0"/>
@@ -157,7 +158,7 @@
         <xs:complexContent>
             <xs:extension base="domain-managementType">
                 <xs:sequence>
-                    <xs:element name="management-interfaces" type="host-management-interfacesType" minOccurs="0"/>
+                    <xs:element name="management-interfaces" type="host-management-interfacesType" minOccurs="1"/>
                 </xs:sequence>
             </xs:extension>
         </xs:complexContent>
@@ -323,20 +324,29 @@
         <xs:annotation>
             <xs:documentation>
                 Configuration of the server side authentication mechanisms.
+                
+                Optionally one truststore can be defined and one username/password based store can be defined,
+                authentication will first attemp to use the truststore and if this is not available fall back
+                to the username/password authentication.
+                
+                If none of these are specified the only available mechanism will be the local mechanism for the 
+                Native interface, the HTTP interface will not be accessible.
             </xs:documentation>
         </xs:annotation>
-        <xs:choice>
-            <xs:element name="ldap" type="ldapAuthenticationType" minOccurs="0" />
-            <xs:element name="properties" type="propertiesAuthenticationType" minOccurs="0" />
-            <xs:element name="users" type="usersAuthenticationType" minOccurs="0" />
-        </xs:choice>
-        <xs:attribute name="useDomainController" type="xs:boolean" default="false">
-            <xs:annotation>
-                <xs:documentation>
-                    Should the request delegate to the domain controller or handle the authentication locally.
-                </xs:documentation>
-            </xs:annotation>
-        </xs:attribute>
+        <xs:sequence>
+            <xs:element name="truststore" type="keystoreType" minOccurs="0">
+                <xs:annotation>
+                    <xs:documentation>
+                        Configuration of a keystore to use to create a trust manager to verify clients.
+                    </xs:documentation>
+                </xs:annotation>
+            </xs:element>
+            <xs:choice minOccurs="0">
+                <xs:element name="ldap" type="ldapAuthenticationType" minOccurs="0" />
+                <xs:element name="properties" type="propertiesAuthenticationType" minOccurs="0" />
+                <xs:element name="users" type="usersAuthenticationType" minOccurs="0" />
+            </xs:choice>
+        </xs:sequence>
     </xs:complexType>
 
     <xs:complexType name="ldapAuthenticationType">
@@ -472,10 +482,10 @@
     </xs:complexType>
 
     <xs:complexType name="host-management-interfacesType">
-        <xs:all minOccurs="0">
+        <xs:sequence>
             <xs:element name="native-interface" type="host-native-management-interfaceType"/>
-            <xs:element name="http-interface" type="host-http-management-interfaceType"/>
-        </xs:all>
+            <xs:element name="http-interface" type="host-http-management-interfaceType" minOccurs="0"/>
+        </xs:sequence>
     </xs:complexType>
 
     <xs:complexType name="management-interfaceType">
@@ -592,11 +602,11 @@
     </xs:complexType>
 
     <xs:complexType name="server-management-interfacesType">
-        <xs:all minOccurs="0">
+        <xs:sequence>
             <xs:element name="native-remoting-interface" type="management-remoting-interfaceType" minOccurs="0"/>
-            <xs:element name="native-interface" type="server-native-management-interfaceType"/>
-            <xs:element name="http-interface" type="server-http-management-interfaceType"/>
-        </xs:all>
+            <xs:element name="native-interface" type="server-native-management-interfaceType" minOccurs="0"/>
+            <xs:element name="http-interface" type="server-http-management-interfaceType" minOccurs="0"/>
+        </xs:sequence>
     </xs:complexType>
 
     <xs:complexType name="server-native-management-interfaceType">
@@ -723,7 +733,7 @@
             <xs:element name="paths" type="specified-pathsType" minOccurs="0" maxOccurs="1" />
 
             <xs:element name="interfaces" type="specified-interfacesType" minOccurs="0"/>
-            <xs:element name="socket-binding-group" type="socket-binding-group-refType" minOccurs="0"/>
+            <xs:element name="socket-bindings" type="server-socket-bindingsType" minOccurs="0"/>
 
             <!--<xs:element name="loggers" type="loggersType" minOccurs="0"/>-->
             <xs:element name="system-properties" type="properties-with-boottime" minOccurs="0"/>
@@ -732,6 +742,37 @@
         <xs:attribute name="name" type="xs:string" use="required"/>
         <xs:attribute name="group" type="xs:string" use="required"/>
         <xs:attribute name="auto-start" type="xs:boolean" default="true"/>
+    </xs:complexType>
+
+    <xs:complexType name="server-socket-bindingsType">
+        <xs:annotation>
+            <xs:documentation>
+            <![CDATA[
+                Server-specific overrides to the default socket binding configuration inherited from the server group.
+            ]]>
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="socket-binding-group" type="xs:string" use="optional">
+            <xs:annotation>
+                <xs:documentation>
+                <![CDATA[
+                    The socket binding group to use for the server. If undefined, the socket binding group
+                    specified for the server group is used.
+                ]]>
+                </xs:documentation>
+            </xs:annotation>
+        </xs:attribute>
+        <xs:attribute name="port-offset" type="xs:int" default="0">
+            <xs:annotation>
+                <xs:documentation>
+                <![CDATA[
+                    Increment to apply to the base port values defined in the
+                    referenced socket binding group to derive the values to use on this
+                    server.
+                ]]>
+                </xs:documentation>
+            </xs:annotation>
+        </xs:attribute>
     </xs:complexType>
 
     <xs:complexType name="extensionsType">
@@ -947,7 +988,6 @@
             <xs:documentation>Contains a list of subsystems</xs:documentation>
         </xs:annotation>
         <xs:sequence>
-            <xs:element name="include" type="profile-includeType" minOccurs="0" maxOccurs="unbounded"/>
             <xs:any namespace="##other" minOccurs="0" maxOccurs="unbounded">
                 <xs:annotation>
                     <xs:documentation>A profile declaration may include configuration
@@ -959,19 +999,6 @@
         <xs:attribute name="name" type="xs:string" use="required">
             <xs:annotation>
                 <xs:documentation>Name of the profile</xs:documentation>
-            </xs:annotation>
-        </xs:attribute>
-    </xs:complexType>
-
-    <xs:complexType name="profile-includeType">
-        <xs:annotation>
-            <xs:documentation>Specifies that a contents of a named profile are to be included in
-                the profile whose definition includes this type.
-            </xs:documentation>
-        </xs:annotation>
-        <xs:attribute name="profile" use="required">
-            <xs:annotation>
-                <xs:documentation>Name of the profile to include</xs:documentation>
             </xs:annotation>
         </xs:attribute>
     </xs:complexType>
@@ -1008,7 +1035,6 @@
             <xs:documentation>Contains a list of socket configurations</xs:documentation>
         </xs:annotation>
         <xs:sequence>
-            <xs:element name="include" type="socket-binding-group-includeType" minOccurs="0" maxOccurs="unbounded"/>
             <xs:element name="socket-binding" type="socket-bindingType" maxOccurs="unbounded"/>
             <xs:element name="outbound-socket-binding" type="outbound-socket-bindingType" minOccurs="0" maxOccurs="unbounded"/>
         </xs:sequence>
@@ -1019,19 +1045,6 @@
                     Name of an interface that should be used as the interface for
                     any sockets that do not explicitly declare one.
                 </xs:documentation>
-            </xs:annotation>
-        </xs:attribute>
-    </xs:complexType>
-
-    <xs:complexType name="socket-binding-group-includeType">
-        <xs:annotation>
-            <xs:documentation>Specifies that a contents of a named socket-binding-group are to be included in
-                the socket-binding-group whose definition includes this type.
-            </xs:documentation>
-        </xs:annotation>
-        <xs:attribute name="socket-binding-group" use="required">
-            <xs:annotation>
-                <xs:documentation>Name of the socket-binding-group to include</xs:documentation>
             </xs:annotation>
         </xs:attribute>
     </xs:complexType>
@@ -1335,7 +1348,7 @@
 
     <xs:complexType name="address-exclusionType">
         <xs:choice>
-            <xs:element name="inet-address" type="inet-addressType"/>
+            <xs:element name="inet-address" type="inet-addressType" minOccurs="0" maxOccurs="unbounded"/>
             <xs:element name="loopback" type="loopbackType"/>
             <xs:element name="loopback-address" type="loopback-addressType"/>
             <xs:element name="multicast" type="multicastType"/>
@@ -1891,5 +1904,31 @@
       </xs:sequence>
       <xs:attribute name="code" type="xs:string" use="optional"/>
    </xs:complexType>
+
+    <xs:complexType name="management-client-contentType">
+        <xs:annotation>
+            <xs:documentation>
+                <![CDATA[
+                   Storage information about re-usable chunks of data useful to management clients that are stored
+                   in the domain content repository.
+                ]]>
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="rollout-plans" type="contentType" minOccurs="0" maxOccurs="1">
+                <xs:annotation>
+                    <xs:documentation>
+                        <![CDATA[
+                           Storage information about a set of named management update rollout plans useful to management
+                           clients that are stored in the domain content repository. The management API exposed by the domain
+                           controller provides access to these plans to management clients, allowing clients to use the plans
+                           by referencing them by name, avoiding the need to recreate them for each use.
+                        ]]>
+                    </xs:documentation>
+                </xs:annotation>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+
 
 </xs:schema>

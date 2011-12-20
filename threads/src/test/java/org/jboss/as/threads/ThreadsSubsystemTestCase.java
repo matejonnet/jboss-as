@@ -103,7 +103,10 @@ import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.ProcessType;
 import org.jboss.as.controller.ResourceDefinition;
+import org.jboss.as.controller.RunningMode;
+import org.jboss.as.controller.RunningModeControl;
 import org.jboss.as.controller.SimpleResourceDefinition;
 import org.jboss.as.controller.SubsystemRegistration;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
@@ -224,8 +227,8 @@ public class ThreadsSubsystemTestCase {
         assertEquals(ModelType.STRING, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(NAME).require(TYPE).asType());
         assertEquals(ModelType.STRING, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(THREAD_FACTORY).require(TYPE)
                 .asType());
-        assertEquals(ModelType.OBJECT, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(TYPE)
-                .asType());
+        assertEquals(ModelType.LIST, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(TYPE).asType());
+        assertEquals(ModelType.PROPERTY, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(VALUE_TYPE).asType());
         assertEquals(ModelType.OBJECT, boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(TYPE)
                 .asType());
         assertEquals(
@@ -268,7 +271,8 @@ public class ThreadsSubsystemTestCase {
         assertEquals(ModelType.STRING, queueLessThreadPoolDesc.require(ATTRIBUTES).require(NAME).require(TYPE).asType());
         assertEquals(ModelType.STRING, queueLessThreadPoolDesc.require(ATTRIBUTES).require(THREAD_FACTORY).require(TYPE)
                 .asType());
-        assertEquals(ModelType.OBJECT, queueLessThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(TYPE).asType());
+        assertEquals(ModelType.LIST, queueLessThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(TYPE).asType());
+        assertEquals(ModelType.PROPERTY, queueLessThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(VALUE_TYPE).asType());
         assertEquals(
                 ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(VALUE_TYPE).require(COUNT)
@@ -289,7 +293,8 @@ public class ThreadsSubsystemTestCase {
         assertEquals(ModelType.STRING, scheduledThreadPoolDesc.require(ATTRIBUTES).require(NAME).require(TYPE).asType());
         assertEquals(ModelType.STRING, scheduledThreadPoolDesc.require(ATTRIBUTES).require(THREAD_FACTORY).require(TYPE)
                 .asType());
-        assertEquals(ModelType.OBJECT, scheduledThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(TYPE).asType());
+        assertEquals(ModelType.LIST, scheduledThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(TYPE).asType());
+        assertEquals(ModelType.PROPERTY, scheduledThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(VALUE_TYPE).asType());
         assertEquals(
                 ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(VALUE_TYPE).require(COUNT)
@@ -308,7 +313,8 @@ public class ThreadsSubsystemTestCase {
         assertEquals(ModelType.STRING, unboundedThreadPoolDesc.require(ATTRIBUTES).require(NAME).require(TYPE).asType());
         assertEquals(ModelType.STRING, unboundedThreadPoolDesc.require(ATTRIBUTES).require(THREAD_FACTORY).require(TYPE)
                 .asType());
-        assertEquals(ModelType.OBJECT, unboundedThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(TYPE).asType());
+        assertEquals(ModelType.LIST, unboundedThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(TYPE).asType());
+        assertEquals(ModelType.PROPERTY, unboundedThreadPoolDesc.require(ATTRIBUTES).require(PROPERTIES).require(VALUE_TYPE).asType());
         assertEquals(
                 ModelType.INT,
                 boundedQueueThreadPoolDesc.require(ATTRIBUTES).require(MAX_THREADS).require(VALUE_TYPE).require(COUNT)
@@ -803,7 +809,7 @@ public class ThreadsSubsystemTestCase {
 
         @Override
         public ProcessType getProcessType() {
-            return ProcessType.EMBEDDED;
+            return ProcessType.EMBEDDED_SERVER;
         }
 
         @Override
@@ -843,6 +849,15 @@ public class ThreadsSubsystemTestCase {
                     Assert.assertNotNull(writer);
                 }
             };
+        }
+
+        @Override
+        public ExtensionContext createTracking(String moduleName) {
+            return this;
+        }
+
+        @Override
+        public void cleanup(Resource resource, String moduleName) {
         }
     }
 
@@ -905,7 +920,7 @@ public class ThreadsSubsystemTestCase {
         private final CountDownLatch latch = new CountDownLatch(1);
 
         ModelControllerService(final ServiceContainer serviceContainer, final ControlledProcessState processState) {
-            super(OperationContext.Type.SERVER, new TestConfigurationPersister(), processState, NULL_PROVIDER, null, ExpressionResolver.DEFAULT);
+            super(ProcessType.EMBEDDED_SERVER, new RunningModeControl(RunningMode.NORMAL), new TestConfigurationPersister(), processState, NULL_PROVIDER, null, ExpressionResolver.DEFAULT);
         }
 
         @Override

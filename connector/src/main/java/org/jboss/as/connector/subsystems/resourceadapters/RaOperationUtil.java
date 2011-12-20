@@ -41,7 +41,6 @@ import static org.jboss.as.connector.subsystems.resourceadapters.Constants.CLASS
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.ENABLED;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.JNDINAME;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.NO_RECOVERY;
-import static org.jboss.as.connector.subsystems.resourceadapters.Constants.POOL_NAME;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.RECOVERLUGIN_CLASSNAME;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.RECOVERLUGIN_PROPERTIES;
 import static org.jboss.as.connector.subsystems.resourceadapters.Constants.RECOVERY_PASSWORD;
@@ -113,7 +112,7 @@ public class RaOperationUtil {
 
     }
 
-    public static ModifiableConnDef buildConnectionDefinitionObject(final OperationContext context, final ModelNode operation) throws OperationFailedException, ValidateException {
+    public static ModifiableConnDef buildConnectionDefinitionObject(final OperationContext context, final ModelNode operation, final String poolName) throws OperationFailedException, ValidateException {
         Map<String, String> configProperties = new HashMap<String, String>(0);
 //        if (operation.hasDefined(CONFIG_PROPERTIES.getName())) {
 //            configProperties = new HashMap<String, String>(operation.get(CONFIG_PROPERTIES.getName()).asList().size());
@@ -123,7 +122,6 @@ public class RaOperationUtil {
 //        }
         String className = getStringIfSetOrGetDefault(operation, CLASS_NAME.getName(), null);
         String jndiName = getStringIfSetOrGetDefault(operation, JNDINAME.getName(), null);
-        String poolName = getStringIfSetOrGetDefault(operation, POOL_NAME.getName(), null);
         boolean enabled = getBooleanIfSetOrGetDefault(operation, ENABLED.getName(), Defaults.ENABLED);
         boolean useJavaContext = getBooleanIfSetOrGetDefault(operation, USE_JAVA_CONTEXT.getName(), Defaults.USE_JAVA_CONTEXT);
         boolean useCcm = getBooleanIfSetOrGetDefault(operation, USE_CCM.getName(), Defaults.USE_CCM);
@@ -166,12 +164,16 @@ public class RaOperationUtil {
         //TODO This will be cleaned up once it uses attribute definitions
         String recoveryPassword = getResolvedStringIfSetOrGetDefault(context, operation, RECOVERY_PASSWORD.getName(), null);
         final String recoverySecurityDomain = getStringIfSetOrGetDefault(operation, RECOVERY_SECURITY_DOMAIN.getName(), null);
+        final Boolean noRecovery = getBooleanIfSetOrGetDefault(operation, NO_RECOVERY.getName(), null);
 
-        final Credential credential = new CredentialImpl(recoveryUsername, recoveryPassword, recoverySecurityDomain);
+        Recovery recovery = null;
+        if (recoveryUsername != null || recoveryPassword != null || recoverySecurityDomain != null ||
+            (noRecovery != null && noRecovery.booleanValue())) {
+           final Credential credential = new CredentialImpl(recoveryUsername, recoveryPassword, recoverySecurityDomain);
 
-        final Extension recoverPlugin = extractExtension(operation, RECOVERLUGIN_CLASSNAME.getName(), RECOVERLUGIN_PROPERTIES.getName());
-        final boolean noRecovery = getBooleanIfSetOrGetDefault(operation, NO_RECOVERY.getName(), false);
-        Recovery recovery = new Recovery(credential, recoverPlugin, noRecovery);
+           final Extension recoverPlugin = extractExtension(operation, RECOVERLUGIN_CLASSNAME.getName(), RECOVERLUGIN_PROPERTIES.getName());
+           recovery = new Recovery(credential, recoverPlugin, noRecovery);
+        }
         ModifiableConnDef connectionDefinition = new ModifiableConnDef(configProperties, className, jndiName, poolName,
                 enabled, useJavaContext, useCcm, pool, timeOut, validation, security, recovery);
 
@@ -179,11 +181,10 @@ public class RaOperationUtil {
 
     }
 
-    public static ModifiableAdminObject buildAdminObjects(ModelNode operation) {
+    public static ModifiableAdminObject buildAdminObjects(ModelNode operation, final String poolName) {
                 Map<String, String> configProperties = new HashMap<String, String>(0);
                 String className = getStringIfSetOrGetDefault(operation, CLASS_NAME.getName(), null);
                 String jndiName = getStringIfSetOrGetDefault(operation, JNDINAME.getName(), null);
-                String poolName = getStringIfSetOrGetDefault(operation, POOL_NAME.getName(), null);
                 boolean enabled = getBooleanIfSetOrGetDefault(operation, ENABLED.getName(), Defaults.ENABLED);
                 boolean useJavaContext = getBooleanIfSetOrGetDefault(operation, USE_JAVA_CONTEXT.getName(), Defaults.USE_JAVA_CONTEXT);
 

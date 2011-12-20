@@ -37,6 +37,11 @@ public class SpecifiedInterfaceRemoveHandler extends InterfaceRemoveHandler {
     protected SpecifiedInterfaceRemoveHandler() {
     }
 
+    @Override
+    protected boolean requiresRuntime(OperationContext context) {
+        return true;
+    }
+
     protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model) {
         String name = getInterfaceName(operation);
         context.removeService(NetworkInterfaceService.JBOSS_NETWORK_INTERFACE.append(name));

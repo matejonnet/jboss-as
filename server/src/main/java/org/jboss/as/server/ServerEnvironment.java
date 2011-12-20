@@ -21,6 +21,8 @@
  */
 package org.jboss.as.server;
 
+import org.jboss.as.controller.ControllerMessages;
+import org.jboss.as.controller.RunningMode;
 import org.jboss.as.controller.persistence.ConfigurationFile;
 import org.jboss.logging.Logger;
 import org.jboss.modules.Module;
@@ -39,6 +41,7 @@ import java.util.regex.Pattern;
  * Encapsulates the runtime environment for a server.
  *
  * @author Brian Stansberry
+ * @author Mike M. Clark
  */
 public class ServerEnvironment implements Serializable {
 
@@ -142,6 +145,12 @@ public class ServerEnvironment implements Serializable {
     public static final String SERVER_SYSTEM_DEPLOY_DIR = "jboss.server.system.deploy.dir";
 
     /**
+     * Common alias between domain and standalone mode. Uses jboss.domain.temp.dir on domain mode,
+     * and jboss.server.temp.dir on standalone server mode.
+     */
+    public static final String CONTROLLER_TEMP_DIR = "jboss.controller.temp.dir";
+
+    /**
      * Constant that holds the name of the system property for specifying the node name within a cluster.
      */
     public static final String NODE_NAME = "jboss.node.name";
@@ -186,6 +195,7 @@ public class ServerEnvironment implements Serializable {
     private final LaunchType launchType;
     private final String qualifiedHostName;
     private final String hostName;
+    private final String hostControllerName;
     private final String serverName;
     private final String nodeName;
 
@@ -200,15 +210,29 @@ public class ServerEnvironment implements Serializable {
     private final File serverDeployDir;
     private final File serverLogDir;
     private final File serverTempDir;
+    private final File controllerTempDir;
+
     private final boolean standalone;
     private final boolean allowModelControllerExecutor;
+    private final RunningMode initialRunningMode;
 
-    public ServerEnvironment(Properties props, Map<String, String> env, String serverConfig, LaunchType launchType) {
+    public ServerEnvironment(final String hostControllerName, final Properties props, final Map<String, String> env, final String serverConfig,
+                             final LaunchType launchType, final RunningMode initialRunningMode) {
         if (props == null) {
-            throw new IllegalArgumentException("props is null");
+            throw ControllerMessages.MESSAGES.nullVar("props");
         }
         this.launchType = launchType;
         this.standalone = launchType != LaunchType.DOMAIN;
+
+        this.initialRunningMode = initialRunningMode == null ? RunningMode.NORMAL : initialRunningMode;
+
+        this.hostControllerName = hostControllerName;
+        if (standalone && hostControllerName != null) {
+            throw ServerMessages.MESSAGES.hostControllerNameNonNullInStandalone();
+        }
+        if (!standalone && hostControllerName == null) {
+            throw ServerMessages.MESSAGES.hostControllerNameNullInDomain();
+        }
 
         // Calculate host and default server name
         String hostName = props.getProperty(HOST_NAME);
@@ -316,6 +340,12 @@ public class ServerEnvironment implements Serializable {
         }
         serverTempDir = tmp;
 
+        tmp = getFileFromProperty(CONTROLLER_TEMP_DIR, props);
+        if (tmp == null) {
+            tmp = new File(serverBaseDir, "tmp");
+        }
+        controllerTempDir = tmp;
+
         boolean allowExecutor = true;
         String maxThreads = SecurityActions.getSystemProperty(BOOTSTRAP_MAX_THREADS);
         if (maxThreads != null && maxThreads.length() > 0) {
@@ -352,6 +382,17 @@ public class ServerEnvironment implements Serializable {
         } catch (Exception ex) {
             log.errorf(ex, "Cannot add module '%s' as URLStreamHandlerFactory provider", VFS_MODULE_IDENTIFIER);
         }
+    }
+
+    /**
+     * Get the name of this server's host controller. For domain-mode servers, this is the name given in the domain configuration. For
+     * standalone servers, which do not utilize a host controller, the value should be <code>null</code>.
+     *
+     * @return server's host controller name if the instance is running in domain mode, or <code>null</code> if running in standalone
+     *         mode
+     */
+    public String getHostControllerName() {
+        return hostControllerName;
     }
 
     /**
@@ -432,12 +473,20 @@ public class ServerEnvironment implements Serializable {
         return serverTempDir;
     }
 
+    public File getControllerTempDir() {
+        return controllerTempDir;
+    }
+
     public LaunchType getLaunchType() {
         return launchType;
     }
 
     public boolean isStandalone() {
         return standalone;
+    }
+
+    public RunningMode getInitialRunningMode() {
+        return initialRunningMode;
     }
 
     // package protected for now as this is not a stable API

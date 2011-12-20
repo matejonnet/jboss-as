@@ -31,10 +31,9 @@ import org.junit.Test;
 public class ExtensionContextProcessTypeTestCase {
     @Test
     public void testIsServer() {
-        Assert.assertTrue(ExtensionContext.ProcessType.DOMAIN_SERVER.isServer());
-        Assert.assertTrue(ExtensionContext.ProcessType.EMBEDDED.isServer());
-        Assert.assertTrue(ExtensionContext.ProcessType.STANDALONE_SERVER.isServer());
-        Assert.assertFalse(ExtensionContext.ProcessType.MASTER_HOST_CONTROLLER.isServer());
-        Assert.assertFalse(ExtensionContext.ProcessType.SLAVE_HOST_CONTROLLER.isServer());
+        Assert.assertTrue(ProcessType.DOMAIN_SERVER.isServer());
+        Assert.assertTrue(ProcessType.EMBEDDED_SERVER.isServer());
+        Assert.assertTrue(ProcessType.STANDALONE_SERVER.isServer());
+        Assert.assertFalse(ProcessType.HOST_CONTROLLER.isServer());
     }
 }

@@ -26,9 +26,10 @@ import java.lang.reflect.Method;
 import java.rmi.RemoteException;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+
 import javax.ejb.EJBException;
-import javax.ejb.EJBLocalObject;
 import javax.ejb.EntityBean;
+
 import org.jboss.as.cmp.context.CmpEntityBeanContext;
 import org.jboss.as.cmp.jdbc.JDBCEntityPersistenceStore;
 import org.jboss.as.cmp.jdbc.bridge.CMRMessage;
@@ -68,6 +69,8 @@ public class CmpEntityBeanComponentInstance extends EntityBeanComponentInstance 
             getComponent().getStoreManager().activateEntity(context);
         } catch (RemoteException e) {
             throw new WrappedRemoteException(e);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -80,10 +83,11 @@ public class CmpEntityBeanComponentInstance extends EntityBeanComponentInstance 
     }
 
     public synchronized void store() {
-        EntityBean instance = getInstance();
         try {
             if (!isRemoved()) {
-                instance.ejbStore();
+
+                invokeEjbStore();
+
                 final CmpEntityBeanContext context = getEjbContext();
                 final JDBCEntityPersistenceStore store = getComponent().getStoreManager();
                 if (context.getPrimaryKey() != null && store.isStoreRequired(context)) {
@@ -106,10 +110,6 @@ public class CmpEntityBeanComponentInstance extends EntityBeanComponentInstance 
         } catch (Exception e) {
             throw new EJBException(e);
         }
-    }
-
-    public EJBLocalObject getEjbLocalObject() {
-        return getComponent().getEjbLocalObject(getPrimaryKey());
     }
 
     Object invoke(final CMRMessage message, final Object... params) {

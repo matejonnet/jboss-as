@@ -22,7 +22,15 @@
 package org.jboss.as.cli;
 
 
+import java.util.List;
+
+import org.jboss.as.cli.operation.OperationRequestHeader;
+import org.jboss.as.cli.operation.impl.DefaultCallbackHandler;
+import org.jboss.as.cli.parsing.DefaultParsingState;
+import org.jboss.as.cli.parsing.ParserUtil;
+import org.jboss.as.cli.parsing.operation.HeaderListState;
 import org.jboss.dmr.ModelNode;
+
 
 /**
  *
@@ -65,8 +73,11 @@ public interface ArgumentValueConverter {
 
     ArgumentValueConverter LIST = new DMRWithFallbackConverter() {
         @Override
-        protected ModelNode fromNonDMRString(String value)
-                throws CommandFormatException {
+        protected ModelNode fromNonDMRString(String value) throws CommandFormatException {
+            // strip [] if they are present
+            if(value.length() >= 2 && value.charAt(0) == '[' && value.charAt(value.length() - 1) == ']') {
+                value = value.substring(1, value.length() - 1);
+            }
             final ModelNode list = new ModelNode();
             for (String item : value.split(",")) {
                 list.add(new ModelNode().set(item));
@@ -77,8 +88,11 @@ public interface ArgumentValueConverter {
 
     ArgumentValueConverter PROPERTIES = new DMRWithFallbackConverter() {
         @Override
-        protected ModelNode fromNonDMRString(String value)
-                throws CommandFormatException {
+        protected ModelNode fromNonDMRString(String value) throws CommandFormatException {
+            // strip [] if they are present
+            if(value.length() >= 2 && value.charAt(0) == '[' && value.charAt(value.length() - 1) == ']') {
+                value = value.substring(1, value.length() - 1);
+            }
             final String[] props = value.split(",");
             final ModelNode list = new ModelNode();
             for (String prop : props) {
@@ -93,6 +107,57 @@ public interface ArgumentValueConverter {
                 list.add(propName, prop.substring(equals + 1));
             }
             return list;
+        }
+    };
+
+    ArgumentValueConverter OBJECT = new DMRWithFallbackConverter() {
+        @Override
+        protected ModelNode fromNonDMRString(String value)
+                throws CommandFormatException {
+            // strip {} if they are present
+            if(value.length() >= 2 && value.charAt(0) == '{' && value.charAt(value.length() - 1) == '}') {
+                value = value.substring(1, value.length() - 1);
+            }
+
+            final String[] props = value.split(",");
+            final ModelNode o = new ModelNode();
+            for (String prop : props) {
+                int equals = prop.indexOf('=');
+                if (equals == -1) {
+                    throw new CommandFormatException("Property '" + prop + "' in '" + value + "' is missing the equals sign.");
+                }
+                String propName = prop.substring(0, equals);
+                if (propName.isEmpty()) {
+                    throw new CommandFormatException("Property name is missing for '" + prop + "' in '" + value + "'");
+                }
+                o.get(propName).set(prop.substring(equals + 1));
+            }
+            return o;
+        }
+    };
+
+    ArgumentValueConverter ROLLOUT_PLAN = new DMRWithFallbackConverter() {
+        private final DefaultCallbackHandler callback = new DefaultCallbackHandler();
+        private final DefaultParsingState initialState = new DefaultParsingState("INITIAL_STATE");
+        {
+            initialState.enterState('{', HeaderListState.INSTANCE);
+        }
+
+        @Override
+        protected ModelNode fromNonDMRString(String value) throws CommandFormatException {
+            callback.reset();
+            ParserUtil.parse(value, callback, initialState);
+            final List<OperationRequestHeader> headers = callback.getHeaders();
+            if(headers.isEmpty()) {
+                return null;
+            }
+            if(headers.size() > 1) {
+                throw new CommandFormatException("Too many headers: " + headers);
+            }
+            final OperationRequestHeader header = headers.get(0);
+            final ModelNode node = new ModelNode();
+            header.addTo(null, node);
+            return node;
         }
     };
 

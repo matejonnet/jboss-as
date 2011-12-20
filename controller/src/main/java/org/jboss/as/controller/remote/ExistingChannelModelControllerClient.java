@@ -22,8 +22,10 @@
 package org.jboss.as.controller.remote;
 
 import org.jboss.as.controller.client.impl.AbstractModelControllerClient;
-import org.jboss.as.protocol.mgmt.ManagementChannel;
-import org.jboss.as.protocol.mgmt.ManagementClientChannelStrategy;
+import org.jboss.remoting3.Channel;
+
+import java.io.IOException;
+import java.util.concurrent.Executors;
 
 /**
  *
@@ -31,14 +33,20 @@ import org.jboss.as.protocol.mgmt.ManagementClientChannelStrategy;
  * @version $Revision: 1.1 $
  */
 public class ExistingChannelModelControllerClient extends AbstractModelControllerClient {
-    private final ManagementChannel channel;
+    private final Channel channel;
 
-    public ExistingChannelModelControllerClient(final ManagementChannel channel) {
+    public ExistingChannelModelControllerClient(final Channel channel) {
+        super(Executors.newCachedThreadPool()); // TODO
         this.channel = channel;
     }
 
     @Override
-    protected ManagementClientChannelStrategy getClientChannelStrategy() {
-        return ManagementClientChannelStrategy.create(channel);
+    protected Channel getChannel() throws IOException {
+        return channel;
+    }
+
+    @Override
+    public void close() throws IOException {
+        super.shutdownNow();
     }
 }

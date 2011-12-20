@@ -22,6 +22,13 @@
 
 package org.jboss.as.controller;
 
+import static org.jboss.logging.Logger.Level.ERROR;
+import static org.jboss.logging.Logger.Level.WARN;
+
+import java.io.Closeable;
+
+import javax.xml.stream.XMLStreamWriter;
+
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.BasicLogger;
 import org.jboss.logging.Cause;
@@ -29,12 +36,6 @@ import org.jboss.logging.LogMessage;
 import org.jboss.logging.Logger;
 import org.jboss.logging.Message;
 import org.jboss.logging.MessageLogger;
-
-import javax.xml.stream.XMLStreamWriter;
-import java.io.Closeable;
-
-import static org.jboss.logging.Logger.Level.ERROR;
-import static org.jboss.logging.Logger.Level.WARN;
 
 /**
  * Date: 02.11.2011
@@ -48,6 +49,11 @@ public interface ControllerLogger extends BasicLogger {
      * Default root logger with category of the package name.
      */
     ControllerLogger ROOT_LOGGER = Logger.getMessageLogger(ControllerLogger.class, ControllerLogger.class.getPackage().getName());
+
+    /**
+     * Logger for management operation messages.
+     */
+    ControllerLogger MGMT_OP_LOGGER = Logger.getMessageLogger(ControllerLogger.class, ControllerLogger.class.getPackage().getName() + ".management-operation");
 
     /**
      * A logger with the category {@code org.jboss.as.server}
@@ -257,4 +263,24 @@ public interface ControllerLogger extends BasicLogger {
             "process at address %s. The result of this operation will only include the remote process' preliminary response to" +
             "the request.")
     void noFinalProxyOutcomeReceived(ModelNode op, ModelNode opAddress, ModelNode proxyAddress);
+
+    /**
+     * Logs an error message indicating operation failed due to a client error (e.g. an invalid request).
+     *
+     * @param op                 the operation that failed.
+     * @param opAddress          the address the operation failed on.
+     * @param failureDescription the failure description.
+     */
+    @LogMessage(level = Logger.Level.DEBUG)
+    @Message(id = 14616, value = "Operation (%s) failed - address: (%s) - failure description: %s")
+    void operationFailedOnClientError(ModelNode op, ModelNode opAddress, ModelNode failureDescription);
+
+    /**
+     * Logs an error indicating that createWrapper should be called
+     *
+     * @param name the subsystem name
+     */
+    @LogMessage(level = Logger.Level.WARN)
+    @Message(id = 14617, value = "A subystem '%s' was registered without calling ExtensionContext.createTracker(). The subsystems are registered normally but won't be cleaned up when the extension is removed.")
+    void registerSubsystemNoWraper(String name);
 }

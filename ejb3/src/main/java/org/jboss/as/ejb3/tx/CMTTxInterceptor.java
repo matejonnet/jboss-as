@@ -38,9 +38,9 @@ import javax.transaction.Transaction;
 import javax.transaction.TransactionManager;
 
 import org.jboss.as.ee.component.Component;
-import org.jboss.as.ee.component.ComponentView;
 import org.jboss.as.ejb3.component.EJBComponent;
 import org.jboss.as.ejb3.component.MethodIntf;
+import org.jboss.as.ejb3.component.MethodIntfHelper;
 import org.jboss.invocation.ImmediateInterceptorFactory;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
@@ -176,20 +176,9 @@ public class CMTTxInterceptor implements Interceptor {
 
     public Object processInvocation(InterceptorContext invocation) throws Exception {
         final EJBComponent component = (EJBComponent) invocation.getPrivateData(Component.class);
-
-        //for timer invocations there is no view, so the methodInf is attached directly
-        //to the context. Otherwise we retrive it from the invoked view
-        MethodIntf methodIntf = invocation.getPrivateData(MethodIntf.class);
-        if (methodIntf == null) {
-            final ComponentView componentView = invocation.getPrivateData(ComponentView.class);
-            if (componentView != null) {
-                methodIntf = componentView.getPrivateData(MethodIntf.class);
-            } else {
-                methodIntf = MethodIntf.BEAN;
-            }
-        }
-
+        final MethodIntf methodIntf = MethodIntfHelper.of(invocation);
         final TransactionAttributeType attr = component.getTransactionAttributeType(methodIntf, invocation.getMethod());
+        final int timeoutInSeconds = component.getTransactionTimeout(methodIntf, invocation.getMethod());
         switch (attr) {
             case MANDATORY:
                 return mandatory(invocation, component);
@@ -198,9 +187,9 @@ public class CMTTxInterceptor implements Interceptor {
             case NOT_SUPPORTED:
                 return notSupported(invocation, component);
             case REQUIRED:
-                return required(invocation, component);
+                return required(invocation, component, timeoutInSeconds);
             case REQUIRES_NEW:
-                return requiresNew(invocation, component);
+                return requiresNew(invocation, component, timeoutInSeconds);
             case SUPPORTS:
                 return supports(invocation, component);
             default:
@@ -218,7 +207,16 @@ public class CMTTxInterceptor implements Interceptor {
     }
 
     protected Object invokeInNoTx(InterceptorContext invocation) throws Exception {
-        return invocation.proceed();
+        try {
+            return invocation.proceed();
+        } catch (Throwable t) {
+            if(t instanceof Exception) {
+                throw (Exception)t;
+            } else {
+                //If this is an error we wrap in in an EJBException
+                throw new EJBException(new RuntimeException(t));
+            }
+        }
     }
 
     protected Object invokeInOurTx(InterceptorContext invocation, TransactionManager tm, final EJBComponent component) throws Exception {
@@ -291,10 +289,9 @@ public class CMTTxInterceptor implements Interceptor {
         }
     }
 
-    protected Object required(final InterceptorContext invocation, final EJBComponent component) throws Exception {
+    protected Object required(final InterceptorContext invocation, final EJBComponent component, final int timeout) throws Exception {
         final TransactionManager tm = component.getTransactionManager();
         final int oldTimeout = getCurrentTransactionTimeout(component);
-        final int timeout = component.getTransactionTimeout(invocation.getMethod());
 
         try {
             if (timeout != -1) {
@@ -315,10 +312,9 @@ public class CMTTxInterceptor implements Interceptor {
         }
     }
 
-    protected Object requiresNew(InterceptorContext invocation, final EJBComponent component) throws Exception {
+    protected Object requiresNew(InterceptorContext invocation, final EJBComponent component, final int timeout) throws Exception {
         final TransactionManager tm = component.getTransactionManager();
         int oldTimeout = getCurrentTransactionTimeout(component);
-        int timeout = component.getTransactionTimeout(invocation.getMethod());
 
         try {
             if (timeout != -1 && tm != null) {

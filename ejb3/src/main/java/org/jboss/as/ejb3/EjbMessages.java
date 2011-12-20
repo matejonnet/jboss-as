@@ -2,10 +2,12 @@ package org.jboss.as.ejb3;
 
 import java.io.File;
 import java.lang.reflect.Method;
+import java.rmi.RemoteException;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+
 import javax.ejb.ConcurrentAccessTimeoutException;
 import javax.ejb.EJBAccessException;
 import javax.ejb.EJBException;
@@ -13,8 +15,10 @@ import javax.ejb.IllegalLoopbackException;
 import javax.ejb.LockType;
 import javax.ejb.NoMoreTimeoutsException;
 import javax.ejb.NoSuchEJBException;
+import javax.ejb.NoSuchEntityException;
 import javax.ejb.NoSuchObjectLocalException;
 import javax.ejb.ObjectNotFoundException;
+import javax.ejb.RemoveException;
 import javax.ejb.ScheduleExpression;
 import javax.ejb.TimerHandle;
 import javax.interceptor.InvocationContext;
@@ -28,14 +32,13 @@ import org.jboss.as.ee.component.ComponentDescription;
 import org.jboss.as.ee.component.ComponentInstance;
 import org.jboss.as.ejb3.component.EJBComponent;
 import org.jboss.as.ejb3.component.EJBComponentDescription;
+import org.jboss.as.ejb3.component.EJBViewDescription;
 import org.jboss.as.ejb3.component.MethodIntf;
 import org.jboss.as.ejb3.component.messagedriven.MessageDrivenComponent;
 import org.jboss.as.ejb3.concurrency.LockableComponent;
 import org.jboss.as.ejb3.subsystem.deployment.EJBComponentType;
-import org.jboss.as.ejb3.timerservice.CalendarTimer;
 import org.jboss.as.ejb3.timerservice.TimerImpl;
 import org.jboss.as.ejb3.timerservice.persistence.TimeoutMethod;
-import org.jboss.as.ejb3.timerservice.spi.MultiTimeoutMethodTimedObjectInvoker;
 import org.jboss.as.naming.context.NamespaceContextSelector;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
@@ -352,7 +355,7 @@ public interface EjbMessages {
      * @return a {@link IllegalStateException} for the error.
      */
     @Message(id = 14331, value = "No resource adapter registered with resource adapter name %s")
-    IllegalStateException failToRegisteredResourceAdapter(String resourceAdapterName);
+    IllegalStateException unknownResourceAdapter(String resourceAdapterName);
 
     /**
      * Creates an exception indicating multiple resource adapter was registered
@@ -463,7 +466,7 @@ public interface EjbMessages {
      * @return a {@link NoSuchEJBException} for the error.
      */
     @Message(id = 14344, value = "Instance of %s with primary key %s has been removed")
-    NoSuchEJBException instaceWasRemoved(String componentName, Object primaryKey);
+    NoSuchEntityException instaceWasRemoved(String componentName, Object primaryKey);
 
     /**
      * Creates an exception indicating unexpected component
@@ -1515,13 +1518,12 @@ public interface EjbMessages {
     RuntimeException failToLoadDeclaringClassOfTimeOut(String declaringClass);
 
     /**
-     * Creates an exception indicating it cannot invoke timeout method because timer is an auto timer,
-     * but invoker is not of type specified"
+     * Creates an exception indicating it cannot invoke timeout method
      *
      * @return an {@link RuntimeException} for the error.
      */
-    @Message(id = 14481, value = "Cannot invoke timeout method because timer: %s is an auto timer, but invoker is not of type %s")
-    RuntimeException failToInvokeTimeout(CalendarTimer calendarTimer, Class<MultiTimeoutMethodTimedObjectInvoker> multiTimeoutMethodTimedObjectInvokerClass);
+    @Message(id = 14481, value = "Cannot invoke timeout method because method %s is not a timeout method")
+    RuntimeException failToInvokeTimeout(Method method);
 
     /**
      * Creates an exception indicating it could not create timer file store directory
@@ -1812,4 +1814,114 @@ public interface EjbMessages {
 
     @Message(id=14519, value="Could not find method %s on entity bean")
     RuntimeException couldNotFindEntityBeanMethod(String method);
+
+    @Message(id=14520, value="Could not determine ClassLoader for stub %s")
+    RuntimeException couldNotFindClassLoaderForStub(String stub);
+
+    /**
+     * Creates an exception indicating that there was no message listener of the expected type
+     * in the resource adapter
+     *
+     * @param messageListenerType The message listener type
+     * @param resourceAdapterName The resource adapter name
+     *
+     * @return a {@link IllegalStateException} for the error.
+     */
+    @Message(id = 14521, value = "No message listener of type %s found in resource adapter %s")
+    IllegalStateException unknownMessageListenerType(String resourceAdapterName, String messageListenerType);
+
+    /**
+     * Thrown when a EJB 2 EJB does not implement a method on an EJB 2
+     * @param method The method
+     * @param viewClass The view
+     * @param ejb The ejb
+     */
+    @Message(id=14522, value = "Could not find method %s from view %s on EJB class %s")
+    DeploymentUnitProcessingException couldNotFindViewMethodOnEjb(final Method method, String viewClass, String ejb);
+
+    /**
+     * Creates and returns an exception indicating that the param named <code>paramName</code> cannot be null
+     * or empty string.
+     *
+     * @param paramName The param name
+     * @return an {@link IllegalArgumentException} for the exception
+     */
+    @Message(id = 14523, value = "%s cannot be null or empty")
+    IllegalArgumentException stringParamCannotBeNullOrEmpty(final String paramName);
+
+    /**
+     * Exception that is thrown when invoking remove while an EJB is in a transaction
+     */
+    @Message(id=14524, value = "EJB 4.6.4 Cannot remove EJB via EJB 2.x remove() method while participating in a transaction")
+    RemoveException cannotRemoveWhileParticipatingInTransaction();
+
+    @Message(id=14525, value = "Transaction propagation over IIOP is not supported")
+    RemoteException transactionPropagationNotSupported();
+
+    @Message(id=14526, value = "Cannot call method %s in afterCompletion callback")
+    IllegalStateException cannotCallMethodInAfterCompletion(String methodName);
+
+    /**
+     * Exception thrown if the timer service is currently not accessible
+     * @param methodName The ejb callback that disabled it
+     */
+    @Message(id=14527, value = "Cannot call timer service methods in %s")
+    IllegalStateException cannotCallTimerServiceMethod(String methodName);
+
+    @Message(id = 14528, value = "%s is already associated with serialization group %s")
+    IllegalStateException existingSerializationGroup(Object key, Object group);
+
+    @Message(id = 14529, value = "%s is not compatible with serialization group %s")
+    IllegalStateException incompatibleSerializationGroup(Object object, Object group);
+
+    @Message(id = 14530, value = "Cache entry %s is in use")
+    IllegalStateException cacheEntryInUse(Object entry);
+
+    @Message(id = 14531, value = "Cache entry %s is not in use")
+    IllegalStateException cacheEntryNotInUse(Object entry);
+
+    @Message(id = 14532, value = "Failed to acquire lock on %s")
+    RuntimeException lockAcquisitionInterrupted(@Cause Throwable cause, Object id);
+
+    @Message(id = 14533, value = "%s is already a member of serialization group %s")
+    IllegalStateException duplicateSerializationGroupMember(Object id, Object groupId);
+
+    @Message(id = 14534, value = "%s is not a member of serialization group %s")
+    IllegalStateException missingSerializationGroupMember(Object id, Object groupId);
+
+    @Message(id = 14535, value = "%s already exists in cache")
+    IllegalStateException duplicateCacheEntry(Object id);
+
+    @Message(id = 14536, value = "%s is missing from cache")
+    IllegalStateException missingCacheEntry(Object id);
+
+    @Message(id = 14537, value = "Incompatible cache implementations in nested hierarchy")
+    IllegalStateException incompatibleCaches();
+
+    @Message(id = 14538, value = "Failed to passivate %s")
+    RuntimeException passivationFailed(@Cause Throwable cause, Object id);
+
+    @Message(id = 14539, value = "Failed to activate %s")
+    RuntimeException activationFailed(@Cause Throwable cause, Object id);
+
+    @Message(id = 14540, value = "Failed to create passivation directory: %s")
+    RuntimeException passivationDirectoryCreationFailed(String path);
+
+    @Message(id = 14541, value = "Failed to create passivation directory: %s")
+    RuntimeException passivationPathNotADirectory(String path);
+
+    @Message(id = 14542, value = "Group creation context already exists")
+    IllegalStateException groupCreationContextAlreadyExists();
+
+    @Message(id = 14543, value = "No EJB found with interface of type '%s' and name '%s' for binding %s")
+    String ejbNotFound(String typeName, String beanName, String binding);
+
+    @Message(id = 14544, value = "No EJB found with interface of type '%s' for binding %s")
+    String ejbNotFound(String typeName, String binding);
+
+    @Message(id = 14545, value = "More than one EJB found with interface of type '%s' and name '%s' for binding %s. Found: %s")
+    String moreThanOneEjbFound(String typeName, String beanName, String binding, Set<EJBViewDescription> componentViews);
+
+    @Message(id = 14546, value = "More than one EJB found with interface of type '%s' for binding %s. Found: %s")
+    String moreThanOneEjbFound(String typeName, String binding, Set<EJBViewDescription> componentViews);
 }

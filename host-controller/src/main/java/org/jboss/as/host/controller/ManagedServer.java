@@ -32,7 +32,6 @@ import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jboss.as.process.ProcessControllerClient;
-import org.jboss.as.protocol.mgmt.ManagementChannel;
 import org.jboss.as.server.ServerStartTask;
 import org.jboss.as.server.ServerState;
 import org.jboss.dmr.ModelNode;
@@ -45,6 +44,7 @@ import org.jboss.modules.Module;
 import org.jboss.modules.ModuleIdentifier;
 import org.jboss.modules.ModuleLoadException;
 import org.jboss.msc.service.ServiceActivator;
+import org.jboss.remoting3.Channel;
 
 /**
  * Represents a managed server.
@@ -58,6 +58,7 @@ class ManagedServer {
 
     private static final MarshallerFactory MARSHALLER_FACTORY;
     private static final MarshallingConfiguration CONFIG;
+
     static {
         try {
             MARSHALLER_FACTORY = Marshalling.getMarshallerFactory("river", Module.getModuleFromCallerModuleLoader(ModuleIdentifier.fromString("org.jboss.marshalling.river")).getClassLoader());
@@ -88,6 +89,7 @@ class ManagedServer {
         return serverProcessName.substring(SERVER_PROCESS_NAME_PREFIX.length());
     }
 
+    private final String hostControllerName;
     private final String serverName;
     private final String serverProcessName;
     private final Object lock = new Object();
@@ -97,14 +99,16 @@ class ManagedServer {
     private final ManagedServerBootConfiguration bootConfiguration;
     private final byte[] authKey;
     private volatile ServerState state;
-    private volatile ManagementChannel serverManagementChannel;
+    private volatile Channel serverManagementChannel;
 
-    public ManagedServer(final String serverName, final ProcessControllerClient processControllerClient,
+    public ManagedServer(final String hostControllerName, final String serverName, final ProcessControllerClient processControllerClient,
             final InetSocketAddress managementSocket, final ManagedServerBootConfiguration bootConfiguration) {
+        assert hostControllerName  != null : "hostControllerName is null";
         assert serverName  != null : "serverName is null";
         assert processControllerClient != null : "processControllerSlave is null";
         assert managementSocket != null : "managementSocket is null";
 
+        this.hostControllerName = hostControllerName;
         this.serverName = serverName;
         this.serverProcessName = getServerProcessName(serverName);
         this.processControllerClient = processControllerClient;
@@ -127,7 +131,7 @@ class ManagedServer {
         return serverProcessName;
     }
 
-    ManagementChannel getServerManagementChannel() {
+    Channel getServerManagementChannel() {
         return serverManagementChannel;
     }
 
@@ -139,7 +143,7 @@ class ManagedServer {
         this.state = state;
     }
 
-    void setServerManagementChannel(ManagementChannel serverManagementChannel) {
+    void setServerManagementChannel(Channel serverManagementChannel) {
         this.serverManagementChannel = serverManagementChannel;
     }
 
@@ -174,7 +178,7 @@ class ManagedServer {
 
             processControllerClient.startProcess(serverProcessName);
             ServiceActivator hostControllerCommActivator = HostCommunicationServices.createServerCommuncationActivator(managementSocket, serverName, serverProcessName, authKey, bootConfiguration.isManagementSubsystemEndpoint());
-            ServerStartTask startTask = new ServerStartTask(serverName, 0, Collections.<ServiceActivator>singletonList(hostControllerCommActivator), bootUpdates);
+            ServerStartTask startTask = new ServerStartTask(hostControllerName, serverName, 0, Collections.<ServiceActivator>singletonList(hostControllerCommActivator), bootUpdates);
             final Marshaller marshaller = MARSHALLER_FACTORY.createMarshaller(CONFIG);
             final OutputStream os = processControllerClient.sendStdin(serverProcessName);
             marshaller.start(Marshalling.createByteOutput(os));

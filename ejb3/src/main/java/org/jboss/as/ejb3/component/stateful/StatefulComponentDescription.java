@@ -23,11 +23,15 @@
 package org.jboss.as.ejb3.component.stateful;
 
 
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
+
 import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import javax.ejb.EJBLocalObject;
 import javax.ejb.EJBObject;
@@ -43,9 +47,10 @@ import org.jboss.as.ee.component.ViewConfigurator;
 import org.jboss.as.ee.component.ViewDescription;
 import org.jboss.as.ee.component.interceptors.InterceptorOrder;
 import org.jboss.as.ee.component.serialization.WriteReplaceInterface;
-import org.jboss.as.ejb3.component.DefaultAccessTimeoutService;
+import org.jboss.as.ejb3.cache.CacheInfo;
 import org.jboss.as.ejb3.component.EJBViewDescription;
 import org.jboss.as.ejb3.component.MethodIntf;
+import org.jboss.as.ejb3.component.interceptors.ComponentTypeIdentityInterceptorFactory;
 import org.jboss.as.ejb3.component.session.SessionBeanComponentDescription;
 import org.jboss.as.ejb3.deployment.EjbJarDescription;
 import org.jboss.as.ejb3.tx.StatefulBMTInterceptor;
@@ -59,27 +64,24 @@ import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
 import org.jboss.invocation.proxy.MethodIdentifier;
-import org.jboss.logging.Logger;
 import org.jboss.msc.service.ServiceName;
-import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
+
 /**
  * User: jpai
  */
 public class StatefulComponentDescription extends SessionBeanComponentDescription {
 
-    private static final Logger logger = Logger.getLogger(StatefulComponentDescription.class);
-
     private Method afterBegin;
     private Method afterCompletion;
     private Method beforeCompletion;
+    private final Set<Method> prePassivateMethods = new HashSet<Method>();
+    private final Set<Method> postActivateMethods = new HashSet<Method>();
     private final Map<MethodIdentifier, StatefulRemoveMethod> removeMethods = new HashMap<MethodIdentifier, StatefulRemoveMethod>();
     private StatefulTimeoutInfo statefulTimeout;
-
-    private DefaultAccessTimeoutService defaultAccessTimeoutProvider;
+    private CacheInfo cache;
 
     /**
      * Map of init method, to the corresponding home create method on the home interface
-     *
      */
     private Map<Method, String> initMethods = new HashMap<Method, String>(0);
 
@@ -150,12 +152,7 @@ public class StatefulComponentDescription extends SessionBeanComponentDescriptio
         getConfigurators().addFirst(new ComponentConfigurator() {
             @Override
             public void configure(DeploymentPhaseContext context, ComponentDescription description, ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
-                final InterceptorFactory interceptorFactory = new ComponentInstanceInterceptorFactory() {
-                    @Override
-                    protected Interceptor create(Component component, InterceptorFactoryContext context) {
-                        return new StatefulSessionSynchronizationInterceptor();
-                    }
-                };
+                final InterceptorFactory interceptorFactory = StatefulSessionSynchronizationInterceptor.FACTORY;
                 configuration.addComponentInterceptor(interceptorFactory, InterceptorOrder.Component.SYNCHRONIZATION_INTERCEPTOR, false);
             }
         });
@@ -177,7 +174,7 @@ public class StatefulComponentDescription extends SessionBeanComponentDescriptio
                         @Override
                         protected Interceptor create(Component component, InterceptorFactoryContext context) {
                             if (!(component instanceof StatefulSessionComponent)) {
-                                throw MESSAGES.componentNotInstanceOfSessionComponent(component, component.getComponentClass(),"stateful");
+                                throw MESSAGES.componentNotInstanceOfSessionComponent(component, component.getComponentClass(), "stateful");
                             }
                             return new StatefulBMTInterceptor((StatefulSessionComponent) component);
                         }
@@ -207,6 +204,14 @@ public class StatefulComponentDescription extends SessionBeanComponentDescriptio
         return beforeCompletion;
     }
 
+    public Set<Method> getPrePassivateMethods() {
+        return Collections.unmodifiableSet(this.prePassivateMethods);
+    }
+
+    public Set<Method> getPostActivateMethods() {
+        return Collections.unmodifiableSet(this.postActivateMethods);
+    }
+
     @Override
     public SessionBeanType getSessionBeanType() {
         return SessionBeanComponentDescription.SessionBeanType.STATEFUL;
@@ -216,12 +221,20 @@ public class StatefulComponentDescription extends SessionBeanComponentDescriptio
         this.afterBegin = afterBegin;
     }
 
-    public void setAfterCompletion(final  Method afterCompletion) {
+    public void setAfterCompletion(final Method afterCompletion) {
         this.afterCompletion = afterCompletion;
     }
 
     public void setBeforeCompletion(final Method afterCompletion) {
         this.beforeCompletion = afterCompletion;
+    }
+
+    public void addPrePassivateMethod(final Method prePassivate) {
+        this.prePassivateMethods.add(prePassivate);
+    }
+
+    public void addPostActivateMethod(final Method postActivate) {
+        this.postActivateMethods.add(postActivate);
     }
 
     @Override
@@ -237,7 +250,7 @@ public class StatefulComponentDescription extends SessionBeanComponentDescriptio
 
         if (view instanceof EJBViewDescription) {
             EJBViewDescription ejbViewDescription = (EJBViewDescription) view;
-            if(ejbViewDescription.getMethodIntf() == MethodIntf.REMOTE) {
+            if (ejbViewDescription.getMethodIntf() == MethodIntf.REMOTE) {
                 view.getConfigurators().add(new ViewConfigurator() {
                     @Override
                     public void configure(final DeploymentPhaseContext context, final ComponentConfiguration componentConfiguration, final ViewDescription description, final ViewConfiguration configuration) throws DeploymentUnitProcessingException {
@@ -262,7 +275,7 @@ public class StatefulComponentDescription extends SessionBeanComponentDescriptio
             public void configure(final DeploymentPhaseContext context, final ComponentConfiguration componentConfiguration, final ViewDescription description, final ViewConfiguration configuration) throws DeploymentUnitProcessingException {
                 final DeploymentReflectionIndex index = context.getDeploymentUnit().getAttachment(org.jboss.as.server.deployment.Attachments.REFLECTION_INDEX);
                 ClassReflectionIndex<WriteReplaceInterface> classIndex = index.getClassIndex(WriteReplaceInterface.class);
-                for(Method method : classIndex.getMethods()) {
+                for (Method method : classIndex.getMethods()) {
                     configuration.addClientInterceptor(method, new WriteReplaceInterceptor.Factory(configuration.getViewServiceName().getCanonicalName()), InterceptorOrder.Client.WRITE_REPLACE);
                 }
             }
@@ -288,34 +301,47 @@ public class StatefulComponentDescription extends SessionBeanComponentDescriptio
         this.statefulTimeout = statefulTimeout;
     }
 
-    private void addStatefulInstanceAssociatingInterceptor(final ViewDescription view) {
+    private void addStatefulInstanceAssociatingInterceptor(final EJBViewDescription view) {
         view.getConfigurators().add(new ViewConfigurator() {
             @Override
             public void configure(final DeploymentPhaseContext context, final ComponentConfiguration componentConfiguration, ViewDescription description, ViewConfiguration viewConfiguration) throws DeploymentUnitProcessingException {
-                // interceptor factory return an interceptor which sets up the session id on component view instance creation
-                final InterceptorFactory sessionIdGeneratingInterceptorFactory = StatefulComponentSessionIdGeneratingInterceptorFactory.INSTANCE;
+                EJBViewDescription ejbViewDescription = (EJBViewDescription) view;
+                //if this is a home interface we add a different interceptor
+                if (ejbViewDescription.getMethodIntf() == MethodIntf.HOME || ejbViewDescription.getMethodIntf() == MethodIntf.LOCAL_HOME) {
+                    for (Method method : viewConfiguration.getProxyFactory().getCachedMethods()) {
+                        if ((method.getName().equals("hashCode") && method.getParameterTypes().length == 0) ||
+                                method.getName().equals("equals") && method.getParameterTypes().length == 1 &&
+                                        method.getParameterTypes()[0] == Object.class) {
+                            viewConfiguration.addClientInterceptor(method, ComponentTypeIdentityInterceptorFactory.INSTANCE, InterceptorOrder.Client.EJB_EQUALS_HASHCODE);
+                        }
+                    }
+                } else {
+                    // interceptor factory return an interceptor which sets up the session id on component view instance creation
+                    final InterceptorFactory sessionIdGeneratingInterceptorFactory = StatefulComponentSessionIdGeneratingInterceptorFactory.INSTANCE;
 
-                // add the session id generating interceptor to the start of the *post-construct interceptor chain of the ComponentViewInstance*
-                viewConfiguration.addClientPostConstructInterceptor(sessionIdGeneratingInterceptorFactory, InterceptorOrder.ClientPostConstruct.INSTANCE_CREATE);
+                    // add the session id generating interceptor to the start of the *post-construct interceptor chain of the ComponentViewInstance*
+                    viewConfiguration.addClientPostConstructInterceptor(sessionIdGeneratingInterceptorFactory, InterceptorOrder.ClientPostConstruct.INSTANCE_CREATE);
 
-                for (Method method : viewConfiguration.getProxyFactory().getCachedMethods()) {
-                    if ((method.getName().equals("hashCode") && method.getParameterTypes().length == 0) ||
-                            method.getName().equals("equals") && method.getParameterTypes().length == 1 &&
-                                    method.getParameterTypes()[0] == Object.class) {
-                        viewConfiguration.addClientInterceptor(method, StatefulIdentityInterceptorFactory.INSTANCE, InterceptorOrder.Client.EJB_EQUALS_HASHCODE);
+                    for (Method method : viewConfiguration.getProxyFactory().getCachedMethods()) {
+                        if ((method.getName().equals("hashCode") && method.getParameterTypes().length == 0) ||
+                                method.getName().equals("equals") && method.getParameterTypes().length == 1 &&
+                                        method.getParameterTypes()[0] == Object.class) {
+                            viewConfiguration.addClientInterceptor(method, StatefulIdentityInterceptorFactory.INSTANCE, InterceptorOrder.Client.EJB_EQUALS_HASHCODE);
+                        }
                     }
                 }
             }
         });
-
-        view.getConfigurators().add(new ViewConfigurator() {
-            @Override
-            public void configure(DeploymentPhaseContext context, ComponentConfiguration componentConfiguration, ViewDescription description, ViewConfiguration configuration) throws DeploymentUnitProcessingException {
-                // add the instance associating interceptor to the *start of the invocation interceptor chain*
-                configuration.addClientInterceptor( StatefulComponentIdInterceptor.Factory.INSTANCE, InterceptorOrder.Client.ASSOCIATING_INTERCEPTOR);
-                configuration.addViewInterceptor( StatefulComponentInstanceInterceptor.Factory.INSTANCE, InterceptorOrder.View.ASSOCIATING_INTERCEPTOR);
-            }
-        });
+        if (view.getMethodIntf() != MethodIntf.LOCAL_HOME && view.getMethodIntf() != MethodIntf.HOME) {
+            view.getConfigurators().add(new ViewConfigurator() {
+                @Override
+                public void configure(DeploymentPhaseContext context, ComponentConfiguration componentConfiguration, ViewDescription description, ViewConfiguration configuration) throws DeploymentUnitProcessingException {
+                    // add the instance associating interceptor to the *start of the invocation interceptor chain*
+                    configuration.addClientInterceptor(StatefulComponentIdInterceptor.Factory.INSTANCE, InterceptorOrder.Client.ASSOCIATING_INTERCEPTOR);
+                    configuration.addViewInterceptor(StatefulComponentInstanceInterceptor.Factory.INSTANCE, InterceptorOrder.View.ASSOCIATING_INTERCEPTOR);
+                }
+            });
+        }
 
     }
 
@@ -335,7 +361,7 @@ public class StatefulComponentDescription extends SessionBeanComponentDescriptio
 
                             //we do not want to add this if it is the Ejb(Local)Object.remove() method, as that is handed elsewhere
                             final boolean object = EJBObject.class.isAssignableFrom(configuration.getViewClass()) || EJBLocalObject.class.isAssignableFrom(configuration.getViewClass());
-                            if(!object || !viewMethodIdentifier.getName().equals("remove") || viewMethodIdentifier.getParameterTypes().length != 0) {
+                            if (!object || !viewMethodIdentifier.getName().equals("remove") || viewMethodIdentifier.getParameterTypes().length != 0) {
                                 configuration.addViewInterceptor(viewMethod, new ImmediateInterceptorFactory(new StatefulRemoveInterceptor(removeMethod.retainIfException)), InterceptorOrder.View.SESSION_REMOVE_INTERCEPTOR);
                             }
                             break;
@@ -346,7 +372,7 @@ public class StatefulComponentDescription extends SessionBeanComponentDescriptio
         });
     }
 
-    public void addInitMethod(final Method method, final  String createMethod) {
+    public void addInitMethod(final Method method, final String createMethod) {
         initMethods.put(method, createMethod);
     }
 
@@ -354,4 +380,11 @@ public class StatefulComponentDescription extends SessionBeanComponentDescriptio
         return Collections.unmodifiableMap(initMethods);
     }
 
+    public CacheInfo getCache() {
+        return this.cache;
+    }
+
+    public void setCache(CacheInfo cache) {
+        this.cache = cache;
+    }
 }

@@ -24,6 +24,7 @@ package org.jboss.as.ejb3.deployment.processors.merging;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import javax.ejb.TransactionAttribute;
 import javax.ejb.TransactionAttributeType;
@@ -39,7 +40,9 @@ import org.jboss.as.ejb3.deployment.EjbDeploymentAttachmentKeys;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.reflect.DeploymentReflectionIndex;
+import org.jboss.ejb3.annotation.TransactionTimeout;
 import org.jboss.invocation.proxy.MethodIdentifier;
+import org.jboss.metadata.ejb.jboss.ejb3.TransactionTimeoutMetaData;
 import org.jboss.metadata.ejb.spec.AssemblyDescriptorMetaData;
 import org.jboss.metadata.ejb.spec.ContainerTransactionMetaData;
 import org.jboss.metadata.ejb.spec.ContainerTransactionsMetaData;
@@ -52,7 +55,11 @@ import org.jboss.modules.Module;
 import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 
 /**
+ * Because trans-attr and trans-timeout are both contained in container-transaction
+ * process both annotations and container-transaction metadata in one spot.
+ *
  * @author Stuart Douglas
+ * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
  */
 public class TransactionAttributeMergingProcessor extends AbstractMergingProcessor<EJBComponentDescription> {
 
@@ -65,12 +72,14 @@ public class TransactionAttributeMergingProcessor extends AbstractMergingProcess
     protected void handleAnnotations(final DeploymentUnit deploymentUnit, final EEApplicationClasses applicationClasses, final DeploymentReflectionIndex deploymentReflectionIndex, final Class<?> componentClass, final EJBComponentDescription componentConfiguration) throws DeploymentUnitProcessingException {
         final Module module = deploymentUnit.getAttachment(org.jboss.as.server.deployment.Attachments.MODULE);
         processTransactionAttributeAnnotation(applicationClasses, deploymentReflectionIndex, componentClass, null, componentConfiguration);
+        processTransactionTimeoutAnnotation(applicationClasses, deploymentReflectionIndex, componentClass, null, componentConfiguration);
         for (ViewDescription view : componentConfiguration.getViews()) {
 
             try {
                 final Class<?> viewClass = module.getClassLoader().loadClass(view.getViewClassName());
                 EJBViewDescription ejbView = (EJBViewDescription) view;
                 processTransactionAttributeAnnotation(applicationClasses, deploymentReflectionIndex, viewClass, ejbView.getMethodIntf(), componentConfiguration);
+                processTransactionTimeoutAnnotation(applicationClasses, deploymentReflectionIndex, viewClass, ejbView.getMethodIntf(), componentConfiguration);
             } catch (ClassNotFoundException e) {
                 throw MESSAGES.failToLoadEjbViewClass(e);
             }
@@ -84,14 +93,33 @@ public class TransactionAttributeMergingProcessor extends AbstractMergingProcess
             if (!entry.getValue().isEmpty()) {
                 //we can't specify both methodIntf and class name
                 final String className = methodIntf == null ? entry.getKey() : null;
-                componentConfiguration.setTransactionAttribute(methodIntf, className, entry.getValue().get(0));
+                componentConfiguration.getTransactionAttributes().setAttribute(methodIntf, className, entry.getValue().get(0));
             }
         }
 
         for (Map.Entry<Method, List<TransactionAttributeType>> entry : data.getMethodAnnotations().entrySet()) {
             if (!entry.getValue().isEmpty()) {
                 final MethodIdentifier method = MethodIdentifier.getIdentifierForMethod(entry.getKey());
-                componentConfiguration.setTransactionAttribute(methodIntf, entry.getValue().get(0), entry.getKey().getDeclaringClass().getName(), method.getName(), method.getParameterTypes());
+                componentConfiguration.getTransactionAttributes().setAttribute(methodIntf, entry.getValue().get(0), entry.getKey().getDeclaringClass().getName(), method.getName(), method.getParameterTypes());
+            }
+        }
+    }
+
+    private void processTransactionTimeoutAnnotation(final EEApplicationClasses applicationClasses, final DeploymentReflectionIndex deploymentReflectionIndex, final Class<?> componentClass, MethodIntf methodIntf, final EJBComponentDescription componentConfiguration) {
+        final RuntimeAnnotationInformation<Integer> data = MethodAnnotationAggregator.runtimeAnnotationInformation(componentClass, applicationClasses, deploymentReflectionIndex, TransactionTimeout.class);
+        for (Map.Entry<String, List<Integer>> entry : data.getClassAnnotations().entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                //we can't specify both methodIntf and class name
+                final String className = methodIntf == null ? entry.getKey() : null;
+                componentConfiguration.getTransactionTimeouts().setAttribute(methodIntf, className, entry.getValue().get(0));
+            }
+        }
+
+        for (Map.Entry<Method, List<Integer>> entry : data.getMethodAnnotations().entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                final MethodIdentifier method = MethodIdentifier.getIdentifierForMethod(entry.getKey());
+                final String className = entry.getKey().getDeclaringClass().getName();
+                componentConfiguration.getTransactionTimeouts().setAttribute(methodIntf, entry.getValue().get(0), className, method.getName(), method.getParameterTypes());
             }
         }
     }
@@ -111,21 +139,30 @@ public class TransactionAttributeMergingProcessor extends AbstractMergingProcess
                 if (containerTransactions != null) {
                     for (final ContainerTransactionMetaData containerTx : containerTransactions) {
                         final TransactionAttributeType txAttr = containerTx.getTransAttribute();
+                        final Integer timeout = timeout(containerTx);
                         final MethodsMetaData methods = containerTx.getMethods();
                         for (final MethodMetaData method : methods) {
                             final String methodName = method.getMethodName();
                             final MethodIntf methodIntf = this.getMethodIntf(method.getMethodIntf());
                             if (methodName.equals("*")) {
-                                componentConfiguration.setTransactionAttribute(methodIntf, null, txAttr);
+                                if (txAttr != null)
+                                    componentConfiguration.getTransactionAttributes().setAttribute(methodIntf, null, txAttr);
+                                if (timeout != null)
+                                    componentConfiguration.getTransactionTimeouts().setAttribute(methodIntf, null, timeout);
                             } else {
 
                                 final MethodParametersMetaData methodParams = method.getMethodParams();
                                 // update the session bean description with the tx attribute info
                                 if (methodParams == null) {
-                                    componentConfiguration.setTransactionAttribute(methodIntf, txAttr, methodName);
+                                    if (txAttr != null)
+                                        componentConfiguration.getTransactionAttributes().setAttribute(methodIntf, txAttr, methodName);
+                                    if (timeout != null)
+                                        componentConfiguration.getTransactionTimeouts().setAttribute(methodIntf, timeout, methodName);
                                 } else {
-
-                                    componentConfiguration.setTransactionAttribute(methodIntf, txAttr, null, methodName, this.getMethodParams(methodParams));
+                                    if (txAttr != null)
+                                        componentConfiguration.getTransactionAttributes().setAttribute(methodIntf, txAttr, null, methodName, this.getMethodParams(methodParams));
+                                    if (timeout != null)
+                                        componentConfiguration.getTransactionTimeouts().setAttribute(methodIntf, timeout, null, methodName, this.getMethodParams(methodParams));
                                 }
                             }
                         }
@@ -134,5 +171,14 @@ public class TransactionAttributeMergingProcessor extends AbstractMergingProcess
             }
         }
 
+    }
+
+    private static Integer timeout(final ContainerTransactionMetaData containerTransaction) {
+        final List<TransactionTimeoutMetaData> transactionTimeouts = containerTransaction.getAny(TransactionTimeoutMetaData.class);
+        if (transactionTimeouts == null || transactionTimeouts.isEmpty())
+            return null;
+        final TransactionTimeoutMetaData transactionTimeout = transactionTimeouts.get(0);
+        final TimeUnit unit = transactionTimeout.getUnit() == null ? TimeUnit.SECONDS : transactionTimeout.getUnit();
+        return (int)unit.toSeconds(transactionTimeout.getTimeout());
     }
 }

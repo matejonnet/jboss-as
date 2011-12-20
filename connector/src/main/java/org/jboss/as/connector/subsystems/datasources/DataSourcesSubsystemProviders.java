@@ -22,6 +22,20 @@
 
 package org.jboss.as.connector.subsystems.datasources;
 
+import org.jboss.as.controller.SimpleAttributeDefinition;
+import org.jboss.as.controller.descriptions.DescriptionProvider;
+import org.jboss.as.controller.descriptions.OverrideDescriptionProvider;
+import org.jboss.dmr.ModelNode;
+import org.jboss.dmr.ModelType;
+import org.jboss.jca.adapters.jdbc.statistics.JdbcStatisticsPlugin;
+import org.jboss.jca.core.connectionmanager.pool.mcp.ManagedConnectionPoolStatisticsImpl;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.ResourceBundle;
+
 import static org.jboss.as.connector.subsystems.datasources.Constants.CONNECTION_PROPERTIES;
 import static org.jboss.as.connector.subsystems.datasources.Constants.CONNECTION_PROPERTY_VALUE;
 import static org.jboss.as.connector.subsystems.datasources.Constants.DATA_SOURCE;
@@ -33,11 +47,11 @@ import static org.jboss.as.connector.subsystems.datasources.Constants.DRIVER_MIN
 import static org.jboss.as.connector.subsystems.datasources.Constants.DRIVER_MODULE_NAME;
 import static org.jboss.as.connector.subsystems.datasources.Constants.DRIVER_NAME;
 import static org.jboss.as.connector.subsystems.datasources.Constants.DRIVER_XA_DATASOURCE_CLASS_NAME;
-import static org.jboss.as.connector.subsystems.datasources.Constants.ENABLED;
 import static org.jboss.as.connector.subsystems.datasources.Constants.INSTALLED_DRIVERS;
 import static org.jboss.as.connector.subsystems.datasources.Constants.JDBC_COMPLIANT;
 import static org.jboss.as.connector.subsystems.datasources.Constants.JDBC_DRIVER_NAME;
 import static org.jboss.as.connector.subsystems.datasources.Constants.MODULE_SLOT;
+import static org.jboss.as.connector.subsystems.datasources.Constants.STATISTICS;
 import static org.jboss.as.connector.subsystems.datasources.Constants.XADATASOURCECLASS;
 import static org.jboss.as.connector.subsystems.datasources.Constants.XADATASOURCE_PROPERTIES;
 import static org.jboss.as.connector.subsystems.datasources.Constants.XADATASOURCE_PROPERTY_VALUE;
@@ -65,17 +79,6 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TAI
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE_TYPE;
 
-import java.util.Locale;
-import java.util.ResourceBundle;
-
-import org.jboss.as.connector.pool.PoolMetrics;
-import org.jboss.as.controller.SimpleAttributeDefinition;
-import org.jboss.as.controller.descriptions.DescriptionProvider;
-import org.jboss.dmr.ModelNode;
-import org.jboss.dmr.ModelType;
-import org.jboss.jca.adapters.jdbc.statistics.JdbcStatisticsPlugin;
-import org.jboss.jca.core.connectionmanager.pool.mcp.ManagedConnectionPoolStatisticsImpl;
-
 /**
  * @author @author <a href="mailto:stefano.maestri@redhat.com">Stefano
  *         Maestri</a>
@@ -86,7 +89,7 @@ class DataSourcesSubsystemProviders {
     static final SimpleAttributeDefinition[] DATASOURCE_ATTRIBUTE = new SimpleAttributeDefinition[] { Constants.CONNECTION_URL,
             Constants.DRIVER_CLASS, Constants.DATASOURCE_CLASS, Constants.JNDINAME,
             Constants.DATASOURCE_DRIVER,
-            Constants.NEW_CONNECTION_SQL, Constants.POOLNAME, Constants.URL_DELIMITER,
+            Constants.NEW_CONNECTION_SQL, Constants.URL_DELIMITER,
             Constants.URL_SELECTOR_STRATEGY_CLASS_NAME, Constants.USE_JAVA_CONTEXT,
             Constants.JTA, org.jboss.as.connector.pool.Constants.MAX_POOL_SIZE,
             org.jboss.as.connector.pool.Constants.MIN_POOL_SIZE, org.jboss.as.connector.pool.Constants.POOL_PREFILL, org.jboss.as.connector.pool.Constants.POOL_USE_STRICT_MIN,
@@ -109,7 +112,7 @@ class DataSourcesSubsystemProviders {
 
     static final SimpleAttributeDefinition[] XA_DATASOURCE_ATTRIBUTE = new SimpleAttributeDefinition[] {
             Constants.XADATASOURCECLASS, Constants.JNDINAME, Constants.DATASOURCE_DRIVER,
-            Constants.NEW_CONNECTION_SQL, Constants.POOLNAME, Constants.URL_DELIMITER,
+            Constants.NEW_CONNECTION_SQL, Constants.URL_DELIMITER,
             Constants.URL_SELECTOR_STRATEGY_CLASS_NAME, Constants.USE_JAVA_CONTEXT,
             org.jboss.as.connector.pool.Constants.MAX_POOL_SIZE, org.jboss.as.connector.pool.Constants.MIN_POOL_SIZE,
             org.jboss.as.connector.pool.Constants.POOL_PREFILL, org.jboss.as.connector.pool.Constants.POOL_USE_STRICT_MIN, Constants.INTERLEAVING,
@@ -274,6 +277,22 @@ class DataSourcesSubsystemProviders {
 
             return operation;
         }
+    };
+
+    static final DescriptionProvider SUBSYSTEM_REMOVE_DESC = new DescriptionProvider() {
+
+        public ModelNode getModelDescription(final Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+            final ModelNode operation = new ModelNode();
+
+            operation.get(OPERATION_NAME).set("remove");
+            operation.get(DESCRIPTION).set(bundle.getString("datasources.remove"));
+            operation.get(REQUEST_PROPERTIES).setEmptyObject();
+            operation.get(REPLY_PROPERTIES).setEmptyObject();
+
+            return operation;
+        }
+
     };
 
     static DescriptionProvider ADD_CONNECTION_PROPERTIES_DESC = new DescriptionProvider() {
@@ -584,32 +603,6 @@ class DataSourcesSubsystemProviders {
                 node.get(ATTRIBUTES, propertyType.getName(), ACCESS_TYPE, READ_ONLY).set(true);
             }
 
-            for (String name : LocalAndXaDataSourcesJdbcMetrics.ATTRIBUTES) {
-                node.get(ATTRIBUTES, name, DESCRIPTION).set(jdbcMetrics.getDescription(name));
-                ModelType modelType = ModelType.STRING;
-                if (jdbcMetrics.getType(name) == int.class) {
-                    modelType = ModelType.INT;
-                }
-                if (jdbcMetrics.getType(name) == long.class) {
-                    modelType = ModelType.LONG;
-                }
-                node.get(ATTRIBUTES, name, TYPE).set(modelType);
-                node.get(ATTRIBUTES, name, REQUIRED).set(false);
-            }
-
-            for (String name : PoolMetrics.ATTRIBUTES) {
-                node.get(ATTRIBUTES, name, DESCRIPTION).set(poolMetrics.getDescription(name));
-                ModelType modelType = ModelType.STRING;
-                if (poolMetrics.getType(name) == int.class) {
-                    modelType = ModelType.INT;
-                }
-                if (poolMetrics.getType(name) == long.class) {
-                    modelType = ModelType.LONG;
-                }
-                node.get(ATTRIBUTES, name, TYPE).set(modelType);
-                node.get(ATTRIBUTES, name, REQUIRED).set(false);
-            }
-
             node.get(CHILDREN, CONNECTION_PROPERTIES.getName(), DESCRIPTION).set(bundle.getString(CONNECTION_PROPERTIES.getName()));
 
 
@@ -709,6 +702,18 @@ class DataSourcesSubsystemProviders {
         }
     };
 
+     static DescriptionProvider CLEAR_STATISTICS_DESC = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(final Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+            final ModelNode operation = new ModelNode();
+            operation.get(OPERATION_NAME).set("clear-statistics");
+            operation.get(DESCRIPTION).set(bundle.getString("data-source.clear-statistics"));
+            return operation;
+        }
+    };
+
+
     static DescriptionProvider XA_DATA_SOURCE_DESC = new DescriptionProvider() {
         @Override
         public ModelNode getModelDescription(final Locale locale) {
@@ -733,30 +738,6 @@ class DataSourcesSubsystemProviders {
                 node.get(ATTRIBUTES, propertyType.getName(), ACCESS_TYPE, READ_ONLY).set(true);
             }
 
-            for (String name : LocalAndXaDataSourcesJdbcMetrics.ATTRIBUTES) {
-                node.get(ATTRIBUTES, name, DESCRIPTION).set(jdbcMetrics.getDescription(name));
-                ModelType modelType = ModelType.STRING;
-                if (jdbcMetrics.getType(name) == int.class) {
-                    modelType = ModelType.INT;
-                }
-                if (jdbcMetrics.getType(name) == long.class) {
-                    modelType = ModelType.LONG;
-                }
-                node.get(ATTRIBUTES, name, TYPE).set(modelType);
-                node.get(ATTRIBUTES, name, REQUIRED).set(false);
-            }
-            for (String name : PoolMetrics.ATTRIBUTES) {
-                node.get(ATTRIBUTES, name, DESCRIPTION).set(poolMetrics.getDescription(name));
-                ModelType modelType = ModelType.STRING;
-                if (poolMetrics.getType(name) == int.class) {
-                    modelType = ModelType.INT;
-                }
-                if (poolMetrics.getType(name) == long.class) {
-                    modelType = ModelType.LONG;
-                }
-                node.get(ATTRIBUTES, name, TYPE).set(modelType);
-                node.get(ATTRIBUTES, name, REQUIRED).set(false);
-            }
             node.get(CHILDREN, XADATASOURCE_PROPERTIES.getName(), DESCRIPTION).set(bundle.getString(XADATASOURCE_PROPERTIES.getName()));
 
             return node;
@@ -782,6 +763,26 @@ class DataSourcesSubsystemProviders {
             return operation;
         }
     };
+
+    static OverrideDescriptionProvider OVERRIDE_DS_DESC = new OverrideDescriptionProvider() {
+
+        @Override
+        public Map<String, ModelNode> getAttributeOverrideDescriptions(Locale locale) {
+            return Collections.emptyMap();
+        }
+
+        @Override
+        public Map<String, ModelNode> getChildTypeOverrideDescriptions(Locale locale) {
+            final ResourceBundle bundle = getResourceBundle(locale);
+
+            Map<String, ModelNode> children = new HashMap<String, ModelNode>();
+            ModelNode node = new ModelNode();
+            node.get(DESCRIPTION).set(bundle.getString("statistics"));
+            children.put(STATISTICS, node);
+            return children;
+        }
+    };
+
 
     static DescriptionProvider REMOVE_XA_DATA_SOURCE_DESC = new DescriptionProvider() {
         @Override

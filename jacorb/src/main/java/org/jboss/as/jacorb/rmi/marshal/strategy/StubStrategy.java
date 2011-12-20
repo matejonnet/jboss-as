@@ -21,14 +21,18 @@
  */
 package org.jboss.as.jacorb.rmi.marshal.strategy;
 
+import java.rmi.NoSuchObjectException;
+import java.rmi.Remote;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.rmi.UnexpectedException;
+
 import javax.rmi.PortableRemoteObject;
 
+import org.jboss.com.sun.corba.se.impl.javax.rmi.RemoteObjectSubstitutionManager;
 import org.omg.CORBA.UserException;
 import org.omg.CORBA.portable.IDLEntity;
 import org.omg.CORBA_2_3.portable.InputStream;
@@ -191,7 +195,15 @@ public class StubStrategy {
                     + "unexpected number of parameters");
         }
         for (int i = 0; i < len; i++) {
-            paramWriters[i].write(out, params[i]);
+            Object param = params[i];
+            if (param instanceof PortableRemoteObject) {
+                try {
+                    param = PortableRemoteObject.toStub((Remote) param);
+                } catch (NoSuchObjectException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            paramWriters[i].write(out, RemoteObjectSubstitutionManager.writeReplaceRemote(param));
         }
     }
 

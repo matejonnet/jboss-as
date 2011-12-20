@@ -24,6 +24,7 @@ package org.jboss.as.host.controller.operations;
 import java.util.List;
 
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.ProcessType;
 import org.jboss.as.controller.ServiceVerificationHandler;
 import org.jboss.as.controller.interfaces.ParsedInterfaceCriteria;
 import org.jboss.as.server.services.net.SpecifiedInterfaceAddHandler;
@@ -32,28 +33,18 @@ import org.jboss.logging.Logger;
 import org.jboss.msc.service.ServiceController;
 
 /**
- * Handler for adding a fully specified interface.
+ * Handler for adding a fully specified interface to a host.
  *
  * @author Brian Stansberry (c) 2011 Red Hat Inc.
  */
 public class HostSpecifiedInterfaceAddHandler extends SpecifiedInterfaceAddHandler {
-    private static Logger log = Logger.getLogger("org.jboss.as.host.controller");
 
-    final LocalHostControllerInfoImpl hostControllerInfo;
-
-    public HostSpecifiedInterfaceAddHandler(final LocalHostControllerInfoImpl hostControllerInfo) {
+    public HostSpecifiedInterfaceAddHandler() {
         super();
-        this.hostControllerInfo = hostControllerInfo;
-    }
-
-    @Override
-    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers, String name, ParsedInterfaceCriteria criteria) {
-        super.performRuntime(context, operation, model, verificationHandler, newControllers, name, criteria);
-        hostControllerInfo.addNetworkInterfaceBinding(name, criteria);
     }
 
     @Override
     protected boolean requiresRuntime(OperationContext context) {
-        return context.getType() == OperationContext.Type.HOST;
+        return context.getProcessType() == ProcessType.HOST_CONTROLLER;
     }
 }

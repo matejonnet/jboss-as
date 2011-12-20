@@ -23,9 +23,13 @@ package org.jboss.as.ejb3.component.messagedriven;
 
 
 import java.util.Properties;
+import java.util.Set;
 
+import javax.ejb.MessageDrivenBean;
 import javax.ejb.TransactionManagementType;
+import javax.resource.spi.ResourceAdapter;
 
+import org.jboss.as.connector.ConnectorServices;
 import org.jboss.as.ee.component.Component;
 import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ee.component.ComponentConfigurator;
@@ -35,6 +39,7 @@ import org.jboss.as.ee.component.ViewConfiguration;
 import org.jboss.as.ee.component.ViewConfigurator;
 import org.jboss.as.ee.component.ViewDescription;
 import org.jboss.as.ee.component.interceptors.InterceptorOrder;
+import org.jboss.as.ejb3.EjbMessages;
 import org.jboss.as.ejb3.component.EJBComponentDescription;
 import org.jboss.as.ejb3.component.EJBViewDescription;
 import org.jboss.as.ejb3.component.MethodIntf;
@@ -48,10 +53,13 @@ import org.jboss.as.ejb3.tx.TimerCMTTxInterceptor;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.reflect.ClassIndex;
+import org.jboss.invocation.ImmediateInterceptorFactory;
 import org.jboss.metadata.ejb.spec.MessageDrivenBeanMetaData;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceName;
+
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 
 /**
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
@@ -65,21 +73,34 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
     /**
      * Construct a new instance.
      *
-     * @param componentName      the component name
-     * @param componentClassName the component instance class name
-     * @param ejbJarDescription  the module description
+     * @param componentName              the component name
+     * @param componentClassName         the component instance class name
+     * @param ejbJarDescription          the module description
+     * @param defaultResourceAdapterName The default resource adapter name for this message driven bean. Cannot be null or empty string.
      */
     public MessageDrivenComponentDescription(final String componentName, final String componentClassName, final EjbJarDescription ejbJarDescription,
-                                             final ServiceName deploymentUnitServiceName, final String messageListenerInterfaceName, final Properties activationProps) {
+                                             final ServiceName deploymentUnitServiceName, final String messageListenerInterfaceName, final Properties activationProps,
+                                             final String defaultResourceAdapterName) {
         super(componentName, componentClassName, ejbJarDescription, deploymentUnitServiceName);
-        if (messageListenerInterfaceName == null || messageListenerInterfaceName.isEmpty())
-            throw new IllegalArgumentException("Cannot set null or empty string as message listener interface");
-
+        if (messageListenerInterfaceName == null || messageListenerInterfaceName.isEmpty()) {
+            throw EjbMessages.MESSAGES.stringParamCannotBeNullOrEmpty("Message listener interface");
+        }
+        if (defaultResourceAdapterName == null || defaultResourceAdapterName.trim().isEmpty()) {
+            throw EjbMessages.MESSAGES.stringParamCannotBeNullOrEmpty("Default resource adapter name");
+        }
+        this.resourceAdapterName = defaultResourceAdapterName;
         this.activationProps = activationProps;
 
         registerView(messageListenerInterfaceName, MethodIntf.MESSAGE_ENDPOINT);
-
-
+        // add the interceptor which will invoke the setMessageDrivenContext() method on a MDB which implements
+        // MessageDrivenBean interface
+        this.addSetMessageDrivenContextMethodInvocationInterceptor();
+        getConfigurators().add(new ComponentConfigurator() {
+            @Override
+            public void configure(final DeploymentPhaseContext context, final ComponentDescription description, final ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
+                configuration.addTimeoutViewInterceptor(MessageDrivenComponentInstanceAssociatingFactory.instance(), InterceptorOrder.View.ASSOCIATING_INTERCEPTOR);
+            }
+        });
     }
 
     @Override
@@ -92,8 +113,8 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
         final MessageDrivenComponentDescription mdbComponentDescription = (MessageDrivenComponentDescription) mdbComponentConfiguration.getComponentDescription();
         mdbComponentConfiguration.getCreateDependencies().add(new PoolInjectingConfigurator(mdbComponentDescription));
 
-        // setup the configurator to inject default ra name
-        mdbComponentConfiguration.getCreateDependencies().add(new DefaultRANameInjectingConfigurator(mdbComponentDescription));
+        // setup the configurator to inject the resource adapter
+        mdbComponentConfiguration.getCreateDependencies().add(new ResourceAdapterInjectingConfiguration());
 
         // add the bmt interceptor
         if (TransactionManagementType.BEAN.equals(this.getTransactionManagementType())) {
@@ -103,14 +124,13 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
 
                     // add the bmt interceptor factory
                     configuration.addComponentInterceptor(EjbBMTInterceptor.FACTORY, InterceptorOrder.Component.BMT_TRANSACTION_INTERCEPTOR, false);
-                    configuration.addTimeoutInterceptor(EjbBMTInterceptor.FACTORY, InterceptorOrder.Component.BMT_TRANSACTION_INTERCEPTOR);
                 }
             });
         } else {
             getConfigurators().add(new ComponentConfigurator() {
                 @Override
                 public void configure(final DeploymentPhaseContext context, final ComponentDescription description, final ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
-                    configuration.addTimeoutInterceptor(TimerCMTTxInterceptor.FACTORY, InterceptorOrder.Component.COMPONENT_CMT_INTERCEPTOR);
+                    configuration.addTimeoutViewInterceptor(TimerCMTTxInterceptor.FACTORY, InterceptorOrder.View.CMT_TRANSACTION_INTERCEPTOR);
                 }
             });
         }
@@ -153,7 +173,7 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
             @Override
             public void configure(final DeploymentPhaseContext context, final ComponentConfiguration componentConfiguration, final ViewDescription description, final ViewConfiguration configuration) throws DeploymentUnitProcessingException {
                 final MessageDrivenComponentDescription mdb = (MessageDrivenComponentDescription) componentConfiguration.getComponentDescription();
-                if(mdb.getTransactionManagementType() == TransactionManagementType.CONTAINER) {
+                if (mdb.getTransactionManagementType() == TransactionManagementType.CONTAINER) {
                     configuration.addViewInterceptor(CMTTxInterceptor.FACTORY, InterceptorOrder.View.CMT_TRANSACTION_INTERCEPTOR);
                 }
             }
@@ -179,6 +199,23 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
             @Override
             public void configure(DeploymentPhaseContext context, ComponentConfiguration componentConfiguration, ViewDescription description, ViewConfiguration configuration) throws DeploymentUnitProcessingException {
                 configuration.addViewInterceptor(CurrentInvocationContextInterceptor.FACTORY, InterceptorOrder.View.INVOCATION_CONTEXT_INTERCEPTOR);
+            }
+        });
+    }
+
+    /**
+     * Adds a interceptor to invoke the {@link MessageDrivenBean#setMessageDrivenContext(javax.ejb.MessageDrivenContext)}
+     * if the MDB implements the {@link MessageDrivenBean} interface
+     */
+    private void addSetMessageDrivenContextMethodInvocationInterceptor() {
+        // add the setMessageDrivenContext(MessageDrivenContext) method invocation interceptor for MDB
+        // implementing the javax.ejb.MessageDrivenBean interface
+        this.getConfigurators().add(new ComponentConfigurator() {
+            @Override
+            public void configure(DeploymentPhaseContext context, ComponentDescription description, ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
+                if (MessageDrivenBean.class.isAssignableFrom(configuration.getComponentClass())) {
+                    configuration.addPostConstructInterceptor(new ImmediateInterceptorFactory(MessageDrivenBeanSetMessageDrivenContextInterceptor.INSTANCE), InterceptorOrder.ComponentPostConstruct.EJB_SET_CONTEXT_METHOD_INVOCATION_INTERCEPTOR);
+                }
             }
         });
     }
@@ -220,19 +257,33 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
         }
     }
 
-    private class DefaultRANameInjectingConfigurator implements DependencyConfigurator<Service<Component>> {
-
-        private final MessageDrivenComponentDescription mdbComponentDescription;
-
-        DefaultRANameInjectingConfigurator(final MessageDrivenComponentDescription mdbComponentDescription) {
-            this.mdbComponentDescription = mdbComponentDescription;
-        }
+    /**
+     * A dependency configurator which adds a dependency/injection into the {@link MessageDrivenComponentCreateService}
+     * for the appropriate resource adapter service
+     */
+    private class ResourceAdapterInjectingConfiguration implements DependencyConfigurator<MessageDrivenComponentCreateService> {
 
         @Override
-        public void configureDependency(ServiceBuilder<?> serviceBuilder, Service<Component> service) throws DeploymentUnitProcessingException {
-            final MessageDrivenComponentCreateService mdbComponentCreateService = (MessageDrivenComponentCreateService) service;
-            serviceBuilder.addDependency(ServiceBuilder.DependencyType.OPTIONAL, DefaultResourceAdapterService.DEFAULT_RA_NAME_SERVICE_NAME,
-                    DefaultResourceAdapterService.class, mdbComponentCreateService.getDefaultRANameServiceInjector());
+        public void configureDependency(ServiceBuilder<?> serviceBuilder, MessageDrivenComponentCreateService service) throws DeploymentUnitProcessingException {
+            final String suffixStrippedRaName = this.stripDotRarSuffix(MessageDrivenComponentDescription.this.resourceAdapterName);
+            final Set<ServiceName> raServiceNames = ConnectorServices.getResourceAdapterServiceNames(suffixStrippedRaName);
+            if (raServiceNames == null || raServiceNames.isEmpty()) {
+                throw MESSAGES.failToFindResourceAdapter(suffixStrippedRaName);
+            }
+            final ServiceName raServiceName = raServiceNames.iterator().next();
+            // add the dependency on the RA service
+            serviceBuilder.addDependency(raServiceName, ResourceAdapter.class, service.getResourceAdapterInjector());
+        }
+
+        private String stripDotRarSuffix(final String raName) {
+            if (raName == null) {
+                return null;
+            }
+            // See RaDeploymentParsingProcessor
+            if (raName.endsWith(".rar")) {
+                return raName.substring(0, raName.indexOf(".rar"));
+            }
+            return raName;
         }
     }
 
@@ -245,4 +296,5 @@ public class MessageDrivenComponentDescription extends EJBComponentDescription {
     public MessageDrivenBeanMetaData getDescriptorData() {
         return (MessageDrivenBeanMetaData) super.getDescriptorData();
     }
+
 }

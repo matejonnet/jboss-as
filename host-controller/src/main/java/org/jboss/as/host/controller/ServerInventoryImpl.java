@@ -25,14 +25,6 @@ package org.jboss.as.host.controller;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HOST;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RUNNING_SERVER;
 
-import javax.security.auth.callback.Callback;
-import javax.security.auth.callback.CallbackHandler;
-import javax.security.auth.callback.NameCallback;
-import javax.security.auth.callback.PasswordCallback;
-import javax.security.auth.callback.UnsupportedCallbackException;
-import javax.security.sasl.AuthorizeCallback;
-import javax.security.sasl.RealmCallback;
-import javax.security.sasl.SaslException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.security.NoSuchAlgorithmException;
@@ -45,17 +37,25 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import org.jboss.as.controller.ProxyController;
+import javax.security.auth.callback.Callback;
+import javax.security.auth.callback.CallbackHandler;
+import javax.security.auth.callback.NameCallback;
+import javax.security.auth.callback.PasswordCallback;
+import javax.security.auth.callback.UnsupportedCallbackException;
+import javax.security.sasl.AuthorizeCallback;
+import javax.security.sasl.RealmCallback;
+import javax.security.sasl.SaslException;
+
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.ProxyController;
 import org.jboss.as.controller.ProxyOperationAddressTranslator;
 import org.jboss.as.controller.client.helpers.domain.ServerStatus;
 import org.jboss.as.controller.remote.RemoteProxyController;
 import org.jboss.as.domain.controller.DomainController;
 import org.jboss.as.process.ProcessControllerClient;
 import org.jboss.as.process.ProcessInfo;
-import org.jboss.as.protocol.mgmt.ManagementChannel;
-import org.jboss.as.protocol.mgmt.ManagementOperationHandler;
+import org.jboss.as.protocol.mgmt.ManagementMessageHandler;
 import org.jboss.as.server.ServerState;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
@@ -70,7 +70,7 @@ import org.jboss.sasl.util.UsernamePasswordHashUtil;
  *
  * @author Emanuel Muckenhuber
  * @author Kabir Khan
-   */
+ */
 public class ServerInventoryImpl implements ServerInventory {
 
     private static final Logger log = Logger.getLogger("org.jboss.as.host.controller");
@@ -80,8 +80,10 @@ public class ServerInventoryImpl implements ServerInventory {
     private final ProcessControllerClient processControllerClient;
     private final InetSocketAddress managementAddress;
     private final DomainController domainController;
+    private final Object shutdownCondition = new Object();
     private volatile CountDownLatch processInventoryLatch;
     private volatile Map<String, ProcessInfo> processInfos;
+    private volatile boolean stopped;
 
     ServerInventoryImpl(final DomainController domainController, final HostControllerEnvironment environment, final InetSocketAddress managementAddress, final ProcessControllerClient processControllerClient) {
         this.domainController = domainController;
@@ -112,7 +114,20 @@ public class ServerInventoryImpl implements ServerInventory {
         } catch (InterruptedException e) {
         }
         return processInfos;
+    }
 
+    public Map<String, ProcessInfo> determineRunningProcesses(boolean serversOnly){
+        Map<String, ProcessInfo> processInfos = determineRunningProcesses();
+        if (!serversOnly) {
+            return processInfos;
+        }
+        Map<String, ProcessInfo> processes = new HashMap<String, ProcessInfo>();
+        for (Map.Entry<String, ProcessInfo> procEntry : processInfos.entrySet()) {
+            if (ManagedServer.isServerProcess(procEntry.getKey())) {
+                processes.put(procEntry.getKey(), procEntry.getValue());
+            }
+        }
+        return processes;
     }
 
     @Override
@@ -157,7 +172,6 @@ public class ServerInventoryImpl implements ServerInventory {
     }
 
     public ServerStatus startServer(final String serverName, final ModelNode domainModel) {
-
         final String processName = ManagedServer.getServerProcessName(serverName);
         final ManagedServer existing = servers.get(processName);
         if(existing != null) { // FIXME
@@ -166,7 +180,10 @@ public class ServerInventoryImpl implements ServerInventory {
         }
         log.infof("Starting server %s", serverName);
         final ManagedServer server = createManagedServer(serverName, domainModel);
-        servers.put(processName, server);
+        synchronized (shutdownCondition) {
+            servers.put(processName, server);
+            shutdownCondition.notifyAll();
+        }
 
         try {
             server.createServerProcess();
@@ -190,7 +207,10 @@ public class ServerInventoryImpl implements ServerInventory {
         }
         log.info("Reconnecting server " + serverName);
         final ManagedServer server = createManagedServer(serverName, domainModel);
-        servers.put(processName, server);
+        synchronized (shutdownCondition) {
+            servers.put(processName, server);
+            shutdownCondition.notifyAll();
+        }
 
         if (running){
             try {
@@ -254,7 +274,7 @@ public class ServerInventoryImpl implements ServerInventory {
 
     /** {@inheritDoc} */
     @Override
-    public void serverRegistered(final String serverProcessName, final ManagementChannel channel, ProxyCreatedCallback callback) {
+    public void serverRegistered(final String serverProcessName, final Channel channel, ProxyCreatedCallback callback) {
         try {
             final ManagedServer server = servers.get(serverProcessName);
             if (server == null) {
@@ -264,23 +284,25 @@ public class ServerInventoryImpl implements ServerInventory {
 
             channel.addCloseHandler(new CloseHandler<Channel>() {
                 public void handleClose(final Channel closed, final IOException exception) {
-                    domainController.unregisterRunningServer(serverProcessName);
+                    domainController.unregisterRunningServer(server.getServerName());
                 }
             });
 
-            server.setServerManagementChannel(channel);
             if (!environment.isRestart()){
                 checkState(server, ServerState.STARTING);
             }
-            server.setState(ServerState.STARTED);
+            synchronized (shutdownCondition) {
+                server.setState(ServerState.STARTED);
+                shutdownCondition.notifyAll();
+            }
 
             final PathElement element = PathElement.pathElement(RUNNING_SERVER, server.getServerName());
             final ProxyController serverController = RemoteProxyController.create(Executors.newCachedThreadPool(),
                     PathAddress.pathAddress(PathElement.pathElement(HOST, domainController.getLocalHostInfo().getLocalHostName()), element),
                     ProxyOperationAddressTranslator.SERVER,
                     channel);
-            if (callback != null && serverController instanceof ManagementOperationHandler) {
-                callback.proxyOperationHandlerCreated((ManagementOperationHandler)serverController);
+            if (callback != null && serverController instanceof ManagementMessageHandler) {
+                callback.proxyOperationHandlerCreated((ManagementMessageHandler)serverController);
             }
             domainController.registerRunningServer(serverController);
 
@@ -299,7 +321,10 @@ public class ServerInventoryImpl implements ServerInventory {
             return;
         }
         checkState(server, ServerState.STARTING);
-        server.setState(ServerState.FAILED);
+        synchronized (shutdownCondition) {
+            server.setState(ServerState.FAILED);
+            shutdownCondition.notifyAll();
+        }
     }
 
     /** {@inheritDoc} */
@@ -311,7 +336,7 @@ public class ServerInventoryImpl implements ServerInventory {
             return;
         }
         domainController.unregisterRunningServer(server.getServerName());
-        if (server.getState() != ServerState.STOPPING){
+        if (server.getState() != ServerState.STOPPING && ! stopped){
             //The server crashed, try to restart it
             // TODO: throttle policy
             try {
@@ -325,15 +350,52 @@ public class ServerInventoryImpl implements ServerInventory {
                 log.error("Failed to start server " + serverProcessName, e);
             }
         }
-        servers.remove(serverProcessName);
+        synchronized (shutdownCondition) {
+            servers.remove(serverProcessName);
+            shutdownCondition.notifyAll();
+        }
     }
 
     public void stopServers(int gracefulTimeout) {
+        stopServers(gracefulTimeout, false);
+    }
+
+    void stopServers(int gracefulTimeout, boolean blockUntilStopped) {
+        stopped = true;
         Map<String, ProcessInfo> processInfoMap = determineRunningProcesses();
         for (String serverProcessName : processInfoMap.keySet()) {
             if (ManagedServer.isServerProcess(serverProcessName)) {
                 String serverName = ManagedServer.getServerName(serverProcessName);
                 stopServer(serverName, gracefulTimeout);
+            }
+        }
+
+        if (blockUntilStopped) {
+            synchronized (shutdownCondition) {
+                for (;;) {
+                    int count = 0;
+                    for (ManagedServer server : servers.values()) {
+                        switch (server.getState()) {
+                            case FAILED:
+                            case MAX_FAILED:
+                            case STOPPED:
+                                break;
+                            default:
+                                count++;
+                        }
+                    }
+
+                    if (count == 0) {
+                        break;
+                    }
+
+                    try {
+                        shutdownCondition.wait();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
             }
         }
     }
@@ -346,9 +408,10 @@ public class ServerInventoryImpl implements ServerInventory {
     }
 
     private ManagedServer createManagedServer(final String serverName, final ModelNode domainModel) {
-        final ModelNode hostModel = domainModel.require(HOST).require(domainController.getLocalHostInfo().getLocalHostName());
+        final String hostControllerName = domainController.getLocalHostInfo().getLocalHostName();
+        final ModelNode hostModel = domainModel.require(HOST).require(hostControllerName);
         final ModelCombiner combiner = new ModelCombiner(serverName, domainModel, hostModel, domainController, environment);
-        return new ManagedServer(serverName, processControllerClient, managementAddress, combiner);
+        return new ManagedServer(hostControllerName, serverName, processControllerClient, managementAddress, combiner);
     }
 
     public CallbackHandler getServerCallbackHandler() {

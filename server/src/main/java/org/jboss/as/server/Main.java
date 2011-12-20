@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
 
+import org.jboss.as.controller.RunningMode;
 import org.jboss.as.process.CommandLineConstants;
 import org.jboss.logmanager.Level;
 import org.jboss.logmanager.Logger;
@@ -57,24 +58,25 @@ public final class Main {
     public static void usage() {
         System.out.println("Usage: ./standalone.sh [args...]\n");
         System.out.println("where args include:");
-        System.out.println("    -b=<value>                         Set system property jboss.bind.address to the given value");
-        System.out.println("    -b <value>                         Set system property jboss.bind.address to the given value");
-        System.out.println("    -b<interface>=<value>              Set system property jboss.bind.address.<interface> to the given value");
-        System.out.println("    -c=<config>                        Name of the server configuration file to use (default is \"standalone.xml\")");
-        System.out.println("    -c <config>                        Name of the server configuration file to use (default is \"standalone.xml\")");
-        System.out.println("    -D<name>[=<value>]                 Set a system property");
-        System.out.println("    -h                                 Display this message and exit");
+        System.out.println("    --admin-only                       Set the server's running type to ADMIN_ONLY causing it to open administrative interfaces ");
+        System.out.println("                                       and accept management requests but not start other runtime services or accept end user requests.\n");
+        System.out.println("    -b=<value>                         Set system property jboss.bind.address to the given value\n");
+        System.out.println("    -b <value>                         Set system property jboss.bind.address to the given value\n");
+        System.out.println("    -b<interface>=<value>              Set system property jboss.bind.address.<interface> to the given value\n");
+        System.out.println("    -c=<config>                        Name of the server configuration file to use (default is \"standalone.xml\")\n");
+        System.out.println("    -c <config>                        Name of the server configuration file to use (default is \"standalone.xml\")\n");
+        System.out.println("    -D<name>[=<value>]                 Set a system property\n");
+        System.out.println("    -h                                 Display this message and exit\n");
         System.out.println("    --help                             Display this message and exit");
-        System.out.println("    -P=<url>                           Load system properties from the given url");
-        System.out.println("    -P <url>                           Load system properties from the given url");
-        System.out.println("    --properties=<url>                 Load system properties from the given url");
-        System.out.println("    --server-config=<config>           Name of the server configuration file to use (default is \"standalone.xml\")");
-        System.out.println("    -u=<value>                         Set system property jboss.default.multicast.address to the given value");
-        System.out.println("    -u <value>                         Set system property jboss.default.multicast.address to the given value");
-        System.out.println("    -V                                 Print version and exit");
-        System.out.println("    -v                                 Print version and exit");
-        System.out.println("    --version                          Print version and exit");
-        System.out.println();
+        System.out.println("    -P=<url>                           Load system properties from the given url\n");
+        System.out.println("    -P <url>                           Load system properties from the given url\n");
+        System.out.println("    --properties=<url>                 Load system properties from the given url\n");
+        System.out.println("    --server-config=<config>           Name of the server configuration file to use (default is \"standalone.xml\")\n");
+        System.out.println("    -u=<value>                         Set system property jboss.default.multicast.address to the given value\n");
+        System.out.println("    -u <value>                         Set system property jboss.default.multicast.address to the given value\n");
+        System.out.println("    -V                                 Print version and exit\n");
+        System.out.println("    -v                                 Print version and exit\n");
+        System.out.println("    --version                          Print version and exit\n");
     }
 
     private Main() {
@@ -135,6 +137,7 @@ public final class Main {
     public static ServerEnvironment determineEnvironment(String[] args, Properties systemProperties, Map<String, String> systemEnvironment, ServerEnvironment.LaunchType launchType) {
         final int argsLength = args.length;
         String serverConfig = null;
+        RunningMode runningMode = RunningMode.NORMAL;
         for (int i = 0; i < argsLength; i++) {
             final String arg = args[i];
             try {
@@ -225,7 +228,8 @@ public final class Main {
 
                     int idx = arg.indexOf('=');
                     if (idx == arg.length() - 1) {
-                        System.err.printf("Argument expected for option %s\n", arg);
+                        System.err.printf(ServerMessages.MESSAGES.valueExpectedForCommandLineOption(arg));
+                        System.err.println();
                         usage();
                         return null;
                     }
@@ -233,19 +237,24 @@ public final class Main {
 
                     systemProperties.setProperty(ServerEnvironment.JBOSS_DEFAULT_MULTICAST_ADDRESS, value);
                     SecurityActions.setSystemProperty(ServerEnvironment.JBOSS_DEFAULT_MULTICAST_ADDRESS, value);
+                } else if (CommandLineConstants.ADMIN_ONLY.equals(arg)) {
+                    runningMode = RunningMode.ADMIN_ONLY;
                 } else {
-                    System.err.printf("Invalid option '%s'\n", arg);
+                    System.err.printf(ServerMessages.MESSAGES.invalidCommandLineOption(arg));
+                    System.err.println();
                     usage();
                     return null;
                 }
             } catch (IndexOutOfBoundsException e) {
-                System.err.printf("Argument expected for option %s\n", arg);
+                System.err.printf(ServerMessages.MESSAGES.valueExpectedForCommandLineOption(arg));
+                System.err.println();
                 usage();
                 return null;
             }
         }
 
-        return new ServerEnvironment(systemProperties, systemEnvironment, serverConfig, launchType);
+        String hostControllerName = null; // No host controller unless in domain mode.
+        return new ServerEnvironment(hostControllerName, systemProperties, systemEnvironment, serverConfig, launchType, runningMode);
     }
 
     private static String parseValue(final String arg, final String key) {
@@ -267,11 +276,13 @@ public final class Main {
              props.load(url.openConnection().getInputStream());
              return true;
          } catch (MalformedURLException e) {
-             System.err.printf("Malformed URL provided for option %s\n", arg);
+             System.err.printf(ServerMessages.MESSAGES.malformedCommandLineURL(urlSpec, arg));
+             System.err.println();
              usage();
              return false;
          } catch (IOException e) {
-             System.err.printf("Unable to load properties from URL %s\n", url);
+             System.err.printf(ServerMessages.MESSAGES.unableToLoadProperties(url));
+             System.err.println();
              usage();
              return false;
          }

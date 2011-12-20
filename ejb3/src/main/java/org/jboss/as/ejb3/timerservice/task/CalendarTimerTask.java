@@ -27,10 +27,7 @@ import java.util.GregorianCalendar;
 
 import org.jboss.as.ejb3.timerservice.CalendarTimer;
 import org.jboss.as.ejb3.timerservice.TimerState;
-import org.jboss.as.ejb3.timerservice.spi.MultiTimeoutMethodTimedObjectInvoker;
 import org.jboss.as.ejb3.timerservice.spi.TimedObjectInvoker;
-import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
-import static org.jboss.as.ejb3.EjbLogger.ROOT_LOGGER;
 
 /**
  * CalendarTimerTask
@@ -59,14 +56,8 @@ public class CalendarTimerTask extends TimerTask<CalendarTimer> {
         // finally invoke the timeout method through the invoker
         if (calendarTimer.isAutoTimer()) {
             TimedObjectInvoker invoker = this.timerService.getInvoker();
-            if (!(invoker instanceof MultiTimeoutMethodTimedObjectInvoker)) {
-                final String msg = "Cannot invoke timeout method because timer: " + calendarTimer
-                        + " is an auto timer, but invoker is not of type" + MultiTimeoutMethodTimedObjectInvoker.class;
-                ROOT_LOGGER.failToInvokeTimeout(calendarTimer, MultiTimeoutMethodTimedObjectInvoker.class);
-                throw MESSAGES.failToInvokeTimeout(calendarTimer, MultiTimeoutMethodTimedObjectInvoker.class);
-            }
             // call the timeout method
-            ((MultiTimeoutMethodTimedObjectInvoker) invoker).callTimeout(calendarTimer, calendarTimer.getTimeoutMethod());
+            invoker.callTimeout(calendarTimer, calendarTimer.getTimeoutMethod());
         } else {
             this.timerService.getInvoker().callTimeout(calendarTimer);
         }
@@ -94,7 +85,8 @@ public class CalendarTimerTask extends TimerTask<CalendarTimer> {
     protected void postTimeoutProcessing() {
         final CalendarTimer calendarTimer = this.getTimer();
         final TimerState timerState = calendarTimer.getState();
-        if (timerState == TimerState.IN_TIMEOUT || timerState == TimerState.RETRY_TIMEOUT) {
+        if (timerState != TimerState.CANCELED
+                && timerState != TimerState.EXPIRED) {
             if (calendarTimer.getNextExpiration() == null) {
                 calendarTimer.expireTimer();
             } else {

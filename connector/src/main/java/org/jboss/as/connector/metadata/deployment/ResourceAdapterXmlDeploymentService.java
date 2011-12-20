@@ -25,6 +25,7 @@ package org.jboss.as.connector.metadata.deployment;
 import org.jboss.as.connector.ConnectorServices;
 import org.jboss.as.connector.metadata.xmldescriptors.ConnectorXmlDescriptor;
 import org.jboss.as.connector.services.ResourceAdapterService;
+import org.jboss.as.naming.WritableServiceBasedNamingStore;
 import org.jboss.jca.common.api.metadata.ironjacamar.IronJacamar;
 import org.jboss.jca.common.api.metadata.ra.Connector;
 import org.jboss.jca.common.api.metadata.resourceadapter.ResourceAdapter;
@@ -65,6 +66,7 @@ public final class ResourceAdapterXmlDeploymentService extends AbstractResourceA
 
     private String raName;
     private ServiceName deploymentServiceName;
+    private CommonDeployment raxmlDeployment = null;
 
     public ResourceAdapterXmlDeploymentService(ConnectorXmlDescriptor connectorXmlDescriptor, ResourceAdapter raxml,
                                                Module module, final String deployment, final ServiceName deploymentServiceName) {
@@ -94,9 +96,14 @@ public final class ResourceAdapterXmlDeploymentService extends AbstractResourceA
 
             raDeployer.setConfiguration(config.getValue());
 
-            CommonDeployment raxmlDeployment = null;
+
             try {
-                raxmlDeployment = raDeployer.doDeploy();
+                WritableServiceBasedNamingStore.pushOwner(container.subTarget());
+                try {
+                    raxmlDeployment = raDeployer.doDeploy();
+                } finally {
+                    WritableServiceBasedNamingStore.popOwner();
+                }
             } catch (Throwable t) {
                 throw MESSAGES.failedToStartRaDeployment(t, raName);
             }
@@ -129,8 +136,16 @@ public final class ResourceAdapterXmlDeploymentService extends AbstractResourceA
             ConnectorServices.unregisterDeployment(raName, deploymentServiceName);
         }
 
+        if (raName != null) {
+            ConnectorServices.unregisterResourceAdapterIdentifier(raName);
+        }
+
         managementRepository.getValue().getConnectors().remove(value.getDeployment().getConnector());
         super.stop(context);
+    }
+
+    public CommonDeployment getRaxmlDeployment() {
+        return raxmlDeployment;
     }
 
     private class AS7RaXmlDeployer extends AbstractAS7RaDeployer {

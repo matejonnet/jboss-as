@@ -22,18 +22,25 @@
 
 package org.jboss.as.server;
 
-import static org.jboss.logging.Logger.Level.INFO;
-
 import org.jboss.logging.BasicLogger;
+import org.jboss.logging.Cause;
 import org.jboss.logging.LogMessage;
 import org.jboss.logging.Logger;
 import org.jboss.logging.Message;
 import org.jboss.logging.MessageLogger;
 
+import static org.jboss.logging.Logger.Level.ERROR;
+import static org.jboss.logging.Logger.Level.INFO;
+import static org.jboss.logging.Logger.Level.WARN;
+
 /**
- * Date: 05.11.2011
+ * This module is using message IDs in the range 15700-15999.
+ * This file is using the subset 15850-15875 for server logger messages.
+ * See http://community.jboss.org/docs/DOC-16810 for the full list of
+ * currently reserved JBAS message id blocks.
  *
  * @author <a href="mailto:jperkins@redhat.com">James R. Perkins</a>
+ * @author Mike M. Clark
  */
 @MessageLogger(projectCode = "JBAS")
 public interface ServerLogger extends BasicLogger {
@@ -87,4 +94,23 @@ public interface ServerLogger extends BasicLogger {
     @LogMessage(level = INFO)
     @Message("JBoss AS %s \"%s\" stopped in %dms")
     void serverStopped(String version, String codeName, int time);
+
+    /**
+     * Log message for when a jboss-deployment-structure.xml file is ignored
+     */
+    @LogMessage(level = WARN)
+    @Message(id = 15850, value = "%s in subdeployment ignored. jboss-deployment-structure.xml is only parsed for top level deployments.")
+    void jbossDeploymentStructureIgnored(String file);
+
+    /**
+     * Message for when a pre-computed annotation index cannot be loaded
+     */
+    @LogMessage(level = ERROR)
+    @Message(id = 15851, value = "Could not read provided index: %s")
+    void cannotLoadAnnotationIndex(String index);
+
+    @LogMessage(level = WARN)
+    @Message(id = 15852, value = "Could not index class %s at %s")
+    void cannotIndexClass(String className, String resourceRoot, @Cause Throwable throwable);
+
 }

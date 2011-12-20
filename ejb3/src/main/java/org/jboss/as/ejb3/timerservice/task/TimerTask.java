@@ -26,7 +26,9 @@ import java.util.Date;
 import org.jboss.as.ejb3.timerservice.TimerImpl;
 import org.jboss.as.ejb3.timerservice.TimerServiceImpl;
 import org.jboss.as.ejb3.timerservice.TimerState;
+import org.jboss.as.ejb3.timerservice.spi.BeanRemovedException;
 import org.jboss.as.ejb3.timerservice.spi.TimedObjectInvoker;
+
 import static org.jboss.as.ejb3.EjbLogger.ROOT_LOGGER;
 import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 
@@ -44,6 +46,7 @@ import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
  * </p>
  *
  * @author Jaikiran Pai
+ * @author Wolf-Dieter Fink
  * @version $Revision: $
  */
 public class TimerTask<T extends TimerImpl> implements Runnable {
@@ -51,12 +54,12 @@ public class TimerTask<T extends TimerImpl> implements Runnable {
     /**
      * The timer to which this {@link TimerTask} belongs
      */
-    protected T timer;
+    protected final T timer;
 
     /**
      * {@link org.jboss.as.ejb3.timerservice.TimerServiceImpl} to which this {@link TimerTask} belongs
      */
-    protected TimerServiceImpl timerService;
+    protected final TimerServiceImpl timerService;
 
     /**
      * Creates a {@link TimerTask} for the timer
@@ -88,12 +91,20 @@ public class TimerTask<T extends TimerImpl> implements Runnable {
     @Override
     public void run() {
         Date now = new Date();
-        ROOT_LOGGER.debug("Timer task invoked at: " + now + " for timer " + this.timer);
+        if(ROOT_LOGGER.isDebugEnabled()) {
+            ROOT_LOGGER.debug("Timer task invoked at: " + now + " for timer " + this.timer);
+        }
 
         // If a retry thread is in progress, we don't want to allow another
         // interval to execute until the retry is complete. See JIRA-1926.
         if (this.timer.isInRetry()) {
             ROOT_LOGGER.debug("Timer in retry mode, skipping this scheduled execution at: " + now);
+            // compute the next timeout, See JIRA AS7-2995.
+            this.timer.setNextTimeout(calculateNextTimeout());
+            this.timerService.persistTimer(this.timer);
+            if(this.timer.getNextExpiration() != null) {
+                this.timer.scheduleTimeout();
+            }
             return;
         }
 
@@ -113,6 +124,9 @@ public class TimerTask<T extends TimerImpl> implements Runnable {
         try {
             // invoke timeout
             this.callTimeout();
+        } catch (BeanRemovedException e) {
+            ROOT_LOGGER.debugf("Removing timer %s as EJB has been removed ", this.timer);
+            timer.cancel();
         } catch (Exception e) {
             ROOT_LOGGER.errorInvokeTimeout(this.timer, e);
             try {
@@ -137,10 +151,12 @@ public class TimerTask<T extends TimerImpl> implements Runnable {
     protected Date calculateNextTimeout() {
         long intervalDuration = this.timer.getInterval();
         if (intervalDuration > 0) {
-            Date nextExpiration = this.timer.getNextExpiration();
+            long now = new Date().getTime();
+            long nextExpiration = this.timer.getNextExpiration().getTime();
+            // compute skipped number of interval
+            int periods = (int)((now-nextExpiration)/intervalDuration);
             // compute the next timeout date
-            nextExpiration = new Date(nextExpiration.getTime() + intervalDuration);
-            return nextExpiration;
+            return new Date(nextExpiration + (periods * intervalDuration) + intervalDuration);
         }
         return null;
 
@@ -164,7 +180,8 @@ public class TimerTask<T extends TimerImpl> implements Runnable {
 
     protected void postTimeoutProcessing() {
         TimerState timerState = this.timer.getState();
-        if (timerState == TimerState.IN_TIMEOUT || timerState == TimerState.RETRY_TIMEOUT) {
+        if (timerState != TimerState.CANCELED
+                && timerState != TimerState.EXPIRED) {
             if (this.timer.getInterval() == 0) {
                 this.timer.expireTimer();
             } else {

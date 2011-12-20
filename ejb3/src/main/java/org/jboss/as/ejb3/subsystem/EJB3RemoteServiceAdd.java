@@ -80,6 +80,7 @@ public class EJB3RemoteServiceAdd extends AbstractBoottimeAddStepHandler {
         return operation;
     }
 
+    // TODO why is this a boottime-only handler?
     @Override
     protected void performBoottime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) throws OperationFailedException {
         newControllers.add(installRuntimeService(context, model, verificationHandler));
@@ -95,11 +96,12 @@ public class EJB3RemoteServiceAdd extends AbstractBoottimeAddStepHandler {
     }
 
     ServiceController<EJBRemoteConnectorService> installRuntimeService(final OperationContext context, final ModelNode model, final ServiceVerificationHandler verificationHandler) {
+        // TODO this variable is unused
         final String connectorName = model.require(CONNECTOR_REF).asString();
         final String threadPoolName = model.require(THREAD_POOL_NAME).asString();
         final ServiceTarget serviceTarget = context.getServiceTarget();
         // TODO: Externalize (expose via management API if needed) the version and the marshalling strategy
-        final EJBRemoteConnectorService service = new EJBRemoteConnectorService((byte) 0x01, new String[]{"river", "java-serial"});
+        final EJBRemoteConnectorService service = new EJBRemoteConnectorService((byte) 0x01, new String[]{"river"});
         final ServiceBuilder<EJBRemoteConnectorService> ejbRemoteConnectorServiceBuilder = serviceTarget.addService(EJBRemoteConnectorService.SERVICE_NAME, service);
         // add dependency on the Remoting subsytem endpoint
         ejbRemoteConnectorServiceBuilder.addDependency(RemotingServices.SUBSYSTEM_ENDPOINT, Endpoint.class, service.getEndpointInjector());

@@ -24,6 +24,7 @@ package org.jboss.as.controller;
 import static junit.framework.Assert.assertEquals;
 
 import java.io.ByteArrayInputStream;
+import java.io.DataInput;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -31,6 +32,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -44,10 +46,12 @@ import org.jboss.as.controller.client.OperationMessageHandler;
 import org.jboss.as.controller.remote.ExistingChannelModelControllerClient;
 import org.jboss.as.controller.remote.ModelControllerClientOperationHandler;
 import org.jboss.as.controller.support.RemoteChannelPairSetup;
-import org.jboss.as.protocol.mgmt.ManagementChannel;
-import org.jboss.as.protocol.mgmt.ManagementOperationHandler;
+import org.jboss.as.protocol.mgmt.ManagementChannelReceiver;
+import org.jboss.as.protocol.mgmt.ManagementMessageHandler;
+import org.jboss.as.protocol.mgmt.ManagementProtocolHeader;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
+import org.jboss.remoting3.Channel;
 import org.jboss.threads.AsyncFuture;
 import org.junit.After;
 import org.junit.Before;
@@ -63,25 +67,31 @@ public class ModelControllerClientTestCase {
 
     Logger log = Logger.getLogger(ModelControllerClientTestCase.class);
 
-    RemoteChannelPairSetup channels;
+    private final DelegatingChannelHandler handler = new DelegatingChannelHandler();
+    private RemoteChannelPairSetup channels;
     @Before
     public void start() throws Exception {
         channels = new RemoteChannelPairSetup();
-        channels.setupRemoting();
-        channels.startChannels();
+        channels.setupRemoting(handler);
+        channels.startClientConnetion();
     }
 
     @After
     public void stop() throws Exception {
         channels.stopChannels();
         channels.shutdownRemoting();
+        handler.setDelegate(null);
+    }
+
+    private ModelControllerClient createTestClient() {
+        final Channel clientChannel = channels.getClientChannel();
+        final ExistingChannelModelControllerClient client = new ExistingChannelModelControllerClient(clientChannel);
+        clientChannel.receiveMessage(ManagementChannelReceiver.createDelegating(client));
+        return client;
     }
 
     @Test @Ignore("OperationMessageHandlerProxy turned off temporarily")
     public void testSynchronousOperationMessageHandler() throws Exception {
-        ManagementChannel serverChannel = channels.getServerChannel();
-        ManagementChannel clientChannel = channels.getClientChannel();
-        clientChannel.startReceiving();
 
         final CountDownLatch executeLatch = new CountDownLatch(1);
         MockModelController controller = new MockModelController() {
@@ -97,13 +107,11 @@ public class ModelControllerClientTestCase {
             }
         };
 
-        ModelControllerClientOperationHandler operationHandler = new ModelControllerClientOperationHandler(channels.getExecutorService(), controller);
-        serverChannel.setOperationHandler(operationHandler);
+        // Set the handler
+        handler.setDelegate(new ModelControllerClientOperationHandler(controller, channels.getExecutorService()));
 
-        ModelControllerClient client = new ExistingChannelModelControllerClient(channels.getClientChannel());
+        final ModelControllerClient client = createTestClient();
         try {
-            clientChannel.setOperationHandler((ManagementOperationHandler)client);
-
             ModelNode operation = new ModelNode();
             operation.get("test").set("123");
 
@@ -133,10 +141,7 @@ public class ModelControllerClientTestCase {
 
         final byte[] firstBytes = new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
         final byte[] secondBytes = new byte[] {10, 9, 8 , 7 , 6, 5, 4, 3, 2, 1};
-
-        ManagementChannel serverChannel = channels.getServerChannel();
-        ManagementChannel clientChannel = channels.getClientChannel();
-        clientChannel.startReceiving();
+        final byte[] thirdBytes = new byte[] {1};
 
         final CountDownLatch executeLatch = new CountDownLatch(1);
         final AtomicInteger size = new AtomicInteger();
@@ -179,14 +184,11 @@ public class ModelControllerClientTestCase {
                 return new ModelNode();
             }
         };
+        // Set the handler
+        handler.setDelegate(new ModelControllerClientOperationHandler(controller, channels.getExecutorService()));
 
-        ModelControllerClientOperationHandler operationHandler = new ModelControllerClientOperationHandler(channels.getExecutorService(), controller);
-        serverChannel.setOperationHandler(operationHandler);
-
-        ModelControllerClient client = new ExistingChannelModelControllerClient(channels.getClientChannel());
+        final ModelControllerClient client = createTestClient();
         try {
-            clientChannel.setOperationHandler((ManagementOperationHandler)client);
-
             ModelNode operation = new ModelNode();
             operation.get("test").set("123");
 
@@ -195,13 +197,13 @@ public class ModelControllerClientTestCase {
             OperationBuilder builder = new OperationBuilder(op);
             builder.addInputStream(new ByteArrayInputStream(firstBytes));
             builder.addInputStream(new ByteArrayInputStream(secondBytes));
-            builder.addInputStream(null);
+            builder.addInputStream(new ByteArrayInputStream(thirdBytes));
             client.execute(builder.build());
             executeLatch.await();
             assertEquals(3, size.get());
             assertArrays(firstBytes, firstResult.get());
             assertArrays(secondBytes, secondResult.get());
-            assertArrays(new byte[0], thirdResult.get());
+            assertArrays(new byte[] { 1 }, thirdResult.get());
         } finally {
             IoUtils.safeClose(client);
         }
@@ -209,10 +211,6 @@ public class ModelControllerClientTestCase {
 
     @Test @Ignore("OperationMessageHandlerProxy turned off temporarily")
     public void testAsynchronousOperationWithMessageHandler() throws Exception {
-        ManagementChannel serverChannel = channels.getServerChannel();
-        ManagementChannel clientChannel = channels.getClientChannel();
-        clientChannel.startReceiving();
-
         final CountDownLatch executeLatch = new CountDownLatch(1);
         MockModelController controller = new MockModelController() {
             @Override
@@ -227,12 +225,11 @@ public class ModelControllerClientTestCase {
             }
         };
 
-        ModelControllerClientOperationHandler operationHandler = new ModelControllerClientOperationHandler(channels.getExecutorService(), controller);
-        serverChannel.setOperationHandler(operationHandler);
+        // Set the handler
+        handler.setDelegate(new ModelControllerClientOperationHandler(controller, channels.getExecutorService()));
 
-        ModelControllerClient client = new ExistingChannelModelControllerClient(channels.getClientChannel());
+        final ModelControllerClient client = createTestClient();
         try {
-            clientChannel.setOperationHandler((ManagementOperationHandler)client);
 
             ModelNode operation = new ModelNode();
             operation.get("test").set("123");
@@ -261,11 +258,8 @@ public class ModelControllerClientTestCase {
 
     @Test
     public void testCancelAsynchronousOperation() throws Exception {
-        ManagementChannel serverChannel = channels.getServerChannel();
-        ManagementChannel clientChannel = channels.getClientChannel();
-        clientChannel.startReceiving();
-
         final CountDownLatch executeLatch = new CountDownLatch(1);
+        final CountDownLatch interrupted = new CountDownLatch(1);
         MockModelController controller = new MockModelController() {
             @Override
             public ModelNode execute(ModelNode operation, OperationMessageHandler handler, OperationTransactionControl control, OperationAttachments attachments) {
@@ -280,19 +274,17 @@ public class ModelControllerClientTestCase {
                     result.get("testing").set(operation.get("test"));
                     return result;
                 } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                    interrupted.countDown();
                     throw new RuntimeException(e);
                 }
             }
         };
 
-        ModelControllerClientOperationHandler operationHandler = new ModelControllerClientOperationHandler(channels.getExecutorService(), controller);
-        serverChannel.setOperationHandler(operationHandler);
+        // Set the handler
+        handler.setDelegate(new ModelControllerClientOperationHandler(controller, channels.getExecutorService()));
 
-        ModelControllerClient client = new ExistingChannelModelControllerClient(channels.getClientChannel());
+        final ModelControllerClient client = createTestClient();
         try {
-            clientChannel.setOperationHandler((ManagementOperationHandler)client);
-
             ModelNode operation = new ModelNode();
             operation.get("test").set("123");
 
@@ -309,7 +301,8 @@ public class ModelControllerClientTestCase {
                         }
                     });
             executeLatch.await();
-            Assert.assertTrue(resultFuture.cancel(false));
+            resultFuture.cancel(false);
+            interrupted.await();
         } finally {
             IoUtils.safeClose(client);
         }
@@ -336,4 +329,44 @@ public class ModelControllerClientTestCase {
         }
 
     }
+
+    static class DelegatingChannelHandler implements ManagementMessageHandler {
+
+        private ManagementMessageHandler delegate;
+
+        @Override
+        public synchronized void handleMessage(Channel channel, DataInput input, ManagementProtocolHeader header) throws IOException {
+            if(delegate == null) {
+                throw new IllegalStateException();
+            }
+            delegate.handleMessage(channel, input, header);
+        }
+
+        public synchronized void setDelegate(ManagementMessageHandler delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void shutdown() {
+            if(delegate != null) {
+                delegate.shutdown();
+            }
+        }
+
+        @Override
+        public boolean awaitCompletion(long timeout, TimeUnit unit) throws InterruptedException {
+            if(delegate != null) {
+                return delegate.awaitCompletion(timeout, unit);
+            }
+            return true;
+        }
+
+        @Override
+        public void shutdownNow() {
+            if(delegate != null) {
+                delegate.shutdownNow();
+            }
+        }
+    }
+
 }

@@ -42,6 +42,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REA
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_ONLY;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_RESOURCE_OPERATION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RECURSIVE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RECURSIVE_DEPTH;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESTART_REQUIRED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESULT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.STORAGE;
@@ -63,6 +64,7 @@ import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE;
 import org.jboss.as.controller.operations.validation.ModelTypeValidator;
 import org.jboss.as.controller.operations.validation.ParametersValidator;
 import org.jboss.as.controller.operations.validation.StringLengthValidator;
@@ -71,6 +73,7 @@ import org.jboss.as.controller.registry.AttributeAccess.AccessType;
 import org.jboss.as.controller.registry.AttributeAccess.Storage;
 import org.jboss.as.controller.registry.ImmutableManagementResourceRegistration;
 import org.jboss.as.controller.registry.OperationEntry;
+import org.jboss.as.controller.registry.PlaceholderResource;
 import org.jboss.as.controller.registry.Resource;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
@@ -86,6 +89,7 @@ public class GlobalOperationHandlers {
     public static final OperationStepHandler READ_ATTRIBUTE = new ReadAttributeHandler();
     public static final OperationStepHandler READ_CHILDREN_NAMES = new ReadChildrenNamesOperationHandler();
     public static final OperationStepHandler READ_CHILDREN_RESOURCES = new ReadChildrenResourcesOperationHandler();
+    public static final OperationStepHandler UNDEFINE_ATTRIBUTE = new UndefineAttributeHandler();
     public static final OperationStepHandler WRITE_ATTRIBUTE = new WriteAttributeHandler();
     public static final OperationStepHandler VALIDATE_ADDRESS = new OperationStepHandler() {
 
@@ -119,6 +123,7 @@ public class GlobalOperationHandlers {
 
         public ReadResourceHandler() {
             validator.registerValidator(RECURSIVE, new ModelTypeValidator(ModelType.BOOLEAN, true));
+            validator.registerValidator(RECURSIVE_DEPTH, new ModelTypeValidator(ModelType.INT, true));
             validator.registerValidator(INCLUDE_RUNTIME, new ModelTypeValidator(ModelType.BOOLEAN, true));
             validator.registerValidator(PROXIES, new ModelTypeValidator(ModelType.BOOLEAN, true));
             validator.registerValidator(INCLUDE_DEFAULTS, new ModelTypeValidator(ModelType.BOOLEAN, true));
@@ -132,8 +137,9 @@ public class GlobalOperationHandlers {
             final String opName = operation.require(OP).asString();
             final ModelNode opAddr = operation.get(OP_ADDR);
             final PathAddress address = PathAddress.pathAddress(opAddr);
-            final boolean recursive = operation.get(RECURSIVE).asBoolean(false);
-            final boolean queryRuntime = !recursive && operation.get(INCLUDE_RUNTIME).asBoolean(false);
+            final int recursiveDepth = operation.get(RECURSIVE_DEPTH).asInt(0);
+            final boolean recursive = recursiveDepth > 0 ? true : operation.get(RECURSIVE).asBoolean(false);
+            final boolean queryRuntime = operation.get(INCLUDE_RUNTIME).asBoolean(false);
             final boolean proxies = operation.get(PROXIES).asBoolean(false);
             final boolean defaults = operation.get(INCLUDE_DEFAULTS).asBoolean(true);
 
@@ -153,14 +159,13 @@ public class GlobalOperationHandlers {
 
             // Last to execute is the handler that assembles the overall response from the pieces created by all the other steps
             final ReadResourceAssemblyHandler assemblyHandler = new ReadResourceAssemblyHandler(directAttributes, metrics, otherAttributes, directChildren, childResources);
-            context.addStep(assemblyHandler, queryRuntime ? OperationContext.Stage.VERIFY : OperationContext.Stage.IMMEDIATE);
+            context.addStep(assemblyHandler, queryRuntime ? OperationContext.Stage.VERIFY : OperationContext.Stage.IMMEDIATE, queryRuntime);
             final ImmutableManagementResourceRegistration registry = context.getResourceRegistration();
-            final Resource resource = context.readResource(PathAddress.EMPTY_ADDRESS);
+
             // Get the model for this resource.
-            final ModelNode model = resource.getModel();
-
-
+            final Resource resource = nullSafeReadResource(context, registry);
             final Map<String, Set<String>> childrenByType = registry != null ? getChildAddresses(registry, resource, null) : Collections.<String, Set<String>>emptyMap();
+            final ModelNode model = resource.getModel();
 
             if (model.isDefined()) {
                 // Store direct attributes first
@@ -189,6 +194,7 @@ public class GlobalOperationHandlers {
                 }
             }
 
+
             // Next, process child resources
             for (Map.Entry<String, Set<String>> entry : childrenByType.entrySet()) {
                 String childType = entry.getKey();
@@ -206,10 +212,11 @@ public class GlobalOperationHandlers {
                             if (childReg == null) {
                                 throw new OperationFailedException(new ModelNode().set(MESSAGES.noChildRegistry(childType, child)));
                             }
-                            // We only invoke runtime resources if they are remote proxies
-                            if (childReg.isRuntimeOnly() && (!proxies || !childReg.isRemote())) {
-                                storeDirect = true;
-                            } else {
+                            // Decide if we want to invoke on this child resource
+                            boolean proxy = childReg.isRemote();
+                            boolean runtimeResource = childReg.isRuntimeOnly();
+                            if (!runtimeResource || (queryRuntime && !proxy)  || (proxies && proxy)) {
+                                final int newDepth = recursiveDepth > 0 ? recursiveDepth - 1 : 0;
                                 // Add a step to read the child resource
                                 ModelNode rrOp = new ModelNode();
                                 rrOp.get(OP).set(opName);
@@ -220,8 +227,10 @@ public class GlobalOperationHandlers {
                                 ModelNode rrRsp = new ModelNode();
                                 childResources.put(childPE, rrRsp);
 
-                                OperationStepHandler rrHandler = childReg.getOperationHandler(relativeAddr, opName);
+                                OperationStepHandler rrHandler = childReg.getOperationHandler(PathAddress.EMPTY_ADDRESS, opName);
                                 context.addStep(rrRsp, rrOp, rrHandler, OperationContext.Stage.IMMEDIATE);
+                            } else {
+                                storeDirect = true;
                             }
                         }
                         if (storeDirect) {
@@ -246,7 +255,8 @@ public class GlobalOperationHandlers {
                     continue;
                 } else {
                     final AttributeAccess.Storage storage = access.getStorageType();
-                    if (!queryRuntime && storage != AttributeAccess.Storage.CONFIGURATION) {
+
+                    if (! queryRuntime && storage != AttributeAccess.Storage.CONFIGURATION) {
                         continue;
                     }
                     final AccessType type = access.getAccessType();
@@ -272,9 +282,26 @@ public class GlobalOperationHandlers {
             }
             context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
-    }
 
-    ;
+        /**
+         *  Provides a resource for the current step, either from the context, if the context doesn't have one
+         *  and {@code registry} is runtime-only, it creates a dummy resource.
+         */
+        private static Resource nullSafeReadResource(final OperationContext context, final ImmutableManagementResourceRegistration registry) {
+
+            Resource result;
+            if (registry != null && registry.isRuntimeOnly()) {
+                try {
+                    result = context.readResource(PathAddress.EMPTY_ADDRESS);
+                } catch (RuntimeException e) {
+                    result = PlaceholderResource.INSTANCE;
+                }
+            } else {
+                result = context.readResource(PathAddress.EMPTY_ADDRESS);
+            }
+            return result;
+        }
+    }
 
     /**
      * Assembles the response to a read-resource request from the components gathered by earlier steps.
@@ -496,6 +523,20 @@ public class GlobalOperationHandlers {
     ;
 
     /**
+     * The undefine-attribute handler, writing an undefined value for a single attribute.
+     */
+    public static class UndefineAttributeHandler extends WriteAttributeHandler {
+
+        @Override
+        public void execute(final OperationContext context, final ModelNode original) throws OperationFailedException {
+            final ModelNode operation = original.clone();
+            operation.get(VALUE).set(new ModelNode());
+            super.execute(context, operation);
+        }
+
+    }
+
+    /**
      * {@link org.jboss.as.controller.OperationStepHandler} querying the children names of a given "child-type".
      */
     public static class ReadChildrenNamesOperationHandler implements OperationStepHandler {
@@ -540,6 +581,7 @@ public class GlobalOperationHandlers {
         public ReadChildrenResourcesOperationHandler() {
             validator.registerValidator(CHILD_TYPE, new StringLengthValidator(1));
             validator.registerValidator(RECURSIVE, new ModelTypeValidator(ModelType.BOOLEAN, true));
+            validator.registerValidator(RECURSIVE_DEPTH, new ModelTypeValidator(ModelType.INT, true));
             validator.registerValidator(INCLUDE_RUNTIME, new ModelTypeValidator(ModelType.BOOLEAN, true));
             validator.registerValidator(PROXIES, new ModelTypeValidator(ModelType.BOOLEAN, true));
             validator.registerValidator(INCLUDE_DEFAULTS, new ModelTypeValidator(ModelType.BOOLEAN, true));
@@ -582,6 +624,9 @@ public class GlobalOperationHandlers {
                     }
                     if (operation.hasDefined(RECURSIVE)) {
                         readOp.get(RECURSIVE).set(operation.get(RECURSIVE));
+                    }
+                    if(operation.hasDefined(RECURSIVE_DEPTH)) {
+                        readOp.get(RECURSIVE_DEPTH).set(operation.get(RECURSIVE_DEPTH));
                     }
                     if (operation.hasDefined(PROXIES)) {
                         readOp.get(PROXIES).set(operation.get(PROXIES));
@@ -746,6 +791,7 @@ public class GlobalOperationHandlers {
 
         {
             validator.registerValidator(RECURSIVE, new ModelTypeValidator(ModelType.BOOLEAN, true));
+            validator.registerValidator(RECURSIVE_DEPTH, new ModelTypeValidator(ModelType.INT, true));
             validator.registerValidator(PROXIES, new ModelTypeValidator(ModelType.BOOLEAN, true));
             validator.registerValidator(OPERATIONS, new ModelTypeValidator(ModelType.BOOLEAN, true));
             validator.registerValidator(INHERITED, new ModelTypeValidator(ModelType.BOOLEAN, true));
@@ -778,7 +824,8 @@ public class GlobalOperationHandlers {
             final String opName = operation.require(OP).asString();
             final ModelNode opAddr = operation.get(OP_ADDR);
             final PathAddress address = PathAddress.pathAddress(opAddr);
-            final boolean recursive = operation.get(RECURSIVE).asBoolean(false);
+            final int recursiveDepth = operation.get(RECURSIVE_DEPTH).asInt(0);
+            final boolean recursive = recursiveDepth > 0 ? true : operation.get(RECURSIVE).asBoolean(false);
             final boolean proxies = operation.get(PROXIES).asBoolean(false);
             final boolean ops = operation.get(OPERATIONS).asBoolean(false);
             final boolean inheritedOps = operation.get(INHERITED).asBoolean(true);
@@ -845,6 +892,7 @@ public class GlobalOperationHandlers {
                         readChild = false;
                     }
                     if (readChild) {
+                        final int newDepth = recursiveDepth > 0 ? recursiveDepth - 1 : 0;
                         ModelNode rrOp = new ModelNode();
                         rrOp.get(OP).set(opName);
                         try {
@@ -852,14 +900,15 @@ public class GlobalOperationHandlers {
                         } catch (Exception e) {
                             continue;
                         }
-                        rrOp.get(RECURSIVE).set(true);
+                        rrOp.get(RECURSIVE).set(operation.get(RECURSIVE));
+                        rrOp.get(RECURSIVE_DEPTH).set(newDepth);
                         rrOp.get(PROXIES).set(proxies);
                         rrOp.get(OPERATIONS).set(ops);
                         rrOp.get(INHERITED).set(inheritedOps);
                         ModelNode rrRsp = new ModelNode();
                         childResources.put(element, rrRsp);
 
-                        final OperationStepHandler handler = childReg.isRemote() ? childReg.getOperationHandler(relativeAddr, opName) :
+                        final OperationStepHandler handler = childReg.isRemote() ? childReg.getOperationHandler(PathAddress.EMPTY_ADDRESS, opName) :
                                 new OperationStepHandler() {
                                     @Override
                                     public void execute(final OperationContext context, final ModelNode operation) throws OperationFailedException {

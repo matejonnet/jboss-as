@@ -22,19 +22,25 @@
 
 package org.jboss.as.controller;
 
+import static org.jboss.as.controller.ControllerLogger.ROOT_LOGGER;
 import static org.jboss.as.controller.ControllerMessages.MESSAGES;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
+import org.jboss.as.controller.descriptions.OverrideDescriptionProvider;
 import org.jboss.as.controller.persistence.SubsystemMarshallingContext;
 import org.jboss.as.controller.persistence.SubsystemXmlWriterRegistry;
 import org.jboss.as.controller.registry.AttributeAccess;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.OperationEntry;
+import org.jboss.as.controller.registry.Resource;
 import org.jboss.staxmapper.XMLElementWriter;
 
 /**
@@ -48,6 +54,7 @@ public final class ExtensionContextImpl implements ExtensionContext {
     private final ManagementResourceRegistration profileRegistration;
     private final SubsystemXmlWriterRegistry writerRegistry;
     private final ManagementResourceRegistration subsystemDeploymentRegistration;
+    private final Map<String, List<String>> subsystemsByModule = new HashMap<String, List<String>>();
 
     /**
      * Construct a new instance.
@@ -55,6 +62,7 @@ public final class ExtensionContextImpl implements ExtensionContext {
      * @param profileRegistration the profile registration
      * @param deploymentOverrideRegistration the deployment override registration
      * @param writerRegistry the registry for extension xml marshallers
+     * @param processType the type of process in which extensions are being registered
      */
     public ExtensionContextImpl(final ManagementResourceRegistration profileRegistration,
             final ManagementResourceRegistration deploymentOverrideRegistration,
@@ -81,14 +89,56 @@ public final class ExtensionContextImpl implements ExtensionContext {
         }
     }
 
+    public ExtensionContext createTracking(String moduleName) {
+        return new DelegatingExtensionContext(moduleName);
+    }
+
+
     @Override
     public ProcessType getProcessType() {
         return processType;
     }
 
+    private void trackSubsystem(String moduleName, String subysystemName) {
+        synchronized (subsystemsByModule) {
+            List<String> subsystems = subsystemsByModule.get(moduleName);
+            if (subsystems == null) {
+                subsystems = new ArrayList<String>();
+                subsystemsByModule.put(moduleName, subsystems);
+            }
+            subsystems.add(subysystemName);
+        }
+    }
+
+    @Override
+    public void cleanup(Resource rootResource, String moduleName) {
+        List<String> subsystems;
+        synchronized (subsystemsByModule) {
+            subsystems = subsystemsByModule.get(moduleName);
+            if (subsystems != null) {
+                for (String subsystem : subsystems) {
+                    if (rootResource.getChild(PathElement.pathElement(ModelDescriptionConstants.SUBSYSTEM, subsystem)) != null) {
+                        throw MESSAGES.removingExtensionWithRegisteredSubsystem(moduleName, subsystem);
+                    }
+                }
+                for (String subsystem : subsystems) {
+                    profileRegistration.unregisterSubModel(PathElement.pathElement(ModelDescriptionConstants.SUBSYSTEM, subsystem));
+                    subsystemDeploymentRegistration.unregisterSubModel(PathElement.pathElement(ModelDescriptionConstants.SUBSYSTEM, subsystem));
+                }
+                subsystems.remove(moduleName);
+            }
+        }
+    }
+
+
     /** {@inheritDoc} */
     @Override
     public SubsystemRegistration registerSubsystem(final String name) throws IllegalArgumentException {
+        ROOT_LOGGER.registerSubsystemNoWraper(name);
+        return doRegisterSubsystem(name);
+    }
+
+    public SubsystemRegistration doRegisterSubsystem(final String name) throws IllegalArgumentException {
         if (name == null) {
             throw MESSAGES.nullVar("name");
         }
@@ -149,6 +199,13 @@ public final class ExtensionContextImpl implements ExtensionContext {
         public boolean isRuntimeOnly() {
             return deployments.isRuntimeOnly();
         }
+
+        @Override
+        public void setRuntimeOnly(final boolean runtimeOnly){
+            deployments.setRuntimeOnly(runtimeOnly);
+            subdeployments.setRuntimeOnly(runtimeOnly);
+        }
+
 
         @Override
         public boolean isRemote() {
@@ -216,6 +273,11 @@ public final class ExtensionContextImpl implements ExtensionContext {
         }
 
         @Override
+        public ManagementResourceRegistration getOverrideModel(String name) {
+            return deployments.getOverrideModel(name);
+        }
+
+        @Override
         public ManagementResourceRegistration getSubModel(PathAddress address) {
             return deployments.getSubModel(address);
         }
@@ -235,9 +297,27 @@ public final class ExtensionContextImpl implements ExtensionContext {
         }
 
         @Override
-        public void registerSubModel(PathElement address, ManagementResourceRegistration subModel) {
-            deployments.registerSubModel(address, subModel);
-            subdeployments.registerSubModel(address, subModel);
+        public void unregisterSubModel(PathElement address) {
+            deployments.unregisterSubModel(address);
+            subdeployments.unregisterSubModel(address);
+        }
+
+        @Override
+        public boolean isAllowsOverride() {
+            return deployments.isAllowsOverride();
+        }
+
+        @Override
+        public ManagementResourceRegistration registerOverrideModel(String name, OverrideDescriptionProvider descriptionProvider) {
+            ManagementResourceRegistration depl = deployments.registerOverrideModel(name, descriptionProvider);
+            ManagementResourceRegistration subdepl = subdeployments.registerOverrideModel(name, descriptionProvider);
+            return new DeploymentManagementResourceRegistration(depl, subdepl);
+        }
+
+        @Override
+        public void unregisterOverrideModel(String name) {
+            deployments.unregisterOverrideModel(name);
+            subdeployments.unregisterOverrideModel(name);
         }
 
         @Override
@@ -268,6 +348,12 @@ public final class ExtensionContextImpl implements ExtensionContext {
         public void registerOperationHandler(String operationName, OperationStepHandler handler, DescriptionProvider descriptionProvider, boolean inherited, OperationEntry.EntryType entryType, EnumSet<OperationEntry.Flag> flags) {
             deployments.registerOperationHandler(operationName, handler, descriptionProvider, inherited, entryType, flags);
             subdeployments.registerOperationHandler(operationName, handler, descriptionProvider, inherited, entryType, flags);
+        }
+
+        @Override
+        public void unregisterOperationHandler(String operationName) {
+            deployments.unregisterOperationHandler(operationName);
+            subdeployments.unregisterOperationHandler(operationName);
         }
 
         @Override
@@ -325,6 +411,12 @@ public final class ExtensionContextImpl implements ExtensionContext {
         }
 
         @Override
+        public void unregisterAttribute(String attributeName) {
+            deployments.unregisterAttribute(attributeName);
+            subdeployments.unregisterAttribute(attributeName);
+        }
+
+        @Override
         public void registerProxyController(PathElement address, ProxyController proxyController) {
             deployments.registerProxyController(address, proxyController);
             subdeployments.registerProxyController(address, proxyController);
@@ -335,5 +427,35 @@ public final class ExtensionContextImpl implements ExtensionContext {
             deployments.unregisterProxyController(address);
             subdeployments.unregisterProxyController(address);
         }
+    }
+
+    private class DelegatingExtensionContext implements ExtensionContext {
+        final String moduleName;
+
+        public DelegatingExtensionContext(String moduleName) {
+            this.moduleName = moduleName;
+        }
+
+        @Override
+        public SubsystemRegistration registerSubsystem(String name) throws IllegalArgumentException {
+            trackSubsystem(moduleName, name);
+            return ExtensionContextImpl.this.doRegisterSubsystem(name);
+        }
+
+        @Override
+        public ProcessType getProcessType() {
+            return ExtensionContextImpl.this.getProcessType();
+        }
+
+        @Override
+        public ExtensionContext createTracking(String moduleName) {
+            return this;
+        }
+
+        @Override
+        public void cleanup(Resource resource, String moduleName) {
+            ExtensionContextImpl.this.cleanup(resource, moduleName);
+        }
+
     }
 }

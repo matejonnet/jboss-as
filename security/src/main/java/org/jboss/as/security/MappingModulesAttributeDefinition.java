@@ -26,14 +26,13 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.*;
 import java.util.Locale;
 import java.util.ResourceBundle;
 
-import javax.xml.stream.Location;
 import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
 import javax.xml.stream.XMLStreamWriter;
 
 import org.jboss.as.controller.ListAttributeDefinition;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.descriptions.ResourceDescriptionResolver;
-import org.jboss.as.controller.operations.validation.EnumValidator;
 import org.jboss.as.controller.operations.validation.ModelTypeValidator;
 import org.jboss.as.controller.operations.validation.ParameterValidator;
 import org.jboss.as.controller.operations.validation.ParametersOfValidator;
@@ -56,6 +55,7 @@ public class MappingModulesAttributeDefinition extends ListAttributeDefinition {
         final ParametersValidator delegate = new ParametersValidator();
         delegate.registerValidator(CODE, new StringLengthValidator(1));
         delegate.registerValidator(Constants.TYPE, new StringLengthValidator(1));
+        delegate.registerValidator(Constants.MODULE, new StringLengthValidator(1,true));
         delegate.registerValidator(Constants.MODULE_OPTIONS, new ModelTypeValidator(ModelType.OBJECT, true));
 
         validator = new ParametersOfValidator(delegate);
@@ -111,7 +111,7 @@ public class MappingModulesAttributeDefinition extends ListAttributeDefinition {
         }
     }
 
-    public static ModelNode parseField(String name, String value, Location location) throws XMLStreamException {
+    public static ModelNode parseField(String name, String value, XMLStreamReader reader) throws XMLStreamException {
         final String trimmed = value == null ? null : value.trim();
         ModelNode node;
         if (trimmed != null ) {
@@ -123,7 +123,7 @@ public class MappingModulesAttributeDefinition extends ListAttributeDefinition {
         try {
             fieldValidator.validateParameter(name, node);
         } catch (OperationFailedException e) {
-            throw new XMLStreamException(e.getFailureDescription().toString(), location);
+            throw new XMLStreamException(e.getFailureDescription().toString(), reader.getLocation());
         }
         return node;
     }

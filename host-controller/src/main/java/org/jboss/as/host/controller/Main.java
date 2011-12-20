@@ -33,11 +33,11 @@ import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.UnknownHostException;
-import java.security.cert.TrustAnchor;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
+import org.jboss.as.controller.RunningMode;
 import org.jboss.as.process.CommandLineConstants;
 import org.jboss.as.process.ExitCodes;
 import org.jboss.as.process.protocol.StreamUtils;
@@ -61,8 +61,7 @@ public final class Main {
     /**
      * The main method.
      *
-     * @param args
-     *            the command-line arguments
+     * @param args the command-line arguments
      */
     public static void main(String[] args) throws IOException {
         MDC.put("process", "host controller");
@@ -119,7 +118,7 @@ public final class Main {
             } else {
                 try {
                     final HostControllerBootstrap hc = new HostControllerBootstrap(config, authCode);
-                    hc.start();
+                    hc.bootstrap();
                     return hc;
                 } catch(Throwable t) {
                     abort(t);
@@ -162,6 +161,7 @@ public final class Main {
         boolean cachedDc = false;
         String domainConfig = null;
         String hostConfig = null;
+        RunningMode initialRunningMode = RunningMode.NORMAL;
         Map<String, String> hostSystemProperties = new HashMap<String, String>();
 
         final int argsLength = args.length;
@@ -179,22 +179,22 @@ public final class Main {
                 } else if (CommandLineConstants.PROPERTIES.equals(arg) || CommandLineConstants.OLD_PROPERTIES.equals(arg)
                         || CommandLineConstants.SHORT_PROPERTIES.equals(arg)) {
                     // Set system properties from url/file
-                    if (!processProperties(arg, args[++i])) {
+                    if (!processProperties(arg, args[++i], hostSystemProperties)) {
                         return null;
                     }
                 } else if (arg.startsWith(CommandLineConstants.PROPERTIES)) {
                     String urlSpec = parseValue(arg, CommandLineConstants.PROPERTIES);
-                    if (urlSpec == null || !processProperties(arg, urlSpec)) {
+                    if (urlSpec == null || !processProperties(arg, urlSpec, hostSystemProperties)) {
                         return null;
                     }
                 } else if (arg.startsWith(CommandLineConstants.SHORT_PROPERTIES)) {
                     String urlSpec = parseValue(arg, CommandLineConstants.SHORT_PROPERTIES);
-                    if (urlSpec == null || !processProperties(arg, urlSpec)) {
+                    if (urlSpec == null || !processProperties(arg, urlSpec, hostSystemProperties)) {
                         return null;
                     }
                 }  else if (arg.startsWith(CommandLineConstants.OLD_PROPERTIES)) {
                     String urlSpec = parseValue(arg, CommandLineConstants.OLD_PROPERTIES);
-                    if (urlSpec == null || !processProperties(arg, urlSpec)) {
+                    if (urlSpec == null || !processProperties(arg, urlSpec, hostSystemProperties)) {
                         return null;
                     }
                 } else if (CommandLineConstants.PROCESS_CONTROLLER_BIND_PORT.equals(arg)) {
@@ -285,6 +285,38 @@ public final class Main {
                     }
                     hostConfig = val;
 
+                } else if (arg.startsWith(CommandLineConstants.MASTER_ADDRESS)) {
+
+                    int idx = arg.indexOf('=');
+                    if (idx == arg.length() - 1) {
+                        System.err.printf("Argument expected for option %s\n", arg);
+                        usage();
+                        return null;
+                    }
+                    String value = idx > -1 ? arg.substring(idx + 1) : args[++i];
+
+                    hostSystemProperties.put(HostControllerEnvironment.JBOSS_DOMAIN_MASTER_ADDRESS, value);
+                    SecurityActions.setSystemProperty(HostControllerEnvironment.JBOSS_DOMAIN_MASTER_ADDRESS, value);
+
+                } else if (arg.startsWith(CommandLineConstants.MASTER_PORT)) {
+
+                    int idx = arg.indexOf('=');
+                    if (idx == arg.length() - 1) {
+                        System.err.printf("Argument expected for option %s\n", arg);
+                        usage();
+                        return null;
+                    }
+                    String value = idx > -1 ? arg.substring(idx + 1) : args[++i];
+                    final Integer port = parsePort(value, CommandLineConstants.MASTER_PORT);
+                    if (port == null) {
+                        return null;
+                    }
+
+                    hostSystemProperties.put(HostControllerEnvironment.JBOSS_DOMAIN_MASTER_PORT, value);
+                    SecurityActions.setSystemProperty(HostControllerEnvironment.JBOSS_DOMAIN_MASTER_PORT, value);
+
+                } else if (CommandLineConstants.ADMIN_ONLY.equals(arg)) {
+                    initialRunningMode = RunningMode.ADMIN_ONLY;
                 } else if (arg.startsWith(CommandLineConstants.SYS_PROP)) {
 
                     // set a system property
@@ -348,7 +380,7 @@ public final class Main {
 
         return new HostControllerEnvironment(hostSystemProperties, isRestart,  stdin, stdout, stderr, pmAddress, pmPort,
                 pcSocketConfig.getBindAddress(), pcSocketConfig.getBindPort(), defaultJVM,
-                domainConfig, hostConfig, backupDomainFiles, cachedDc);
+                domainConfig, hostConfig, initialRunningMode, backupDomainFiles, cachedDc);
     }
 
     private static String parseValue(final String arg, final String key) {
@@ -362,12 +394,17 @@ public final class Main {
         return value;
     }
 
-    private static boolean processProperties(final String arg, final String urlSpec) {
+    private static boolean processProperties(final String arg, final String urlSpec, Map<String, String> hostSystemProperties) {
          URL url = null;
          try {
              url = makeURL(urlSpec);
-             Properties props = SecurityActions.getSystemProperties();
+             Properties props = new Properties();
              props.load(url.openConnection().getInputStream());
+
+             SecurityActions.getSystemProperties().putAll(props);
+             for (Map.Entry<Object, Object> entry : props.entrySet()) {
+                 hostSystemProperties.put((String)entry.getKey(), (String)entry.getValue());
+             }
              return true;
          } catch (MalformedURLException e) {
              System.err.printf("Malformed URL provided for option %s\n", arg);

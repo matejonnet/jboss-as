@@ -46,6 +46,7 @@ import org.jboss.msc.service.ServiceRegistry;
  */
 public abstract class AbstractDataSourceRemove extends AbstractRemoveStepHandler {
 
+
     protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model) {
 
         final ServiceRegistry registry = context.getServiceRegistry(true);
@@ -93,7 +94,7 @@ public abstract class AbstractDataSourceRemove extends AbstractRemoveStepHandler
             context.removeService(xaDataSourceConfigServiceName);
         }
 
-        final ServiceName dataSourceServiceName = AbstractDataSourceService.SERVICE_NAME_BASE.append(dsName);
+        final ServiceName dataSourceServiceName = AbstractDataSourceService.SERVICE_NAME_BASE.append(jndiName);
         final ServiceController<?> dataSourceController = registry.getService(dataSourceServiceName);
         if (dataSourceController != null) {
             context.removeService(dataSourceServiceName);

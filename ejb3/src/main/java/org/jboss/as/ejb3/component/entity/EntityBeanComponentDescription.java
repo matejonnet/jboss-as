@@ -21,25 +21,31 @@
  */
 package org.jboss.as.ejb3.component.entity;
 
+import java.lang.reflect.Method;
+
 import javax.ejb.TransactionManagementType;
 
 import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ee.component.ComponentConfigurator;
 import org.jboss.as.ee.component.ComponentDescription;
+import org.jboss.as.ee.component.EEModuleDescription;
 import org.jboss.as.ee.component.ViewConfiguration;
 import org.jboss.as.ee.component.ViewConfigurator;
 import org.jboss.as.ee.component.ViewDescription;
 import org.jboss.as.ee.component.ViewInstanceFactory;
 import org.jboss.as.ee.component.interceptors.InterceptorOrder;
-import org.jboss.as.ejb3.component.interceptors.CurrentInvocationContextInterceptor;
 import org.jboss.as.ejb3.component.EJBComponentDescription;
 import org.jboss.as.ejb3.component.EJBViewDescription;
 import org.jboss.as.ejb3.component.EjbHomeViewDescription;
 import org.jboss.as.ejb3.component.MethodIntf;
+import org.jboss.as.ejb3.component.entity.interceptors.EntityBeanAssociatingInterceptorFactory;
 import org.jboss.as.ejb3.component.entity.interceptors.EntityBeanReentrancyInterceptor;
+import org.jboss.as.ejb3.component.entity.interceptors.EntityBeanRemoveInterceptor;
 import org.jboss.as.ejb3.component.entity.interceptors.EntityBeanSynchronizationInterceptor;
+import org.jboss.as.ejb3.component.interceptors.CurrentInvocationContextInterceptor;
 import org.jboss.as.ejb3.deployment.EjbJarDescription;
 import org.jboss.as.ejb3.tx.CMTTxInterceptor;
+import org.jboss.as.ejb3.tx.TimerCMTTxInterceptor;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.as.server.deployment.reflect.ClassIndex;
@@ -65,13 +71,36 @@ public class EntityBeanComponentDescription extends EJBComponentDescription {
             @Override
             public void configure(final DeploymentPhaseContext context, final ComponentDescription description, final ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
                 configuration.addPostConstructInterceptor(EntityBeanInterceptors.POST_CONSTRUCT, InterceptorOrder.ComponentPostConstruct.SETUP_CONTEXT);
+                configuration.addTimeoutViewInterceptor(EntityBeanAssociatingInterceptorFactory.INSTANCE, InterceptorOrder.View.ASSOCIATING_INTERCEPTOR);
+            }
+        });
+        addRemoveInterceptor();
+    }
+
+    protected void addRemoveInterceptor() {
+        getConfigurators().add(new ComponentConfigurator() {
+            @Override
+            public void configure(final DeploymentPhaseContext context, final ComponentDescription description, final ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
+                for (Method method : configuration.getDefinedComponentMethods()) {
+                    if (method.getName().equals("ejbRemove") && method.getParameterTypes().length == 0) {
+                        configuration.addComponentInterceptor(method, EntityBeanRemoveInterceptor.FACTORY, InterceptorOrder.Component.ENTITY_BEAN_REMOVE_INTERCEPTOR);
+                    }
+                }
+
             }
         });
     }
 
     @Override
     protected void addCurrentInvocationContextFactory() {
-
+        // add the current invocation context interceptor at the beginning of the component instance post construct chain
+        this.getConfigurators().add(new ComponentConfigurator() {
+            @Override
+            public void configure(DeploymentPhaseContext context, ComponentDescription description, ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
+                configuration.addPostConstructInterceptor(CurrentInvocationContextInterceptor.FACTORY, InterceptorOrder.ComponentPostConstruct.EJB_SESSION_CONTEXT_INTERCEPTOR);
+                configuration.addPreDestroyInterceptor(CurrentInvocationContextInterceptor.FACTORY, InterceptorOrder.ComponentPreDestroy.EJB_SESSION_CONTEXT_INTERCEPTOR);
+            }
+        });
     }
 
     @Override
@@ -87,12 +116,22 @@ public class EntityBeanComponentDescription extends EJBComponentDescription {
 
 
     @Override
-    public ComponentConfiguration createConfiguration(final ClassIndex classIndex, final ClassLoader moduleClassLoder) {
+    public final ComponentConfiguration createConfiguration(final ClassIndex classIndex, final ClassLoader moduleClassLoder) {
+        final ComponentConfiguration configuration = createEntityBeanConfiguration(classIndex, moduleClassLoder);
+        // add the timer interceptor
+        getConfigurators().add(new ComponentConfigurator() {
+            @Override
+            public void configure(final DeploymentPhaseContext context, final ComponentDescription description, final ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
+                configuration.addTimeoutViewInterceptor(TimerCMTTxInterceptor.FACTORY, InterceptorOrder.View.CMT_TRANSACTION_INTERCEPTOR);
+            }
+        });
+        return configuration;
+    }
 
+    protected ComponentConfiguration createEntityBeanConfiguration(final ClassIndex classIndex, final ClassLoader moduleClassLoder) {
         final ComponentConfiguration configuration = new ComponentConfiguration(this, classIndex, moduleClassLoder);
         // setup the component create service
         configuration.setComponentCreateServiceFactory(EntityBeanComponentCreateService.FACTORY);
-
         return configuration;
     }
 
@@ -124,7 +163,9 @@ public class EntityBeanComponentDescription extends EJBComponentDescription {
             view.getConfigurators().add(new ViewConfigurator() {
                 @Override
                 public void configure(final DeploymentPhaseContext context, final ComponentConfiguration componentConfiguration, final ViewDescription description, final ViewConfiguration configuration) throws DeploymentUnitProcessingException {
-                    configuration.setViewInstanceFactory(getRemoteViewInstanceFactory(componentConfiguration.getApplicationName(), componentConfiguration.getModuleName(), componentConfiguration.getComponentDescription().getModuleDescription().getDistinctName(), componentConfiguration.getComponentName()));
+                    final EEModuleDescription moduleDescription = componentConfiguration.getComponentDescription().getModuleDescription();
+                    final String appName = moduleDescription.getEarApplicationName() == null ? "" : moduleDescription.getEarApplicationName();
+                    configuration.setViewInstanceFactory(getRemoteViewInstanceFactory(appName, componentConfiguration.getModuleName(), moduleDescription.getDistinctName(), componentConfiguration.getComponentName()));
                 }
             });
         }
@@ -184,5 +225,9 @@ public class EntityBeanComponentDescription extends EJBComponentDescription {
         this.persistenceType = persistenceType;
     }
 
+    @Override
+    public boolean isTimerServiceApplicable() {
+        return true;
+    }
 
 }

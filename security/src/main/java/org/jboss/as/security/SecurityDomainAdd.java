@@ -47,6 +47,7 @@ import static org.jboss.as.security.Constants.LOGIN_MODULE_STACK;
 import static org.jboss.as.security.Constants.LOGIN_MODULE_STACK_REF;
 import static org.jboss.as.security.Constants.MAPPING;
 import static org.jboss.as.security.Constants.MAPPING_MODULES;
+import static org.jboss.as.security.Constants.MODULE;
 import static org.jboss.as.security.Constants.MODULE_OPTIONS;
 import static org.jboss.as.security.Constants.NAME;
 import static org.jboss.as.security.Constants.PASSWORD;
@@ -100,6 +101,7 @@ import org.jboss.security.acl.config.ACLProviderEntry;
 import org.jboss.security.audit.config.AuditProviderEntry;
 import org.jboss.security.auth.container.config.AuthModuleEntry;
 import org.jboss.security.auth.login.AuthenticationInfo;
+import org.jboss.security.auth.login.BaseAuthenticationInfo;
 import org.jboss.security.auth.login.JASPIAuthenticationInfo;
 import org.jboss.security.auth.login.LoginModuleStackHolder;
 import org.jboss.security.config.ACLInfo;
@@ -238,6 +240,11 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
             MappingModuleEntry entry = new MappingModuleEntry(codeName, options, mappingType);
             mappingInfo.add(entry);
             applicationPolicy.setMappingInfo(mappingType, mappingInfo);
+
+            String moduleName = module.get(MODULE).asString();
+            if(module.hasDefined(MODULE) && moduleName != null &&  moduleName.length() > 0 ) {
+                mappingInfo.setJBossModuleName(moduleName);
+            }
         }
 
         return true;
@@ -258,6 +265,10 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
             entry.setControlFlag(controlFlag);
             identityTrustInfo.add(entry);
 
+            String moduleName = module.get(MODULE).asString();
+            if(module.hasDefined(MODULE) && moduleName != null &&  moduleName.length() > 0 ) {
+                identityTrustInfo.setJBossModuleName(moduleName);
+            }
         }
         applicationPolicy.setIdentityTrustInfo(identityTrustInfo);
         return true;
@@ -276,6 +287,10 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
             AuditProviderEntry entry = new AuditProviderEntry(codeName, options);
             auditInfo.add(entry);
 
+            String moduleName = module.get(MODULE).asString();
+            if(module.hasDefined(MODULE) && moduleName != null &&  moduleName.length() > 0 ) {
+                auditInfo.setJBossModuleName(moduleName);
+            }
         }
         applicationPolicy.setAuditInfo(auditInfo);
         return true;
@@ -296,6 +311,11 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
             entry.setControlFlag(controlFlag);
             aclInfo.add(entry);
 
+            String moduleName = module.get(MODULE).asString();
+            if(module.hasDefined(MODULE) && moduleName != null &&  moduleName.length() > 0 ) {
+                aclInfo.setJBossModuleName(moduleName);
+            }
+
         }
         applicationPolicy.setAclInfo(aclInfo);
         return true;
@@ -308,16 +328,16 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
 
         JASPIAuthenticationInfo authenticationInfo = new JASPIAuthenticationInfo(securityDomain);
         Map<String, LoginModuleStackHolder> holders = new HashMap<String, LoginModuleStackHolder>();
-        List <ModelNode> stacks = node.get(LOGIN_MODULE_STACK).asList();
-        for (ModelNode stack : stacks) {
-            String name = stack.require(NAME).asString();
-            List<ModelNode> nodes = stack.get(LOGIN_MODULES).asList();
+        List<Property> stacks = node.get(LOGIN_MODULE_STACK).asPropertyList();
+        for (Property stack : stacks) {
+            String name = stack.getName();
+            List<ModelNode> nodes = stack.getValue().get(LOGIN_MODULES).asList();
 
             final LoginModuleStackHolder holder = new LoginModuleStackHolder(name, null);
             holders.put(name, holder);
             authenticationInfo.add(holder);
             for (ModelNode login : nodes) {
-                processLoginModules(login, new LoginModuleContainer() {
+                processLoginModules(login, authenticationInfo, new LoginModuleContainer() {
                     public void addAppConfigurationEntry(AppConfigurationEntry entry) {
                         holder.addAppConfigurationEntry(entry);
                     }
@@ -371,12 +391,13 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
 
         final AuthenticationInfo authenticationInfo = new AuthenticationInfo(securityDomain);
         if (node.hasDefined(Constants.LOGIN_MODULES)) {
-            processLoginModules(node.get(LOGIN_MODULES), new LoginModuleContainer() {
+            processLoginModules(node.get(LOGIN_MODULES), authenticationInfo, new LoginModuleContainer() {
                 public void addAppConfigurationEntry(AppConfigurationEntry entry) {
                     authenticationInfo.add(entry);
                 }
             });
         }
+        //Check for module
         applicationPolicy.setAuthenticationInfo(authenticationInfo);
 
         return true;
@@ -386,7 +407,7 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
         void addAppConfigurationEntry(AppConfigurationEntry entry);
     }
 
-    private void processLoginModules(ModelNode node, LoginModuleContainer container) {
+    private void processLoginModules(ModelNode node, BaseAuthenticationInfo authInfo, LoginModuleContainer container) {
         List<ModelNode> modules;
         modules = node.asList();
         for (ModelNode module : modules) {
@@ -395,6 +416,10 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
             Map<String, Object> options = extractOptions(module);
             AppConfigurationEntry entry = new AppConfigurationEntry(codeName, controlFlag, options);
             container.addAppConfigurationEntry(entry);
+            String moduleName = module.get(MODULE).asString();
+            if(module.hasDefined(MODULE) && moduleName != null && moduleName.length() > 0 ) {
+                authInfo.setJBossModuleName(moduleName);
+            }
         }
     }
 

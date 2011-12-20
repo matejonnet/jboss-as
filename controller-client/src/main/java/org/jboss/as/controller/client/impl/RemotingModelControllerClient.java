@@ -25,18 +25,16 @@ package org.jboss.as.controller.client.impl;
 import static org.jboss.as.controller.client.ControllerClientMessages.MESSAGES;
 
 import java.io.IOException;
-import java.net.URISyntaxException;
-import java.util.Map;
-
-import javax.security.auth.callback.CallbackHandler;
 
 import org.jboss.as.controller.client.ModelControllerClient;
+import org.jboss.as.controller.client.ModelControllerClientConfiguration;
+import org.jboss.as.protocol.ProtocolChannelClient;
 import org.jboss.as.protocol.mgmt.ManagementClientChannelStrategy;
+import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.Endpoint;
 import org.jboss.remoting3.Remoting;
 import org.jboss.remoting3.remote.RemoteConnectionProviderFactory;
 import org.xnio.OptionMap;
-import org.xnio.Options;
 
 /**
  * {@link ModelControllerClient} based on a Remoting {@link Endpoint}.
@@ -45,20 +43,15 @@ import org.xnio.Options;
  */
 public class RemotingModelControllerClient extends AbstractModelControllerClient {
 
-    private final String hostName;
-    private final int port;
-    private final CallbackHandler callbackHandler;
-    private final Map<String, String> saslOptions;
-    private volatile Endpoint endpoint;
+    private Endpoint endpoint;
     private ManagementClientChannelStrategy strategy;
     private boolean closed;
 
+    private final ModelControllerClientConfiguration clientConfiguration;
 
-    public RemotingModelControllerClient(String hostName, int port, final CallbackHandler callbackHandler, final Map<String, String> saslOptions) {
-        this.hostName = hostName;
-        this.port = port;
-        this.callbackHandler = callbackHandler;
-        this.saslOptions = saslOptions;
+    public RemotingModelControllerClient(final ModelControllerClientConfiguration configuration) {
+        super(configuration.getExecutor());
+        this.clientConfiguration = configuration;
     }
 
     @Override
@@ -69,21 +62,40 @@ public class RemotingModelControllerClient extends AbstractModelControllerClient
                 endpoint.close();
                 endpoint = null;
             }
+            if (strategy != null) {
+                strategy.close();
+                strategy = null;
+            }
+            super.shutdownNow();
         }
-        super.close();
     }
 
-    @Override
-    protected synchronized ManagementClientChannelStrategy getClientChannelStrategy() throws URISyntaxException, IOException {
+    protected synchronized Channel getChannel() throws IOException {
         if (closed) {
             throw MESSAGES.objectIsClosed( ModelControllerClient.class.getSimpleName());
         }
         if (strategy == null) {
-            endpoint = Remoting.createEndpoint("management-client", OptionMap.EMPTY);
+            try {
+                final ProtocolChannelClient.Configuration configuration = ProtocolConfigurationFactory.create(clientConfiguration);
 
-            endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), OptionMap.create(Options.SSL_ENABLED, Boolean.FALSE));
-            strategy = ManagementClientChannelStrategy.create(hostName, port, endpoint, this, callbackHandler, saslOptions);
+                // TODO move the endpoint creation somewhere else?
+                endpoint = Remoting.createEndpoint("management-client", OptionMap.EMPTY);
+                endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), OptionMap.EMPTY);
+
+                configuration.setEndpoint(endpoint);
+                configuration.setEndpointName("management-client");
+
+                final ProtocolChannelClient setup = ProtocolChannelClient.create(configuration);
+                strategy = ManagementClientChannelStrategy.create(setup, this, clientConfiguration.getCallbackHandler(), clientConfiguration.getSaslOptions(), clientConfiguration.getSSLContext());
+            } catch (IOException e) {
+                throw e;
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
         }
-        return strategy;
+        return strategy.getChannel();
     }
+
 }

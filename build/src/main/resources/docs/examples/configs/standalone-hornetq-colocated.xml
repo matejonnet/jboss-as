@@ -12,6 +12,7 @@
         <extension module="org.jboss.as.jaxrs"/>
         <extension module="org.jboss.as.jmx"/>
         <extension module="org.jboss.as.jpa"/>
+        <extension module="org.jboss.as.jsr77"/>
         <extension module="org.jboss.as.logging"/>
         <extension module="org.jboss.as.mail"/>
         <extension module="org.jboss.as.messaging"/>
@@ -36,8 +37,12 @@
             </security-realm>
         </security-realms>
         <management-interfaces>
-            <native-interface interface="management" port="9999"/>
-            <http-interface interface="management" port="9990"/>
+            <native-interface security-realm="ManagementRealm">
+                <socket-binding native="management-native"/>
+            </native-interface>
+            <http-interface security-realm="ManagementRealm">
+                <socket-binding http="management-http"/>
+            </http-interface>
         </management-interfaces>
     </management>
 
@@ -83,7 +88,7 @@
         <subsystem xmlns="urn:jboss:domain:datasources:1.0">
             <datasources>
                 <datasource jndi-name="java:jboss/datasources/ExampleDS" enabled="true" use-java-context="true"
-                            pool-name="H2DS">
+                            pool-name="java:jboss/datasources/ExampleDS">
                     <connection-url>jdbc:h2:mem:test;DB_CLOSE_DELAY=-1</connection-url>
                     <driver>h2</driver>
                     <pool></pool>
@@ -108,7 +113,7 @@
                 <stateless>
                     <bean-instance-pool-ref pool-name="slsb-strict-max-pool"/>
                 </stateless>
-                <stateful default-access-timeout="5000"/>
+                <stateful default-access-timeout="5000" cache-ref="simple"/>
                 <singleton default-access-timeout="5000"/>
             </session-bean>
             <mdb>
@@ -121,6 +126,13 @@
                     <strict-max-pool name="mdb-strict-max-pool" max-pool-size="20" instance-acquisition-timeout="5" instance-acquisition-timeout-unit="MINUTES"/>
                 </bean-instance-pools>
             </pools>
+            <caches>
+                <cache name="simple" aliases="NoPassivationCache"/>
+                <cache name="passivating" passivation-store-ref="file" aliases="SimpleStatefulCache"/>
+            </caches>
+            <passivation-stores>
+                <file-passivation-store name="file"/>
+            </passivation-stores>
             <async thread-pool-name="default"/>
             <timer-service thread-pool-name="default">
                 <data-store path="timer-service-data" relative-to="jboss.server.data.dir"/>
@@ -174,13 +186,16 @@
                 </long-running-threads>
             </default-workmanager>
         </subsystem>
-        <subsystem xmlns="urn:jboss:domain:jmx:1.1" show-model="true"/>
+        <subsystem xmlns="urn:jboss:domain:jmx:1.1">
+            <show-model value="true"/>
+        </subsystem>
         <subsystem xmlns="urn:jboss:domain:jpa:1.0">
             <jpa default-datasource=""/>
         </subsystem>
+        <subsystem xmlns="urn:jboss:domain:jsr77:1.0"/>
         <subsystem xmlns="urn:jboss:domain:mail:1.0">
             <mail-session jndi-name="java:jboss/mail/Default">
-                <smtp-server address="localhost" port="25"/>
+                <smtp-server outbound-socket-binding-ref="mail-smtp"/>
             </mail-session>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:messaging:1.1">
@@ -411,11 +426,13 @@
         </interface>
     </interfaces>
 
-    <socket-binding-group name="standard-sockets" default-interface="public">
+    <socket-binding-group name="standard-sockets" default-interface="public" port-offset="${jboss.socket.binding.port-offset:0}">
         <socket-binding name="http" port="8080"/>
         <socket-binding name="https" port="8443"/>
         <socket-binding name="jacorb" port="3528"/>
         <socket-binding name="jacorb-ssl" port="3529"/>
+        <socket-binding name="management-native" interface="management" port="${jboss.management.native.port:9999}"/>
+        <socket-binding name="management-http" interface="management" port="${jboss.management.http.port:9990}"/>
         <socket-binding name="messaging" port="5445"/>
         <socket-binding name="messaging-backup" port="5545"/>
         <socket-binding name="messaging-throughput" port="5455"/>
@@ -423,6 +440,9 @@
         <socket-binding name="remoting" port="4447"/>
         <socket-binding name="txn-recovery-environment" port="4712"/>
         <socket-binding name="txn-status-manager" port="4713"/>
+        <outbound-socket-binding name="mail-smtp">
+            <remote-destination host="localhost" port="25"/>
+        </outbound-socket-binding>
     </socket-binding-group>
 
 </server>

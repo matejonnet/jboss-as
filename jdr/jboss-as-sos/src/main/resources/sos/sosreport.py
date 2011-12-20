@@ -47,18 +47,11 @@ from itertools import izip
 import textwrap
 import tempfile
 
-import subprocess
-import shlex
-
 from sos import _sos as _
 from sos import __version__
 import sos.policies
 from sos.utilities import TarFileArchive, ZipFileArchive, compress
 from sos.reporting import Report, Section, Command, CopiedFile, CreatedFile, Alert, Note, PlainTextReport
-if os.path.isfile('/etc/fedora-release'):
-    __distro__ = 'Fedora'
-else:
-    __distro__ = 'Red Hat Enterprise Linux'
 
 class TempFileUtil(object):
 
@@ -119,75 +112,6 @@ class SosOption(Option):
         else:
             Option.take_action(self, action, dest, opt, value, values, parser)
 
-def parse_options(opts):
-    """ Parse command line options """
-
-    parser = OptionParserExtended(option_class=SosOption)
-    parser.add_option("-l", "--list-plugins", action="store_true",
-                         dest="listPlugins", default=False,
-                         help="list plugins and available plugin options")
-    parser.add_option("-n", "--skip-plugins", action="extend",
-                         dest="noplugins", type="string",
-                         help="skip these plugins", default = deque())
-    parser.add_option("-e", "--enable-plugins", action="extend",
-                         dest="enableplugins", type="string",
-                         help="enable these plugins", default = deque())
-    parser.add_option("-o", "--only-plugins", action="extend",
-                         dest="onlyplugins", type="string",
-                         help="enable these plugins only", default = deque())
-    parser.add_option("-k", action="append",
-                         dest="plugopts", type="string",
-                         help="plugin options in plugname.option=value format (see -l)")
-    parser.add_option("-a", "--alloptions", action="store_true",
-                         dest="usealloptions", default=False,
-                         help="enable all options for loaded plugins")
-    parser.add_option("-u", "--upload", action="store",
-                         dest="upload", default=False,
-                         help="upload the report to an ftp server")
-    parser.add_option("--batch", action="store_true",
-                         dest="batch", default=False,
-                         help="do not ask any question (batch mode)")
-    parser.add_option("--no-colors", action="store_true",
-                         dest="nocolors", default=False,
-                         help="do not use terminal colors for text")
-    parser.add_option("-v", "--verbose", action="count",
-                         dest="verbosity",
-                         help="increase verbosity")
-    parser.add_option("", "--silent", action="store_true",
-                         dest="silent", default=False,
-                         help="Only display FATAL errors on stdout")
-    parser.add_option("--debug", action="count",
-                         dest="debug",
-                         help="enabling debugging through python debugger")
-    parser.add_option("--ticket-number", action="store",
-                         dest="ticketNumber",
-                         help="set ticket number")
-    parser.add_option("--name", action="store",
-                         dest="customerName",
-                         help="define customer name")
-    parser.add_option("--config-file", action="store",
-                         dest="config_file",
-                         help="specify alternate configuration file")
-    parser.add_option("--tmp-dir", action="store",
-                         dest="tmp_dir",
-                         help="specify alternate temporary directory", default=tempfile.gettempdir())
-    parser.add_option("--diagnose", action="store_true",
-                         dest="diagnose",
-                         help="enable diagnostics", default=False)
-    parser.add_option("--analyze", action="store_true",
-                         dest="analyze",
-                         help="enable analyzations", default=False)
-    parser.add_option("--report", action="store_true",
-                         dest="report",
-                         help="Enable html/xml reporting", default=False)
-    parser.add_option("--profile", action="store_true",
-                         dest="profiler",
-                         help="turn on profiling", default=False)
-    parser.add_option("-z", "--compression-type", dest="compression_type",
-                        help="compression technology to use [auto, zip, gzip, bzip2, xz] (default=auto)",
-                        default="auto")
-
-    return parser.parse_args(opts)
 
 
 class XmlReport(object):
@@ -274,23 +198,12 @@ class XmlReport(object):
 
 class SoSReport(object):
 
-    msg = _("""This utility will collect some detailed  information about the
-hardware and setup of your %(distroa)s system.
-The information is collected and an archive is  packaged under
-/tmp, which you can send to a support representative.
-%(distrob)s will use this information for diagnostic purposes ONLY
-and it will be considered confidential information.
-
-This process may take a while to complete.
-No changes will be made to your system.
-
-""" % {'distroa':__distro__, 'distrob':__distro__})
-
     def __init__(self, opts):
         self.loaded_plugins = deque()
         self.skipped_plugins = deque()
         self.all_options = deque()
         self.xml_report = XmlReport()
+        self.global_plugin_options = {}
 
         try:
             import signal
@@ -299,20 +212,13 @@ No changes will be made to your system.
             pass # not available in java, but we don't care
 
 
-        self.opts, self.args = parse_options(opts)
+        self.opts, self.args = self.parse_options(opts)
         self.tempfile_util = TempFileUtil(tmp_dir=self.opts.tmp_dir)
         self._set_debug()
         self._read_config()
         self.policy = sos.policies.load()
         self._is_root = self.policy.is_root()
         self._set_directories()
-        self._setup_logging()
-        self.policy.setCommons(self.get_commons())
-        self.print_header()
-        self.load_plugins()
-        self._set_tunables()
-        self._check_for_unknown_plugins()
-        self._set_plugin_options()
 
     def print_header(self):
         self.ui_log.info("\n%s\n" % _("sosreport (version %s)" % (__version__,)))
@@ -327,7 +233,8 @@ No changes will be made to your system.
                 'verbosity': self.opts.verbosity,
                 'xmlreport': self.xml_report,
                 'cmdlineopts': self.opts,
-                'config': self.config
+                'config': self.config,
+                'global_plugin_options': self.global_plugin_options,
                 }
 
     def get_temp_file(self):
@@ -426,7 +333,7 @@ No changes will be made to your system.
             self.soslog.addHandler(console)
 
         # ui log
-        self.ui_log = logging.getLogger('sos.ui')
+        self.ui_log = logging.getLogger('sos_ui')
         self.ui_log.setLevel(logging.INFO)
         self.sos_ui_log_file = self.get_temp_file()
         self.sos_ui_log_file.close()
@@ -456,7 +363,7 @@ No changes will be made to your system.
 
         # the logging module seems to persist in the jython/jboss/eap world
         # so the handlers need to be removed
-        for logger in [logging.getLogger(x) for x in ('sos', 'sosprofile', 'sos.ui')]:
+        for logger in [logging.getLogger(x) for x in ('sos', 'sosprofile', 'sos_ui')]:
             for h in logger.handlers:
                 logger.removeHandler(h)
 
@@ -521,12 +428,12 @@ No changes will be made to your system.
                 for plugin_class in plugin_classes:
                     if not self.policy.validatePlugin(plugin_class):
                         self.soslog.debug(_("plugin %s does not validate, skipping") % plug)
-                        self._skip(plugin_class, "does not validate")
+                        self._skip(plugin_class, _("does not validate"))
                         continue
 
                     if plugin_class.requires_root and not self._is_root:
                         self.soslog.debug(_("plugin %s requires root permissions to execute, skipping") % plug)
-                        self._skip(plugin_class, "requires root")
+                        self._skip(plugin_class, _("requires root"))
                         continue
 
                     # plug-in is valid, let's decide whether run it or not
@@ -537,7 +444,7 @@ No changes will be made to your system.
                             self._is_not_default(plugbase, plugin_class),
                             self._is_not_specified(plugbase),
                             )):
-                        self._skip(plugin_class, "inactive")
+                        self._skip(plugin_class, _("inactive"))
                         continue
 
                     self._load(plugin_class)
@@ -667,11 +574,12 @@ No changes will be made to your system.
 
     def batch(self):
         if self.opts.batch:
-            self.ui_log.info(self.msg)
+            self.ui_log.info(self.policy.get_msg())
         else:
-            self.msg += _("Press ENTER to continue, or CTRL-C to quit.\n")
+            msg = self.policy.get_msg()
+            msg += _("Press ENTER to continue, or CTRL-C to quit.\n")
             try:
-                raw_input(self.msg)
+                raw_input(msg)
             except:
                 self.ui_log.info("")
                 self._exit()
@@ -681,7 +589,7 @@ No changes will be made to your system.
 
     def diagnose(self):
         tmpcount = 0
-        for plugname, plug in GlobalVars.loadedplugins:
+        for plugname, plug in self.loaded_plugins:
             try:
                 plug.diagnose()
             except:
@@ -697,14 +605,14 @@ No changes will be made to your system.
             self.ui_log.info(_("Please review the following messages:"))
             self.ui_log.info("")
 
-            fp = open(os.path.join(rptdir, "diagnose.txt"), "w")
+            fp = self.get_temp_file()
             for plugname, plug in self.loaded_plugins:
                 for tmpcount2 in range(0, len(plug.diagnose_msgs)):
                     if tmpcount2 == 0:
                         soslog.warning("%s:" % plugname)
                     soslog.warning("    * %s" % plug.diagnose_msgs[tmpcount2])
                     fp.write("%s: %s\n" % (plugname, plug.diagnose_msgs[tmpcount2]))
-            fp.close()
+            self.archive.add_file(fp.name, dest=os.path.join(self.rptdir, 'diagnose.txt'))
 
             self.ui_log.info("")
             if not self.opts.batch:
@@ -911,38 +819,129 @@ No changes will be made to your system.
             self.soslog.error(_("no valid plugins were enabled"))
             self._exit(1)
 
+    def parse_options(self, opts):
+        """ Parse command line options """
+
+        self.parser = parser = OptionParserExtended(option_class=SosOption)
+        parser.add_option("-l", "--list-plugins", action="store_true",
+                             dest="listPlugins", default=False,
+                             help="list plugins and available plugin options")
+        parser.add_option("-n", "--skip-plugins", action="extend",
+                             dest="noplugins", type="string",
+                             help="skip these plugins", default = deque())
+        parser.add_option("-e", "--enable-plugins", action="extend",
+                             dest="enableplugins", type="string",
+                             help="enable these plugins", default = deque())
+        parser.add_option("-o", "--only-plugins", action="extend",
+                             dest="onlyplugins", type="string",
+                             help="enable these plugins only", default = deque())
+        parser.add_option("-k", action="append",
+                             dest="plugopts", type="string",
+                             help="plugin options in plugname.option=value format (see -l)")
+        parser.add_option("-a", "--alloptions", action="store_true",
+                             dest="usealloptions", default=False,
+                             help="enable all options for loaded plugins")
+        parser.add_option("-u", "--upload", action="store",
+                             dest="upload", default=False,
+                             help="upload the report to an ftp server")
+        parser.add_option("--batch", action="store_true",
+                             dest="batch", default=False,
+                             help="do not ask any question (batch mode)")
+        parser.add_option("--no-colors", action="store_true",
+                             dest="nocolors", default=False,
+                             help="do not use terminal colors for text")
+        parser.add_option("-v", "--verbose", action="count",
+                             dest="verbosity",
+                             help="increase verbosity")
+        parser.add_option("", "--silent", action="store_true",
+                             dest="silent", default=False,
+                             help="Only display FATAL errors on stdout")
+        parser.add_option("--debug", action="count",
+                             dest="debug",
+                             help="enabling debugging through python debugger")
+        parser.add_option("--ticket-number", action="store",
+                             dest="ticketNumber",
+                             help="set ticket number")
+        parser.add_option("--name", action="store",
+                             dest="customerName",
+                             help="define customer name")
+        parser.add_option("--config-file", action="store",
+                             dest="config_file",
+                             help="specify alternate configuration file")
+        parser.add_option("--tmp-dir", action="store",
+                             dest="tmp_dir",
+                             help="specify alternate temporary directory", default=tempfile.gettempdir())
+        parser.add_option("--diagnose", action="store_true",
+                             dest="diagnose",
+                             help="enable diagnostics", default=False)
+        parser.add_option("--analyze", action="store_true",
+                             dest="analyze",
+                             help="enable analyzations", default=False)
+        parser.add_option("--report", action="store_true",
+                             dest="report",
+                             help="Enable html/xml reporting", default=False)
+        parser.add_option("--profile", action="store_true",
+                             dest="profiler",
+                             help="turn on profiling", default=False)
+        parser.add_option("-z", "--compression-type", dest="compression_type",
+                            help="compression technology to use [auto, zip, gzip, bzip2, xz] (default=auto)",
+                            default="auto")
+
+        return parser.parse_args(opts)
+
+    def set_option(self, name, value=None):
+        """Allows setting of 'command line options' without passing in a
+        command line. Name should be the command line option name of the
+        option to set."""
+        if self.parser.has_option(name):
+            option = self.parser.get_option(name)
+            option.process(name, value, self.opts, self.parser)
+
+    def set_global_plugin_option(self, key, value):
+        self.global_plugin_options[key] = value;
+
+    def execute(self):
+        try:
+            self._setup_logging()
+            self.policy.setCommons(self.get_commons())
+            self.print_header()
+            self.load_plugins()
+            self._set_tunables()
+            self._check_for_unknown_plugins()
+            self._set_plugin_options()
+
+            if self.opts.listPlugins:
+                self.list_plugins()
+
+            self.ensure_plugins()
+            self.batch()
+
+            if self.opts.diagnose:
+                self.diagnose()
+
+            self.prework()
+            self.setup()
+
+            self.ui_log.info(_(" Running plugins. Please wait ..."))
+            self.ui_log.info("")
+
+            self.copy_stuff()
+
+            self.ui_log.info("")
+
+            if self.opts.report:
+                self.report()
+                self.html_report()
+                self.plain_report()
+
+            self.postproc()
+            self.version()
+
+            return self.final_work()
+        except SystemExit:
+            return None
+
 def main(args):
     """The main entry point"""
-    try:
-        sos = SoSReport(args)
-
-        if sos.opts.listPlugins:
-            sos.list_plugins()
-
-        sos.ensure_plugins()
-        sos.batch()
-
-        if sos.opts.diagnose:
-            sos.diagnose()
-
-        sos.prework()
-        sos.setup()
-
-        sos.ui_log.info(_(" Running plugins. Please wait ..."))
-        sos.ui_log.info("")
-
-        sos.copy_stuff()
-
-        sos.ui_log.info("")
-
-        if sos.opts.report:
-            sos.report()
-            sos.html_report()
-            sos.plain_report()
-
-        sos.postproc()
-        sos.version()
-
-        return sos.final_work()
-    except SystemExit:
-        return None
+    sos = SoSReport(args)
+    sos.execute()

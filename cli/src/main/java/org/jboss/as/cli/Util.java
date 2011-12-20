@@ -21,6 +21,7 @@
  */
 package org.jboss.as.cli;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -50,20 +51,25 @@ public class Util {
     public static final String DEPLOY = "deploy";
     public static final String DEPLOYMENT = "deployment";
     public static final String DESCRIPTION = "description";
+    public static final String DOMAIN_FAILURE_DESCRIPTION = "domain-failure-description";
     public static final String EXPRESSIONS_ALLOWED = "expressions-allowed";
     public static final String HEAD_COMMENT_ALLOWED = "head-comment-allowed";
+    public static final String FAILURE_DESCRIPTION = "failure-description";
     public static final String FULL_REPLACE_DEPLOYMENT = "full-replace-deployment";
     public static final String IN_SERIES = "in-series";
+    public static final String INCLUDE_DEFAULTS = "include-defaults";
     public static final String INCLUDE_RUNTIME = "include-runtime";
     public static final String INPUT_STREAM_INDEX = "input-stream-index";
-    public static final String MIN_OCCURS = "min-occurs";
+    public static final String MANAGEMENT_CLIENT_CONTENT = "management-client-content";
     public static final String MAX_OCCURS = "max-occurs";
+    public static final String MIN_OCCURS = "min-occurs";
     public static final String NAME = "name";
     public static final String NILLABLE = "nillable";
     public static final String OPERATION = "operation";
     public static final String OPERATION_HEADERS = "operation-headers";
     public static final String OUTCOME = "outcome";
     public static final String PROFILE = "profile";
+    public static final String READ_ATTRIBUTE = "read-attribute";
     public static final String READ_CHILDREN_NAMES = "read-children-names";
     public static final String READ_CHILDREN_TYPES = "read-children-types";
     public static final String READ_ONLY = "read-only";
@@ -77,6 +83,7 @@ public class Util {
     public static final String RESTART_REQUIRED = "restart-required";
     public static final String RESULT = "result";
     public static final String ROLLOUT_PLAN = "rollout-plan";
+    public static final String ROLLOUT_PLANS = "rollout-plans";
     public static final String RUNTIME_NAME = "runtime-name";
     public static final String SERVER_GROUP = "server-group";
     public static final String STEP_1 = "step-1";
@@ -90,6 +97,7 @@ public class Util {
     public static final String TYPE = "type";
     public static final String VALIDATE_ADDRESS = "validate-address";
     public static final String VALUE = "value";
+    public static final String VALUE_TYPE = "value-type";
     public static final String WRITE_ATTRIBUTE = "write-attribute";
 
     public static boolean isWindows() {
@@ -107,17 +115,20 @@ public class Util {
         if(operationResult == null) {
             return null;
         }
-        ModelNode descr = operationResult.get("failure-description");
+        ModelNode descr = operationResult.get(Util.FAILURE_DESCRIPTION);
         if(descr == null) {
             return null;
+        }
+        if(descr.hasDefined(Util.DOMAIN_FAILURE_DESCRIPTION)) {
+            descr = descr.get(Util.DOMAIN_FAILURE_DESCRIPTION);
         }
         return descr.asString();
     }
 
     public static List<String> getList(ModelNode operationResult) {
-        if(!operationResult.hasDefined(Util.RESULT))
+        if(!operationResult.hasDefined(RESULT))
             return Collections.emptyList();
-        List<ModelNode> nodeList = operationResult.get(Util.RESULT).asList();
+        List<ModelNode> nodeList = operationResult.get(RESULT).asList();
         if(nodeList.isEmpty())
             return Collections.emptyList();
         List<String> list = new ArrayList<String>(nodeList.size());
@@ -128,10 +139,10 @@ public class Util {
     }
 
     public static boolean listContains(ModelNode operationResult, String item) {
-        if(!operationResult.hasDefined("result"))
+        if(!operationResult.hasDefined(RESULT))
             return false;
 
-        List<ModelNode> nodeList = operationResult.get("result").asList();
+        List<ModelNode> nodeList = operationResult.get(RESULT).asList();
         if(nodeList.isEmpty())
             return false;
 
@@ -141,12 +152,6 @@ public class Util {
             }
         }
         return false;
-    }
-
-    public static byte[] getHash(ModelNode operationResult) {
-        if(!operationResult.hasDefined("result"))
-            return null;
-        return operationResult.get("result").asBytes();
     }
 
     public static List<String> getRequestPropertyNames(ModelNode operationResult) {
@@ -577,5 +582,48 @@ public class Util {
             toSet = new ModelNode().set(value);
         }
         request.get(name).set(toSet);
+    }
+
+    public static ModelNode buildRequest(CommandContext ctx, final OperationRequestAddress address, String operation)
+            throws CommandFormatException {
+        final ModelNode request = new ModelNode();
+        request.get(Util.OPERATION).set(operation);
+        final ModelNode addressNode = request.get(Util.ADDRESS);
+        if (address.isEmpty()) {
+            addressNode.setEmptyList();
+        } else {
+            if(address.endsOnType()) {
+                throw new CommandFormatException("The address ends on a type: " + address.getNodeType());
+            }
+            for(OperationRequestAddress.Node node : address) {
+                addressNode.add(node.getType(), node.getName());
+            }
+        }
+        return request;
+    }
+
+    public static ModelNode getRolloutPlan(ModelControllerClient client, String name) throws CommandFormatException {
+        final ModelNode request = new ModelNode();
+        request.get(OPERATION).set(READ_ATTRIBUTE);
+        final ModelNode addr = request.get(ADDRESS);
+        addr.add(MANAGEMENT_CLIENT_CONTENT, ROLLOUT_PLANS);
+        addr.add(ROLLOUT_PLAN, name);
+        request.get(NAME).set(CONTENT);
+        final ModelNode response;
+        try {
+            response = client.execute(request);
+        } catch(IOException e) {
+            throw new CommandFormatException("Failed to execute request: " + e.getMessage(), e);
+        }
+        if(!response.hasDefined(OUTCOME)) {
+            throw new CommandFormatException("Operation response if missing outcome: " + response);
+        }
+        if(!response.get(OUTCOME).asString().equals(SUCCESS)) {
+            throw new CommandFormatException("Failed to load rollout plan: " + response);
+        }
+        if(!response.hasDefined(RESULT)) {
+            throw new CommandFormatException("Operation response is missing result.");
+        }
+        return response.get(RESULT);
     }
 }

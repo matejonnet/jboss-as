@@ -66,10 +66,15 @@ public class CmpEntityBeanComponentDescription extends EntityBeanComponentDescri
     }
 
     @Override
-    public ComponentConfiguration createConfiguration(final ClassIndex classIndex, final ClassLoader moduleClassLoder) {
+    public ComponentConfiguration createEntityBeanConfiguration(final ClassIndex classIndex, final ClassLoader moduleClassLoder) {
         final ComponentConfiguration configuration = new ComponentConfiguration(this, classIndex, moduleClassLoder);
         configuration.setComponentCreateServiceFactory(CmpEntityBeanComponentCreateService.FACTORY);
         return configuration;
+    }
+
+    @Override
+    protected void addRemoveInterceptor() {
+        //No-OP, the remove method is not actually forwarded to the component chain
     }
 
     protected EntityBeanObjectViewConfigurator getObjectViewConfigurator() {

@@ -201,7 +201,7 @@ public class StandaloneXml extends CommonXml {
         }
 
         if (element == Element.MANAGEMENT) {
-            parseManagement(reader, address, DOMAIN_1_0, list, true);
+            parseManagement(reader, address, DOMAIN_1_0, list, true, false);
             element = nextElement(reader, DOMAIN_1_0);
         }
 
@@ -308,7 +308,7 @@ public class StandaloneXml extends CommonXml {
         }
 
         if (element == Element.MANAGEMENT) {
-            parseManagement(reader, address, DOMAIN_1_1, list, true);
+            parseManagement(reader, address, DOMAIN_1_1, list, true, false);
             element = nextElement(reader, DOMAIN_1_1);
         }
         // Single profile
@@ -394,6 +394,112 @@ public class StandaloneXml extends CommonXml {
         }
     }
 
+    private void parseHttpManagementInterface1_0(final XMLExtendedStreamReader reader, final ModelNode address,
+                                                   final List<ModelNode> list) throws XMLStreamException {
+
+        final ModelNode mgmtSocket = new ModelNode();
+        mgmtSocket.get(OP).set(ADD);
+        ModelNode operationAddress = address.clone();
+        operationAddress.add(MANAGEMENT_INTERFACE, HTTP_INTERFACE);
+        mgmtSocket.get(OP_ADDR).set(operationAddress);
+
+        // Handle attributes
+        boolean hasInterfaceName = false;
+        final int count = reader.getAttributeCount();
+        for (int i = 0; i < count; i++) {
+            if (!isNoNamespaceAttribute(reader, i)) {
+                throw unexpectedAttribute(reader, i);
+            } else {
+                final String value = reader.getAttributeValue(i);
+                final Attribute attribute = Attribute.forName(reader.getAttributeLocalName(i));
+                switch (attribute) {
+                    case INTERFACE: {
+                        HttpManagementResourceDefinition.INTERFACE.parseAndSetParameter(value, mgmtSocket, reader);
+                        hasInterfaceName = true;
+                        break;
+                    }
+                    case PORT: {
+                        HttpManagementResourceDefinition.HTTP_PORT.parseAndSetParameter(value, mgmtSocket, reader);
+                        break;
+                    }
+                    case SECURE_PORT: {
+                        HttpManagementResourceDefinition.HTTPS_PORT.parseAndSetParameter(value, mgmtSocket, reader);
+                        break;
+                    }
+                    case MAX_THREADS: {
+                        // ignore xsd mistake
+                        break;
+                    }
+                    case SECURITY_REALM: {
+                        HttpManagementResourceDefinition.SECURITY_REALM.parseAndSetParameter(value, mgmtSocket, reader);
+                        break;
+                    }
+                    default:
+                        throw unexpectedAttribute(reader, i);
+                }
+            }
+        }
+
+        requireNoContent(reader);
+
+        if (!hasInterfaceName) {
+            throw missingRequired(reader, Collections.singleton(Attribute.INTERFACE.getLocalName()));
+        }
+
+        list.add(mgmtSocket);
+    }
+
+    private void parseNativeManagementInterface1_0(final XMLExtendedStreamReader reader, final ModelNode address,
+                                                   final List<ModelNode> list) throws XMLStreamException {
+
+        final ModelNode mgmtSocket = new ModelNode();
+        mgmtSocket.get(OP).set(ADD);
+        ModelNode operationAddress = address.clone();
+        operationAddress.add(MANAGEMENT_INTERFACE, NATIVE_INTERFACE);
+        mgmtSocket.get(OP_ADDR).set(operationAddress);
+
+        // Handle attributes
+        boolean hasInterface = false;
+
+        final int count = reader.getAttributeCount();
+        for (int i = 0; i < count; i++) {
+            if (!isNoNamespaceAttribute(reader, i)) {
+                throw unexpectedAttribute(reader, i);
+            } else {
+                final String value = reader.getAttributeValue(i);
+                final Attribute attribute = Attribute.forName(reader.getAttributeLocalName(i));
+                switch (attribute) {
+                    case INTERFACE: {
+                        NativeManagementResourceDefinition.INTERFACE.parseAndSetParameter(value, mgmtSocket, reader);
+                        hasInterface = true;
+                        break;
+                    }
+                    case PORT: {
+                        NativeManagementResourceDefinition.NATIVE_PORT.parseAndSetParameter(value, mgmtSocket, reader);
+                        break;
+                    }
+                    case SECURE_PORT:
+                        // ignore -- this was a bug in the xsd
+                        break;
+                    case SECURITY_REALM: {
+                        NativeManagementResourceDefinition.SECURITY_REALM.parseAndSetParameter(value, mgmtSocket, reader);
+                        break;
+                    }
+                    default:
+                        throw unexpectedAttribute(reader, i);
+                }
+            }
+        }
+
+        requireNoContent(reader);
+
+        if (!hasInterface) {
+            throw missingRequired(reader, Collections.singleton(Attribute.INTERFACE.getLocalName()));
+        }
+
+        list.add(mgmtSocket);
+    }
+
     private void parseManagementInterfaces_1_1(final XMLExtendedStreamReader reader, final ModelNode address, final Namespace expectedNs,
                                                  final List<ModelNode> list) throws XMLStreamException {
         requireNoAttributes(reader);
@@ -438,9 +544,9 @@ public class StandaloneXml extends CommonXml {
                 switch (attribute) {
                     case SECURITY_REALM: {
                         if (http) {
-                            HttpManagementResourceDefinition.SECURITY_REALM.parseAndSetParameter(value, addOp, reader.getLocation());
+                            HttpManagementResourceDefinition.SECURITY_REALM.parseAndSetParameter(value, addOp, reader);
                         } else {
-                            NativeManagementResourceDefinition.SECURITY_REALM.parseAndSetParameter(value, addOp, reader.getLocation());
+                            NativeManagementResourceDefinition.SECURITY_REALM.parseAndSetParameter(value, addOp, reader);
                         }
                         break;
                     }
@@ -490,12 +596,12 @@ public class StandaloneXml extends CommonXml {
                 final Attribute attribute = Attribute.forName(reader.getAttributeLocalName(i));
                 switch (attribute) {
                     case INTERFACE: {
-                        NativeManagementResourceDefinition.INTERFACE.parseAndSetParameter(value, addOp, reader.getLocation());
+                        NativeManagementResourceDefinition.INTERFACE.parseAndSetParameter(value, addOp, reader);
                         hasInterface = true;
                         break;
                     }
                     case PORT: {
-                        NativeManagementResourceDefinition.NATIVE_PORT.parseAndSetParameter(value, addOp, reader.getLocation());
+                        NativeManagementResourceDefinition.NATIVE_PORT.parseAndSetParameter(value, addOp, reader);
                         break;
                     }
                     default:
@@ -524,16 +630,16 @@ public class StandaloneXml extends CommonXml {
                 final Attribute attribute = Attribute.forName(reader.getAttributeLocalName(i));
                 switch (attribute) {
                     case INTERFACE: {
-                        HttpManagementResourceDefinition.INTERFACE.parseAndSetParameter(value, addOp, reader.getLocation());
+                        HttpManagementResourceDefinition.INTERFACE.parseAndSetParameter(value, addOp, reader);
                         hasInterface = true;
                         break;
                     }
                     case PORT: {
-                        HttpManagementResourceDefinition.HTTP_PORT.parseAndSetParameter(value, addOp, reader.getLocation());
+                        HttpManagementResourceDefinition.HTTP_PORT.parseAndSetParameter(value, addOp, reader);
                         break;
                     }
                     case SECURE_PORT: {
-                        HttpManagementResourceDefinition.HTTPS_PORT.parseAndSetParameter(value, addOp, reader.getLocation());
+                        HttpManagementResourceDefinition.HTTPS_PORT.parseAndSetParameter(value, addOp, reader);
                         break;
                     }
                     default:
@@ -562,11 +668,11 @@ public class StandaloneXml extends CommonXml {
                 final Attribute attribute = Attribute.forName(reader.getAttributeLocalName(i));
                 switch (attribute) {
                     case HTTP: {
-                       HttpManagementResourceDefinition.SOCKET_BINDING.parseAndSetParameter(value, addOp, reader.getLocation());
+                       HttpManagementResourceDefinition.SOCKET_BINDING.parseAndSetParameter(value, addOp, reader);
                         break;
                     }
                     case HTTPS: {
-                       HttpManagementResourceDefinition.SECURE_SOCKET_BINDING.parseAndSetParameter(value, addOp, reader.getLocation());
+                       HttpManagementResourceDefinition.SECURE_SOCKET_BINDING.parseAndSetParameter(value, addOp, reader);
                         break;
                     }
                     default:
@@ -591,7 +697,7 @@ public class StandaloneXml extends CommonXml {
                 final Attribute attribute = Attribute.forName(reader.getAttributeLocalName(i));
                 switch (attribute) {
                     case NATIVE: {
-                        NativeManagementResourceDefinition.SOCKET_BINDING.parseAndSetParameter(value, addOp, reader.getLocation());
+                        NativeManagementResourceDefinition.SOCKET_BINDING.parseAndSetParameter(value, addOp, reader);
                         hasRef = true;
                         break;
                     }
@@ -649,12 +755,12 @@ public class StandaloneXml extends CommonXml {
                     break;
                 }
                 case DEFAULT_INTERFACE: {
-                    SocketBindingGroupResourceDefinition.DEFAULT_INTERFACE.parseAndSetParameter(value, op, reader.getLocation());
+                    SocketBindingGroupResourceDefinition.DEFAULT_INTERFACE.parseAndSetParameter(value, op, reader);
                     required.remove(attribute);
                     break;
                 }
                 case PORT_OFFSET: {
-                    SocketBindingGroupResourceDefinition.PORT_OFFSET.parseAndSetParameter(value, op, reader.getLocation());
+                    SocketBindingGroupResourceDefinition.PORT_OFFSET.parseAndSetParameter(value, op, reader);
                     break;
                 }
                 default:
@@ -717,12 +823,12 @@ public class StandaloneXml extends CommonXml {
                     break;
                 }
                 case DEFAULT_INTERFACE: {
-                    SocketBindingGroupResourceDefinition.DEFAULT_INTERFACE.parseAndSetParameter(value, op, reader.getLocation());
+                    SocketBindingGroupResourceDefinition.DEFAULT_INTERFACE.parseAndSetParameter(value, op, reader);
                     required.remove(attribute);
                     break;
                 }
                 case PORT_OFFSET: {
-                    SocketBindingGroupResourceDefinition.PORT_OFFSET.parseAndSetParameter(value, op, reader.getLocation());
+                    SocketBindingGroupResourceDefinition.PORT_OFFSET.parseAndSetParameter(value, op, reader);
                     break;
                 }
                 default:

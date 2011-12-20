@@ -21,130 +21,187 @@
 */
 package org.jboss.as.protocol.mgmt;
 
+import java.io.Closeable;
+import java.io.DataInput;
 import java.io.IOException;
-import java.net.ConnectException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
-import java.security.Provider;
-import java.security.Security;
 import java.util.Map;
 
+import javax.net.ssl.SSLContext;
 import javax.security.auth.callback.CallbackHandler;
 
 import org.jboss.as.protocol.ProtocolChannelClient;
-import org.jboss.remoting3.Endpoint;
-import org.jboss.sasl.JBossSaslProvider;
-import org.xnio.IoUtils;
+import org.jboss.as.protocol.StreamUtils;
+import org.jboss.remoting3.Channel;
+import org.jboss.remoting3.CloseHandler;
+import org.jboss.remoting3.Connection;
+import org.xnio.OptionMap;
 
 /**
- * Strategy {@link ManagementChannel} clients can use for controlling the lifecycle of the channel.
+ * Strategy management clients can use for controlling the lifecycle of the channel.
  *
  * @author <a href="kabir.khan@jboss.com">Kabir Khan</a>
+ * @author Emanuel Muckenhuber
  */
-public abstract class ManagementClientChannelStrategy {
+public abstract class ManagementClientChannelStrategy implements Closeable {
 
-    public abstract ManagementChannel getChannel() throws IOException;
+    /** The remoting channel service type. */
+    private static final String DEFAULT_CHANNEL_SERVICE_TYPE = "management";
 
-    public abstract void requestDone();
+    /**
+     * Get the channel.
+     *
+     * @return the channel
+     * @throws IOException
+     */
+    public abstract Channel getChannel() throws IOException;
 
-    public static synchronized ManagementClientChannelStrategy create(final ManagementChannel channel) {
+    /**
+     * Create a new client channel strategy.
+     *
+     * @param channel the existing channel
+     * @return the management client channel strategy
+     */
+    public static ManagementClientChannelStrategy create(final Channel channel) {
         return new Existing(channel);
     }
 
-    public static ManagementClientChannelStrategy create(String hostName, int port, final Endpoint endpoint,
-                                                         final ManagementOperationHandler handler,
-                                                         final CallbackHandler cbHandler,
-                                                         final Map<String, String> saslOptions) throws URISyntaxException, IOException {
-        return new Establishing(hostName, port, endpoint, handler, cbHandler, saslOptions);
+    /**
+     * Create a new establishing management client channel-strategy
+     *
+     * @param setup the remoting setup
+     * @param handler the {@code ManagementMessageHandler}
+     * @param cbHandler a callback handler
+     * @param saslOptions the sasl options
+     * @return the management client channel strategy
+     * @throws IOException
+     */
+    public static ManagementClientChannelStrategy create(final ProtocolChannelClient setup,
+                                                   final ManagementMessageHandler handler,
+                                                   final CallbackHandler cbHandler,
+                                                   final Map<String, String> saslOptions,
+                                                   final SSLContext sslContext) throws IOException {
+        return new Establishing(DEFAULT_CHANNEL_SERVICE_TYPE, setup, saslOptions, cbHandler, sslContext, handler);
     }
 
+    /**
+     * The existing channel strategy.
+     */
     private static class Existing extends ManagementClientChannelStrategy {
-        private final ManagementChannel channel;
+        // The underlying channel
+        private final Channel channel;
 
-        Existing(final ManagementChannel channel) {
+        private Existing(final Channel channel) {
             this.channel = channel;
         }
 
         @Override
-        public ManagementChannel getChannel() throws IOException {
+        public Channel getChannel() throws IOException {
             return channel;
         }
 
         @Override
-        public void requestDone() {
+        public void close() throws IOException {
+            // closing is not our responsibility
         }
     }
 
+    /**
+     * When getting the underlying channel this strategy is trying to automatically (re-)connect
+     * when either the connection or channel was closed.
+     */
     private static class Establishing extends ManagementClientChannelStrategy {
 
-        private static final Provider saslProvider = new JBossSaslProvider();
-        private final Endpoint endpoint;
-        private final String hostName;
-        private final int port;
-        private final ManagementOperationHandler handler;
-        private volatile ProtocolChannelClient<ManagementChannel> client;
-        private volatile ManagementChannel channel;
-        private final CallbackHandler callbackHandler;
+        private final String channelName;
         private final Map<String,String> saslOptions;
+        private final CallbackHandler callbackHandler;
+        private final SSLContext sslContext;
+        private final Channel.Receiver receiver;
+        private final ProtocolChannelClient setup;
 
-        public Establishing(final String hostName, final int port, final Endpoint endpoint,
-                            final ManagementOperationHandler handler, final CallbackHandler callbackHandler,
-                            final Map<String, String> saslOptions) {
-            this.hostName = hostName;
-            this.port = port;
-            this.endpoint = endpoint;
-            this.handler = handler;
-            this.callbackHandler = callbackHandler;
+        volatile Connection connection;
+        volatile Channel channel;
+
+        public Establishing(final String channelName, final ProtocolChannelClient setup, final Map<String, String> saslOptions,
+                            final CallbackHandler callbackHandler, final SSLContext sslContext, final ManagementMessageHandler handler) {
+            this.channelName = channelName;
             this.saslOptions = saslOptions;
+            this.sslContext = sslContext;
+            this.setup = setup;
+            this.callbackHandler = callbackHandler;
+            // Basic management channel receiver, which delegates messages to a {@code ManagementMessageHandler}
+            // Additionally legacy bye-bye messages result in resetting the current channel
+            this.receiver = new ManagementChannelReceiver() {
+
+                @Override
+                public void handleMessage(final Channel channel, final DataInput input, final ManagementProtocolHeader header) throws IOException {
+                    handler.handleMessage(channel, input, header);
+                }
+
+                @Override
+                protected void handleChannelReset(Channel channel) {
+                    resetChannel(channel);
+                }
+
+            };
         }
 
         @Override
-        public ManagementChannel getChannel() throws IOException {
-            AccessController.doPrivileged(new PrivilegedAction<Object>() {
-                public Object run() {
-                    if (Security.getProvider(saslProvider.getName()) == null) {
-                        Security.insertProviderAt(saslProvider, 1);
-                    }
-                    return null;
-                }
-            });
-
-
-            final ProtocolChannelClient.Configuration<ManagementChannel> configuration = new ProtocolChannelClient.Configuration<ManagementChannel>();
-            try {
-                configuration.setEndpoint(endpoint);
-                configuration.setUri(new URI("remote://" + hostName +  ":" + port));
-                configuration.setChannelFactory(new ManagementChannelFactory());
-                client = ProtocolChannelClient.create(configuration);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-
+        public Channel getChannel() throws IOException {
             boolean ok = false;
             try {
-                try {
-                    client.connect(callbackHandler, saslOptions);
-                } catch (ConnectException e) {
-                    throw e;
+                synchronized (this) {
+                    if (connection == null) {
+                        // Connect with the configured timeout
+                        this.connection = setup.connectSync(callbackHandler, saslOptions, sslContext);
+                        this.connection.addCloseHandler(new CloseHandler<Connection>() {
+                            @Override
+                            public void handleClose(Connection closed, IOException exception) {
+                                synchronized (Establishing.this) {
+                                    if(connection == closed) {
+                                        connection = null;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    if (channel == null) {
+                        channel = connection.openChannel(channelName, OptionMap.EMPTY).get();
+                        channel.addCloseHandler(new CloseHandler<Channel>() {
+                            @Override
+                            public void handleClose(Channel closed, IOException exception) {
+                                synchronized (Establishing.this) {
+                                    if(channel == closed) {
+                                        channel = null;
+                                    }
+                                }
+                            }
+                        });
+                        channel.receiveMessage(receiver);
+                    }
+                    ok = true;
                 }
-                channel = client.openChannel("management");
-                channel.setOperationHandler(handler);
-                channel.startReceiving();
-                ok = true;
             } finally {
-                if (!ok) {
-                    IoUtils.safeClose(channel);
-                    IoUtils.safeClose(client);
+                if (! ok) {
+                    StreamUtils.safeClose(connection);
+                    StreamUtils.safeClose(channel);
                 }
             }
             return channel;
         }
 
+        private void resetChannel(Channel old) {
+            synchronized (this) {
+                if(channel == old) {
+                    channel = null;
+                }
+            }
+        }
+
         @Override
-        public void requestDone() {
-            IoUtils.safeClose(client);
+        public void close() throws IOException {
+            StreamUtils.safeClose(channel);
+            StreamUtils.safeClose(connection);
         }
     }
+
 }

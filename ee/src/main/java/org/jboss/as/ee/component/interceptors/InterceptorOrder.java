@@ -39,13 +39,11 @@ public class
 
         public static final int INITIAL_INTERCEPTOR                                         = 0x100;
         public static final int TCCL_INTERCEPTOR                                            = 0x200;
-        public static final int JNDI_NAMESPACE_INTERCEPTOR                                  = 0x300;
-        public static final int TIMEOUT_INVOCATION_CONTEXT_INTERCEPTOR                      = 0x310;
         public static final int CDI_REQUEST_SCOPE                                           = 0x320;
         public static final int BMT_TRANSACTION_INTERCEPTOR                                 = 0x400;
-        public static final int COMPONENT_CMT_INTERCEPTOR                                   = 0x410;
         public static final int SYNCHRONIZATION_INTERCEPTOR                                 = 0x500;
         public static final int REENTRANCY_INTERCEPTOR                                      = 0x501;
+        public static final int ENTITY_BEAN_REMOVE_INTERCEPTOR                              = 0x502;
         public static final int JPA_SESSION_BEAN_INTERCEPTOR                                = 0x600;
         public static final int SINGLETON_CONTAINER_MANAGED_CONCURRENCY_INTERCEPTOR         = 0x700;
         public static final int CMP_RELATIONSHIP_INTERCEPTOR                                = 0x800;
@@ -77,7 +75,7 @@ public class
         public static final int JNDI_NAMESPACE_INTERCEPTOR = 0x500;
         public static final int INSTANTIATION_INTERCEPTORS = 0x600;
         public static final int RESOURCE_INJECTION_INTERCEPTORS = 0x700;
-        public static final int EJB_SET_SESSION_CONTEXT_METHOD_INVOCATION_INTERCEPTOR = 0x800;
+        public static final int EJB_SET_CONTEXT_METHOD_INVOCATION_INTERCEPTOR = 0x800;
         public static final int WELD_INJECTION = 0x900;
         public static final int JPA_SFSB_CREATE = 0xA00;
         public static final int DEPENDENCY_INJECTION_COMPLETE = 0xA50;
@@ -113,12 +111,14 @@ public class
     public static final class View {
         public static final int EJB_EXCEPTION_LOGGING_INTERCEPTOR                       = 0x000;
         public static final int TCCL_INTERCEPTOR                                        = 0x001;
+        public static final int EJB_IIOP_TRANSACTION                                    = 0x020;
         public static final int JNDI_NAMESPACE_INTERCEPTOR                              = 0x050;
         public static final int NOT_BUSINESS_METHOD_EXCEPTION                           = 0x100;
         public static final int REMOTE_EXCEPTION_TRANSFORMER                            = 0x200;
         public static final int INVALID_METHOD_EXCEPTION                                = 0x201;
         public static final int SECURITY_CONTEXT                                        = 0x250;
         public static final int EJB_SECURITY_AUTHORIZATION_INTERCEPTOR                  = 0x300;
+        public static final int CDI_REQUEST_SCOPE                                       = 0x350;
         public static final int INVOCATION_CONTEXT_INTERCEPTOR                          = 0x400;
         // should happen before the CMT/BMT interceptors
         public static final int REMOTE_TRANSACTION_PROPOGATION_INTERCEPTOR              = 0x450;

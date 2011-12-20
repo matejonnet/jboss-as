@@ -85,6 +85,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOU
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOURCE_PORT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SSL;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SYSTEM_PROPERTY;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TRUSTSTORE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.URL;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.USER;
@@ -270,11 +271,25 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
     }
 
     protected void writeNamespaces(final XMLExtendedStreamWriter writer, final ModelNode modelNode) throws XMLStreamException {
-        if (!modelNode.hasDefined(NAMESPACES)) {
+        final boolean needXsd = modelNode.hasDefined(SCHEMA_LOCATIONS);
+        final boolean hasNamepaces = modelNode.hasDefined(NAMESPACES);
+        if (!needXsd && !hasNamepaces) {
             return;
         }
-        for (final Property property : modelNode.get(NAMESPACES).asPropertyList()) {
-            writer.writeNamespace(property.getName(), property.getValue().asString());
+
+        boolean wroteXsd = false;
+        final String xsdUri = Namespace.XML_SCHEMA_INSTANCE.getUriString();
+        if (hasNamepaces) {
+            for (final Property property : modelNode.get(NAMESPACES).asPropertyList()) {
+                final String uri = property.getValue().asString();
+                writer.writeNamespace(property.getName(), uri);
+                if (!wroteXsd && xsdUri.equals(uri)) {
+                    wroteXsd = true;
+                }
+            }
+        }
+        if (needXsd && !wroteXsd) {
+            writer.writeNamespace("xsd", xsdUri);
         }
     }
 
@@ -466,13 +481,12 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
     }
 
     protected void parseManagement(final XMLExtendedStreamReader reader, final ModelNode address, final Namespace expectedNs, final List<ModelNode> list,
-            boolean allowInterfaces) throws XMLStreamException {
+                                   boolean allowInterfaces, boolean requireNativeInterface) throws XMLStreamException {
         int securityRealmsCount = 0;
         int connectionsCount = 0;
         int managementInterfacesCount = 0;
 
         final ModelNode managementAddress = address.clone().add(CORE_SERVICE, MANAGEMENT);
-
         while (reader.hasNext() && reader.nextTag() != END_ELEMENT) {
             requireNamespace(reader, expectedNs);
             final Element element = Element.forName(reader.getLocalName());
@@ -510,6 +524,10 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
                 }
             }
         }
+
+        if (requireNativeInterface && managementInterfacesCount < 1) {
+            throw missingRequiredElement(reader, EnumSet.of(Element.MANAGEMENT_INTERFACES));
+        }
     }
 
     protected void parseManagementInterfaces(XMLExtendedStreamReader reader, ModelNode address, Namespace expectedNs, List<ModelNode> list) throws XMLStreamException {
@@ -525,7 +543,6 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
             switch (element) {
                 case LDAP: {
                     parseLdapConnection(reader, address, list);
-
                     break;
                 }
                 default: {
@@ -643,7 +660,14 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
                     parseServerIdentities(reader, expectedNs, add);
                     break;
                 case AUTHENTICATION: {
-                    parseAuthentication(reader, expectedNs, add);
+                    switch (expectedNs) {
+                        case DOMAIN_1_0:
+                            parseAuthentication_1_0(reader, expectedNs, add);
+                            break;
+                        default:
+                            parseAuthentication_1_1(reader, expectedNs, add);
+                    }
+
                     break;
                 }
                 default: {
@@ -743,7 +767,7 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
             final Element element = Element.forName(reader.getLocalName());
             switch (element) {
                 case KEYSTORE: {
-                    parseKeystore(reader, ssl);
+                    parseKeystore(reader, ssl.get(KEYSTORE));
                     break;
                 }
                 default: {
@@ -754,10 +778,8 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
 
     }
 
-    protected void parseKeystore(final XMLExtendedStreamReader reader, final ModelNode securityRealmAdd)
+    protected void parseKeystore(final XMLExtendedStreamReader reader, final ModelNode keystore)
             throws XMLStreamException {
-        ModelNode keystore = securityRealmAdd.get(KEYSTORE);
-
         String password = null;
         String path = null;
         String relativeTo = null;
@@ -809,7 +831,7 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
         }
     }
 
-    protected void parseAuthentication(final XMLExtendedStreamReader reader, final Namespace expectedNs, final ModelNode securityRealmAdd)
+    protected void parseAuthentication_1_0(final XMLExtendedStreamReader reader, final Namespace expectedNs, final ModelNode securityRealmAdd)
             throws XMLStreamException {
         ModelNode authentication = securityRealmAdd.get(AUTHENTICATION);
 
@@ -823,28 +845,69 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
             }
             switch (element) {
                 case LDAP: {
-                    switch (expectedNs) {
-                        case DOMAIN_1_0:
-                            parseLdapAuthentication_1_0(reader, authentication);
-                            break;
-                        default:
-                            parseLdapAuthentication_1_1(reader, expectedNs, authentication);
-                    }
+                    parseLdapAuthentication_1_0(reader, authentication);
                     break;
                 }
                 case PROPERTIES: {
-                    switch (expectedNs) {
-                        case DOMAIN_1_0:
-                            parsePropertiesAuthentication_1_0(reader, authentication);
-                            break;
-                        default:
-                            parsePropertiesAuthentication_1_1(reader, authentication);
-                            break;
-                    }
+                    parsePropertiesAuthentication_1_0(reader, authentication);
                     break;
                 }
                 case USERS: {
                     parseUsersAuthentication(reader, expectedNs, authentication);
+                    break;
+                }
+                default: {
+                    throw unexpectedElement(reader);
+                }
+            }
+
+        }
+    }
+
+    protected void parseAuthentication_1_1(final XMLExtendedStreamReader reader, final Namespace expectedNs,
+            final ModelNode securityRealmAdd) throws XMLStreamException {
+        ModelNode authentication = securityRealmAdd.get(AUTHENTICATION);
+
+        // Only one truststore can be defined.
+        boolean trustStoreFound = false;
+        // Only one of ldap, properties or users can be defined.
+        boolean usernamePasswordFound = false;
+
+        while (reader.hasNext() && reader.nextTag() != END_ELEMENT) {
+            requireNamespace(reader, expectedNs);
+            final Element element = Element.forName(reader.getLocalName());
+
+            switch (element) {
+                case LDAP: {
+                    if (usernamePasswordFound) {
+                        unexpectedElement(reader);
+                    }
+                    parseLdapAuthentication_1_1(reader, expectedNs, authentication);
+                    usernamePasswordFound = true;
+                    break;
+                }
+                case PROPERTIES: {
+                    if (usernamePasswordFound) {
+                        unexpectedElement(reader);
+                    }
+                    parsePropertiesAuthentication_1_1(reader, authentication);
+                    usernamePasswordFound = true;
+                    break;
+                }
+                case TRUSTSTORE: {
+                    if (trustStoreFound) {
+                        unexpectedElement(reader);
+                    }
+                    parseKeystore(reader, authentication.get(TRUSTSTORE));
+                    trustStoreFound = true;
+                    break;
+                }
+                case USERS: {
+                    if (usernamePasswordFound) {
+                        unexpectedElement(reader);
+                    }
+                    parseUsersAuthentication(reader, expectedNs, authentication);
+                    usernamePasswordFound = true;
                     break;
                 }
                 default: {
@@ -1286,142 +1349,6 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
             properties.get(array[0]).set(array[1]);
         }
         return properties;
-    }
-
-    protected void parseHttpManagementInterface1_0(final XMLExtendedStreamReader reader, final ModelNode address,
-                                                   final List<ModelNode> list) throws XMLStreamException {
-        // Handle attributes
-        String interfaceName = null;
-        int port = -1;
-        int securePort = -1;
-        int maxThreads = -1;
-        String securityRealm = null;
-        final int count = reader.getAttributeCount();
-        for (int i = 0; i < count; i++) {
-            final String value = reader.getAttributeValue(i);
-            if (!isNoNamespaceAttribute(reader, i)) {
-                throw unexpectedAttribute(reader, i);
-            } else {
-                final Attribute attribute = Attribute.forName(reader.getAttributeLocalName(i));
-                switch (attribute) {
-                    case INTERFACE: {
-                        interfaceName = value;
-                        break;
-                    }
-                    case PORT: {
-                        port = Integer.parseInt(value);
-                        if (port < 0) {
-                            throw MESSAGES.invalidValueNegative(attribute.getLocalName(), port, reader.getLocation());
-                        }
-                        break;
-                    }
-                    case SECURE_PORT: {
-                        securePort = Integer.parseInt(value);
-                        if (securePort < 0) {
-                            throw MESSAGES.invalidValueNegative(attribute.getLocalName(), securePort, reader.getLocation());
-                        }
-                        break;
-                    }
-                    // TODO - Is MAX_THREADS supported? Not in the xsd !!
-                    case MAX_THREADS: {
-                        maxThreads = Integer.parseInt(value);
-                        if (maxThreads < 1) {
-                            throw MESSAGES.invalidValueGreaterThan(attribute.getLocalName(), maxThreads, 0, reader.getLocation());
-                        }
-                        break;
-                    }
-                    case SECURITY_REALM: {
-                        securityRealm = value;
-                        break;
-                    }
-                    default:
-                        throw unexpectedAttribute(reader, i);
-                }
-            }
-        }
-
-        requireNoContent(reader);
-
-        if (interfaceName == null) {
-            throw missingRequired(reader, Collections.singleton(Attribute.INTERFACE.getLocalName()));
-        }
-
-        final ModelNode mgmtSocket = new ModelNode();
-        mgmtSocket.get(INTERFACE).set(interfaceName);
-        if (port > -1) {
-            mgmtSocket.get(PORT).set(port);
-        }
-        if (securePort > -1) {
-            mgmtSocket.get(SECURE_PORT).set(securePort);
-        }
-        if (securityRealm != null) {
-            mgmtSocket.get(SECURITY_REALM).set(securityRealm);
-        }
-
-        mgmtSocket.get(OP).set(ADD);
-        ModelNode operationAddress = address.clone();
-        operationAddress.add(MANAGEMENT_INTERFACE, HTTP_INTERFACE);
-        mgmtSocket.get(OP_ADDR).set(operationAddress);
-
-        list.add(mgmtSocket);
-    }
-
-    protected void parseNativeManagementInterface1_0(final XMLExtendedStreamReader reader, final ModelNode address,
-                                                   final List<ModelNode> list) throws XMLStreamException {
-        // Handle attributes
-        String interfaceName = null;
-        int port = 0;
-        String securityRealm = null;
-
-        final int count = reader.getAttributeCount();
-        for (int i = 0; i < count; i++) {
-            final String value = reader.getAttributeValue(i);
-            if (!isNoNamespaceAttribute(reader, i)) {
-                throw unexpectedAttribute(reader, i);
-            } else {
-                final Attribute attribute = Attribute.forName(reader.getAttributeLocalName(i));
-                switch (attribute) {
-                    case INTERFACE: {
-                        interfaceName = value;
-                        break;
-                    }
-                    case PORT: {
-                        port = Integer.parseInt(value);
-                        if (port < 0) {
-                            throw MESSAGES.invalidValueNegative(attribute.getLocalName(), port, reader.getLocation());
-                        }
-                        break;
-                    }
-                    case SECURE_PORT:
-                        // ignore -- this was a bug in the xsd
-                        break;
-                    case SECURITY_REALM: {
-                        securityRealm = value;
-                        break;
-                    }
-                    default:
-                        throw unexpectedAttribute(reader, i);
-                }
-            }
-        }
-
-        requireNoContent(reader);
-
-        if (interfaceName == null) {
-            throw missingRequired(reader, Collections.singleton(Attribute.INTERFACE.getLocalName()));
-        }
-
-        final ModelNode mgmtSocket = new ModelNode();
-        mgmtSocket.get(INTERFACE).set(interfaceName);
-        mgmtSocket.get(PORT).set(port);
-        if (securityRealm != null) {
-            mgmtSocket.get(SECURITY_REALM).set(securityRealm);
-        }
-        mgmtSocket.get(OP).set(ADD);
-        ModelNode operationAddress = address.clone();
-        operationAddress.add(MANAGEMENT_INTERFACE, NATIVE_INTERFACE);
-        mgmtSocket.get(OP_ADDR).set(operationAddress);
-        list.add(mgmtSocket);
     }
 
     protected void parseJvm(final XMLExtendedStreamReader reader, final ModelNode parentAddress, final Namespace expectedNs, final List<ModelNode> updates,
@@ -1961,11 +1888,7 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
                 final String value = reader.getAttributeValue(0);
                 requireNoContent(reader);
                 // todo: validate IP address
-                if(nested) {
-                    subModel.get(localName).add(value);
-                } else {
-                    subModel.get(localName).set(value);
-                }
+                subModel.get(localName).set(value);
                 break;
             }
             case LINK_LOCAL_ADDRESS:
@@ -2587,7 +2510,7 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
                 writeInterfaceCriteria(writer, element, Attribute.VALUE, property.getValue(), nested);
                 break;
             case LOOPBACK_ADDRESS:
-                writeInterfaceCriteria(writer, element, Attribute.VALUE, property.getValue(), nested);
+                writeInterfaceCriteria(writer, element, Attribute.VALUE, property.getValue(), false);
                 break;
             case LINK_LOCAL_ADDRESS:
             case LOOPBACK:
@@ -2630,8 +2553,8 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
         }
     }
 
-    private static void writeInterfaceCriteria(final XMLExtendedStreamWriter writer, final Element element, final Attribute attribute, final ModelNode subModel, boolean nested) throws XMLStreamException {
-        if(nested) {
+    private static void writeInterfaceCriteria(final XMLExtendedStreamWriter writer, final Element element, final Attribute attribute, final ModelNode subModel, boolean asList) throws XMLStreamException {
+        if(asList) {
             // Nested criteria elements are represented as list in the model
             writeListAsMultipleElements(writer, element, attribute, subModel);
         } else {
@@ -2988,6 +2911,16 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
                             writer.writeAttribute(Attribute.PLAIN_TEXT.getLocalName(), properties.require(PLAIN_TEXT).asString());
                         }
 
+                        writer.writeEndElement();
+                    } else if (authentication.hasDefined(TRUSTSTORE)) {
+                        ModelNode truststore = authentication.require(TRUSTSTORE);
+                        writer.writeStartElement(Element.TRUSTSTORE.getLocalName());
+                        writer.writeAttribute(Attribute.PATH.getLocalName(), truststore.require(PATH).asString());
+                        if (truststore.hasDefined(RELATIVE_TO)) {
+                            writer.writeAttribute(Attribute.RELATIVE_TO.getLocalName(), truststore.require(RELATIVE_TO)
+                                    .asString());
+                        }
+                        writer.writeAttribute(Attribute.PASSWORD.getLocalName(), truststore.require(PASSWORD).asString());
                         writer.writeEndElement();
                     }
 

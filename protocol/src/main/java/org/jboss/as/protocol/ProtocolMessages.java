@@ -28,13 +28,17 @@ import java.io.UTFDataFormatException;
 import java.net.ConnectException;
 import java.net.URI;
 
-import org.jboss.as.protocol.mgmt.ManagementOperationHandler;
+import org.jboss.as.protocol.mgmt.AbstractMessageHandler;
 import org.jboss.logging.Cause;
 import org.jboss.logging.Message;
 import org.jboss.logging.MessageBundle;
 import org.jboss.logging.Messages;
 
 /**
+ * This module is using message IDs in the range 12100-12199.
+ * See http://community.jboss.org/docs/DOC-16810 for the full list of
+ * currently reserved JBAS message id blocks.
+ *
  * Date: 21.07.2011
  *
  * @author <a href="mailto:jperkins@redhat.com">James R. Perkins</a>
@@ -83,12 +87,11 @@ public interface ProtocolMessages {
      * Creates an exception indicating a connection could not be made.
      *
      * @param uri             the URI attempted to connect.
-     * @param e               the exception during the connect
      *
      * @return a {@link ConnectException} for the error.
      */
-    @Message(id = 12144, value = "Could not connect to %s. Make sure the server is running.")
-    ConnectException couldNotConnect(URI uri, @Cause Exception e);
+    @Message(id = 12144, value = "Could not connect to %s. The connection timed out")
+    ConnectException couldNotConnect(URI uri);
 
     @Message(id = 12145, value = "Connection was cancelled")
     ConnectException connectWasCancelled();
@@ -148,7 +151,7 @@ public interface ProtocolMessages {
      *
      * @return an {@link IOException} for the error.
      */
-    @Message(id = 12151, value = "Invalid byte token.  Expecting '%s' received '%s'")
+    @Message(id = 12151, value = "Invalid byte token.  Expecting '%d' received '%d'")
     IOException invalidByteToken(int expected, byte actual);
 
     /**
@@ -269,7 +272,7 @@ public interface ProtocolMessages {
      * @return an {@link IOException} for the error.
      */
     @Message(id = 12163, value = "No request handler found with id %s in operation handler %s")
-    IOException requestHandlerIdNotFound(byte id, ManagementOperationHandler operationHandler);
+    IOException requestHandlerIdNotFound(byte id, AbstractMessageHandler operationHandler);
 
     /**
      * Creates an exception indicating the response handler has already been registered for the request.
@@ -349,4 +352,28 @@ public interface ProtocolMessages {
      */
     @Message(id = 12171, value = "Writes are already shut down")
     IOException writesAlreadyShutdown();
+
+    /**
+     * Creates an exception indicating that the operation id is already taken.
+     *
+     * @param operationId the operation id
+     * @return an {@link IllegalStateException} for the error.
+     */
+    @Message(id = 12172, value = "Operation with id %d already registered")
+    IllegalStateException operationIdAlreadyExists(int operationId);
+
+    @Message(id = 12173, value = "Null executor")
+    IllegalArgumentException nullExecutor();
+
+    /**
+     * Creates an exception indicating a connection could not be made.
+     *
+     * @param uri             the URI attempted to connect.
+     * @param cause           the cause of the failure.
+     *
+     * @return a {@link ConnectException} for the error.
+     */
+    @Message(id = 12174, value = "Could not connect to %s. The connection failed")
+    ConnectException failedToConnect(URI uri, @Cause IOException cause);
+
 }

@@ -22,7 +22,7 @@
 package org.jboss.as.ejb3.component.entity;
 
 import java.lang.reflect.Method;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -45,6 +45,8 @@ import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
 import org.jboss.invocation.SimpleInterceptorFactoryContext;
 
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
+
 /**
  * @author Stuart Douglas
  */
@@ -64,10 +66,12 @@ public class EntityBeanComponent extends EJBComponent {
     private final Method ejbLoadMethod;
     private final Method ejbActivateMethod;
     private final Method ejbPassivateMethod;
+    private final Method unsetEntityContextMethod;
     private final InterceptorFactory ejbStore;
     private final InterceptorFactory ejbLoad;
     private final InterceptorFactory ejbActivate;
     private final InterceptorFactory ejbPassivate;
+    private final InterceptorFactory unsetEntityContext;
 
     protected EntityBeanComponent(final EntityBeanComponentCreateService ejbComponentCreateService) {
         super(ejbComponentCreateService);
@@ -100,6 +104,9 @@ public class EntityBeanComponent extends EJBComponent {
         this.ejbStoreMethod = ejbComponentCreateService.getEjbStoreMethod();
         this.ejbPassivate = ejbComponentCreateService.getEjbPassivate();
         this.ejbPassivateMethod = ejbComponentCreateService.getEjbPassivateMethod();
+        this.unsetEntityContext = ejbComponentCreateService.getUnsetEntityContext();
+        this.unsetEntityContextMethod = ejbComponentCreateService.getUnsetEntityContextMethod();
+
     }
 
     @Override
@@ -127,16 +134,19 @@ public class EntityBeanComponent extends EJBComponent {
         return new ReferenceCountingEntityCache(this);
     }
 
-    public EJBLocalObject getEjbLocalObject(final Object primaryKey) {
-        final HashMap<Object, Object> create = new HashMap<Object, Object>();
-        create.put(EntityBeanComponent.PRIMARY_KEY_CONTEXT_KEY, primaryKey);
-        return createViewInstanceProxy(getLocalClass(), create);
+
+    public EJBLocalObject getEJBLocalObject(final Object pk) throws IllegalStateException {
+        if (getEjbLocalObjectViewServiceName() == null) {
+            throw MESSAGES.beanComponentMissingEjbObject(getComponentName(),"EJBLocalObject");
+        }
+        return createViewInstanceProxy(EJBLocalObject.class, Collections.singletonMap(EntityBeanComponent.PRIMARY_KEY_CONTEXT_KEY, pk), getEjbLocalObjectViewServiceName());
     }
 
-    public EJBObject getEJBObject(final Object primaryKey) {
-        final HashMap<Object, Object> create = new HashMap<Object, Object>();
-        create.put(EntityBeanComponent.PRIMARY_KEY_CONTEXT_KEY, primaryKey);
-        return createViewInstanceProxy(getRemoteClass(), create);
+    public EJBObject getEJBObject(final Object pk) throws IllegalStateException {
+        if (getEjbObjectViewServiceName() == null) {
+            throw MESSAGES.beanComponentMissingEjbObject(getComponentName(),"EJBObject");
+        }
+        return createViewInstanceProxy(EJBObject.class, Collections.singletonMap(EntityBeanComponent.PRIMARY_KEY_CONTEXT_KEY, pk), getEjbObjectViewServiceName());
     }
 
     public Class<EJBHome> getHomeClass() {
@@ -190,4 +200,13 @@ public class EntityBeanComponent extends EJBComponent {
     public InterceptorFactory getEjbPassivate() {
         return ejbPassivate;
     }
+
+    public Method getUnsetEntityContextMethod() {
+        return unsetEntityContextMethod;
+    }
+
+    public InterceptorFactory getUnsetEntityContext() {
+        return unsetEntityContext;
+    }
+
 }

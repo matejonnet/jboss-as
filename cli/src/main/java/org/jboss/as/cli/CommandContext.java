@@ -40,6 +40,12 @@ import org.jboss.as.controller.client.ModelControllerClient;
 public interface CommandContext {
 
     /**
+     * Returns the JBoss CLI configuration.
+     * @return  CLI configuration
+     */
+    CliConfig getConfig();
+
+    /**
      * Returns the current command's arguments as a string.
      * @return current command's arguments as a string or null if the command was entered w/o arguments.
      */
@@ -72,6 +78,12 @@ public interface CommandContext {
      * Terminates the command line session.
      */
     void terminateSession();
+
+    /**
+     * Checks whether the session has been terminated.
+     * @return
+     */
+    boolean isTerminated();
 
     /**
      * Associates an object with key. The mapping is valid until this method is called with the same key value
@@ -209,4 +221,10 @@ public interface CommandContext {
      * @return  true if the CLI is connected to the domain controller, otherwise false.
      */
     boolean isDomainMode();
+
+    /**
+     * Adds a listener for CLI events.
+     * @param listener  the listener
+     */
+    void addEventListener(CliEventListener listener);
 }

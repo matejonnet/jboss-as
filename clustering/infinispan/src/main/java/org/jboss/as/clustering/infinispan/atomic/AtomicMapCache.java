@@ -3,26 +3,30 @@ package org.jboss.as.clustering.infinispan.atomic;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import org.infinispan.AbstractDelegatingAdvancedCache;
-import org.infinispan.Cache;
+import org.infinispan.AdvancedCache;
 import org.infinispan.atomic.AtomicMapLookup;
-import org.infinispan.stats.Stats;
 import org.infinispan.util.concurrent.NotifyingFuture;
+import org.jboss.as.clustering.infinispan.AbstractAdvancedCache;
 
-public class AtomicMapCache<K, MK, MV> extends AbstractDelegatingAdvancedCache<K, Map<MK, MV>> {
-    public AtomicMapCache(Cache<K, Map<MK, MV>> cache) {
-        super(cache.getAdvancedCache());
+public class AtomicMapCache<K, MK, MV> extends AbstractAdvancedCache<K, Map<MK, MV>> {
+    public AtomicMapCache(AdvancedCache<K, Map<MK, MV>> cache) {
+        super(cache);
+    }
+
+    @Override
+    protected AdvancedCache<K, Map<MK, MV>> wrap(AdvancedCache<K, Map<MK, MV>> cache) {
+        return new AtomicMapCache<K, MK, MV>(cache);
     }
 
     @SuppressWarnings("unchecked")
     @Override
     public Map<MK, MV> get(Object key) {
-        return AtomicMapLookup.getAtomicMap(this.getAdvancedCache(), (K) key, false);
+        return AtomicMapLookup.getAtomicMap(this.cache, (K) key, false);
     }
 
     @Override
     public Map<MK, MV> putIfAbsent(K key, Map<MK, MV> value) {
-        return AtomicMapLookup.getAtomicMap(this.getAdvancedCache(), key, true);
+        return AtomicMapLookup.getAtomicMap(this.cache, key, true);
     }
 
     @Override
@@ -168,10 +172,5 @@ public class AtomicMapCache<K, MK, MV> extends AbstractDelegatingAdvancedCache<K
     @Override
     public Map<MK, MV> put(K key, Map<MK, MV> value) {
         throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Stats getStats() {
-        return this.getAdvancedCache().getStats();
     }
 }

@@ -27,11 +27,12 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VAL
 
 import java.util.List;
 import java.util.ResourceBundle;
-import javax.xml.stream.Location;
 import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
 import javax.xml.stream.XMLStreamWriter;
 
 import org.jboss.as.controller.AttributeDefinition;
+import org.jboss.as.controller.ParameterCorrector;
 import org.jboss.as.controller.SimpleAttributeDefinition;
 import org.jboss.as.controller.client.helpers.MeasurementUnit;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
@@ -39,6 +40,7 @@ import org.jboss.as.controller.operations.validation.AllowedValuesValidator;
 import org.jboss.as.controller.operations.validation.MinMaxValidator;
 import org.jboss.as.controller.operations.validation.ParameterValidator;
 import org.jboss.as.controller.registry.AttributeAccess;
+import org.jboss.as.logging.validators.ObjectTypeValidator;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 
@@ -51,8 +53,8 @@ public class ObjectTypeAttributeDefinition extends SimpleAttributeDefinition {
     private final AttributeDefinition[] valueTypes;
     private final String suffix;
 
-    private ObjectTypeAttributeDefinition(final String name, final String xmlName, final String suffix, final AttributeDefinition[] valueTypes, final boolean allowNull, final String[] alternatives, final String[] requires, final AttributeAccess.Flag... flags) {
-        super(name, xmlName, null, ModelType.OBJECT, allowNull, false, null, new ObjectTypeValidator(allowNull, valueTypes), alternatives, requires, flags);
+    private ObjectTypeAttributeDefinition(final String name, final String xmlName, final String suffix, final AttributeDefinition[] valueTypes, final boolean allowNull, final ParameterCorrector corrector, final String[] alternatives, final String[] requires, final AttributeAccess.Flag... flags) {
+        super(name, xmlName, null, ModelType.OBJECT, allowNull, false, null, corrector, new ObjectTypeValidator(allowNull, valueTypes), alternatives, requires, flags);
         this.valueTypes = valueTypes;
         if (suffix == null) {
             this.suffix = "";
@@ -63,7 +65,7 @@ public class ObjectTypeAttributeDefinition extends SimpleAttributeDefinition {
 
 
     @Override
-    public ModelNode parse(final String value, final Location location) throws XMLStreamException {
+    public ModelNode parse(final String value, final XMLStreamReader reader) throws XMLStreamException {
         throw new UnsupportedOperationException();
     }
 
@@ -180,6 +182,7 @@ public class ObjectTypeAttributeDefinition extends SimpleAttributeDefinition {
         private final String name;
         private String suffix;
         private final AttributeDefinition[] valueTypes;
+        private ParameterCorrector corrector;
         private String xmlName;
         private boolean allowNull;
         private String[] alternatives;
@@ -198,7 +201,7 @@ public class ObjectTypeAttributeDefinition extends SimpleAttributeDefinition {
 
         public ObjectTypeAttributeDefinition build() {
             if (xmlName == null) xmlName = name;
-            return new ObjectTypeAttributeDefinition(name, xmlName, suffix, valueTypes, allowNull, alternatives, requires, flags);
+            return new ObjectTypeAttributeDefinition(name, xmlName, suffix, valueTypes, allowNull, corrector, alternatives, requires, flags);
         }
 
         public Builder setAllowNull(final boolean allowNull) {
@@ -208,6 +211,11 @@ public class ObjectTypeAttributeDefinition extends SimpleAttributeDefinition {
 
         public Builder setAlternates(final String... alternates) {
             this.alternatives = alternates;
+            return this;
+        }
+
+        public Builder setCorrector(final ParameterCorrector corrector) {
+            this.corrector = corrector;
             return this;
         }
 

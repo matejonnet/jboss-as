@@ -28,14 +28,15 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ATT
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.OperationStepHandler;
+import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.ProxyController;
 import org.jboss.as.controller.ResourceDefinition;
@@ -59,7 +60,7 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
     @SuppressWarnings("unused")
     private volatile Map<String, AttributeAccess> attributes;
 
-    private final boolean runtimeOnly;
+    private final AtomicBoolean runtimeOnly = new AtomicBoolean();
 
     private static final AtomicMapFieldUpdater<ConcreteResourceRegistration, String, NodeSubregistry> childrenUpdater = AtomicMapFieldUpdater.newMapUpdater(AtomicReferenceFieldUpdater.newUpdater(ConcreteResourceRegistration.class, Map.class, "children"));
     private static final AtomicMapFieldUpdater<ConcreteResourceRegistration, String, OperationEntry> operationsUpdater = AtomicMapFieldUpdater.newMapUpdater(AtomicReferenceFieldUpdater.newUpdater(ConcreteResourceRegistration.class, Map.class, "operations"));
@@ -72,12 +73,17 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
         operationsUpdater.clear(this);
         attributesUpdater.clear(this);
         descriptionProviderUpdater.set(this, provider);
-        this.runtimeOnly = runtimeOnly;
+        this.runtimeOnly.set(runtimeOnly);
     }
 
     @Override
     public boolean isRuntimeOnly() {
-        return runtimeOnly;
+        return runtimeOnly.get();
+    }
+
+    @Override
+    public void setRuntimeOnly(final boolean runtimeOnly) {
+        this.runtimeOnly.set(runtimeOnly);
     }
 
     @Override
@@ -94,8 +100,12 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
         if (address == null) {
             throw MESSAGES.cannotRegisterSubmodelWithNullPath();
         }
-        if (runtimeOnly) {
+        if (isRuntimeOnly()) {
             throw MESSAGES.cannotRegisterSubmodel();
+        }
+        final AbstractResourceRegistration existing = getSubRegistration(PathAddress.pathAddress(address));
+        if (existing != null && existing.getValueString().equals(address.getValue())) {
+            throw MESSAGES.nodeAlreadyRegistered(existing.getLocationString());
         }
         final String key = address.getKey();
         final NodeSubregistry child = getOrCreateSubregistry(key);
@@ -105,17 +115,12 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
         return resourceRegistration;
     }
 
-    @Override
-    public void registerSubModel(final PathElement address, final ManagementResourceRegistration subModel) {
-        if (address == null) {
-            throw MESSAGES.nullVar("address");
+    public void unregisterSubModel(final PathElement address) throws IllegalArgumentException {
+        final Map<String, NodeSubregistry> snapshot = childrenUpdater.get(this);
+        final NodeSubregistry subregistry = snapshot.get(address.getKey());
+        if (subregistry != null) {
+            subregistry.unregisterSubModel(address.getValue());
         }
-        if (subModel == null) {
-            throw MESSAGES.nullVar("subModel");
-        }
-        final String key = address.getKey();
-        final NodeSubregistry child = getOrCreateSubregistry(key);
-        child.register(address.getValue(), subModel);
     }
 
     @Override
@@ -191,6 +196,13 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
     }
 
     @Override
+    public void unregisterOperationHandler(final String operationName) {
+        if (operationsUpdater.remove(this, operationName) == null) {
+            throw operationNotRegisteredException(operationName, resourceDefinition.getPathElement());
+        }
+    }
+
+    @Override
     public void registerReadWriteAttribute(final String attributeName, final OperationStepHandler readHandler, final OperationStepHandler writeHandler, AttributeAccess.Storage storage) {
         AttributeAccess aa = new AttributeAccess(AccessType.READ_WRITE, storage, readHandler, writeHandler, null, null);
         if (attributesUpdater.putIfAbsent(this, attributeName, aa) != null) {
@@ -260,6 +272,11 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
     }
 
     @Override
+    public void unregisterAttribute(String attributeName) {
+        attributesUpdater.remove(this, attributeName);
+    }
+
+    @Override
     public void registerMetric(AttributeDefinition definition, OperationStepHandler metricHandler) {
         AttributeAccess aa = new AttributeAccess(AccessType.METRIC, AttributeAccess.Storage.RUNTIME, metricHandler, null, definition, definition.getFlags());
         if (attributesUpdater.putIfAbsent(this, definition.getName(), aa) != null) {
@@ -269,6 +286,10 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
 
     @Override
     public void registerProxyController(final PathElement address, final ProxyController controller) throws IllegalArgumentException {
+        final AbstractResourceRegistration existing = getSubRegistration(PathAddress.pathAddress(address));
+        if (existing != null && existing.getValueString().equals(address.getValue())) {
+            throw MESSAGES.nodeAlreadyRegistered(existing.getLocationString());
+        }
         getOrCreateSubregistry(address.getKey()).registerProxyController(address.getValue(), controller);
     }
 
@@ -302,7 +323,7 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
     }
 
     @Override
-    DescriptionProvider getModelDescription(final Iterator<PathElement> iterator) {
+    DescriptionProvider getModelDescription(final ListIterator<PathElement> iterator) {
         if (iterator.hasNext()) {
             final PathElement next = iterator.next();
             final NodeSubregistry subregistry = children.get(next.getKey());
@@ -316,7 +337,7 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
     }
 
     @Override
-    Set<String> getAttributeNames(final Iterator<PathElement> iterator) {
+    Set<String> getAttributeNames(final ListIterator<PathElement> iterator) {
         if (iterator.hasNext()) {
             final PathElement next = iterator.next();
             final NodeSubregistry subregistry = children.get(next.getKey());
@@ -343,7 +364,7 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
         } else {
             final Map<String, AttributeAccess> snapshot = attributesUpdater.get(this);
             AttributeAccess access = snapshot.get(attributeName);
-            if (access == null) {
+            if (access == null && hasNoAlternativeWildcardRegistration()) {
                 // If there is metadata for an attribute but no AttributeAccess, assume RO. Can't
                 // be writable without a registered handler. This opens the possibility that out-of-date metadata
                 // for attribute "foo" can lead to a read of non-existent-in-model "foo" with
@@ -360,7 +381,7 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
     }
 
     @Override
-    Set<String> getChildNames(final Iterator<PathElement> iterator) {
+    Set<String> getChildNames(final ListIterator<PathElement> iterator) {
         if (iterator.hasNext()) {
             final PathElement next = iterator.next();
             final NodeSubregistry subregistry = children.get(next.getKey());
@@ -378,7 +399,7 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
     }
 
     @Override
-    Set<PathElement> getChildAddresses(final Iterator<PathElement> iterator) {
+    Set<PathElement> getChildAddresses(final ListIterator<PathElement> iterator) {
         if (iterator.hasNext()) {
             final PathElement next = iterator.next();
             final NodeSubregistry subregistry = children.get(next.getKey());
@@ -402,7 +423,7 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
     }
 
     @Override
-    ProxyController getProxyController(Iterator<PathElement> iterator) {
+    ProxyController getProxyController(ListIterator<PathElement> iterator) {
         if (iterator.hasNext()) {
             final PathElement next = iterator.next();
             final NodeSubregistry subregistry = children.get(next.getKey());
@@ -416,16 +437,16 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
     }
 
     @Override
-    void getProxyControllers(Iterator<PathElement> iterator, Set<ProxyController> controllers) {
+    void getProxyControllers(ListIterator<PathElement> iterator, Set<ProxyController> controllers) {
         if (iterator.hasNext()) {
             final PathElement next = iterator.next();
             final NodeSubregistry subregistry = children.get(next.getKey());
             if (subregistry == null) {
                 return;
             }
-            if(next.isWildcard()) {
+            if (next.isWildcard()) {
                 subregistry.getProxyControllers(iterator, null, controllers);
-            } else if(next.isMultiTarget()) {
+            } else if (next.isMultiTarget()) {
                 for(final String value : next.getSegments()) {
                     subregistry.getProxyControllers(iterator, value, controllers);
                 }
@@ -440,8 +461,9 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
         }
     }
 
-    ManagementResourceRegistration getResourceRegistration(Iterator<PathElement> iterator) {
-        if(! iterator.hasNext()) {
+    @Override
+    AbstractResourceRegistration getResourceRegistration(ListIterator<PathElement> iterator) {
+        if (! iterator.hasNext()) {
             return this;
         } else {
             final PathElement address = iterator.next();
@@ -457,6 +479,10 @@ final class ConcreteResourceRegistration extends AbstractResourceRegistration {
 
     private IllegalArgumentException alreadyRegistered(final String type, final String name) {
         return MESSAGES.alreadyRegistered(type, name, getLocationString());
+    }
+
+    private IllegalArgumentException operationNotRegisteredException(String op, PathElement address) {
+        return MESSAGES.operationNotRegisteredException(op, PathAddress.pathAddress(address));
     }
 
 }

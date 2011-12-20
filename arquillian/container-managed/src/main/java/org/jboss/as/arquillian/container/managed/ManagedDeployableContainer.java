@@ -16,10 +16,8 @@
  */
 package org.jboss.as.arquillian.container.managed;
 
-import org.jboss.arquillian.container.spi.client.container.LifecycleException;
-import org.jboss.as.arquillian.container.CommonDeployableContainer;
-import org.jboss.sasl.JBossSaslProvider;
-import org.jboss.sasl.util.UsernamePasswordHashUtil;
+import static org.jboss.as.arquillian.container.Authentication.PASSWORD;
+import static org.jboss.as.arquillian.container.Authentication.USERNAME;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -29,17 +27,14 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
-import java.security.Provider;
-import java.security.Security;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Logger;
 
-import static org.jboss.as.arquillian.container.Authentication.USERNAME;
-import static org.jboss.as.arquillian.container.Authentication.PASSWORD;
+import org.jboss.arquillian.container.spi.client.container.LifecycleException;
+import org.jboss.as.arquillian.container.CommonDeployableContainer;
+import org.jboss.sasl.util.UsernamePasswordHashUtil;
 
 /**
  * JBossAsManagedContainer
@@ -50,7 +45,6 @@ import static org.jboss.as.arquillian.container.Authentication.PASSWORD;
 public final class ManagedDeployableContainer extends CommonDeployableContainer<ManagedContainerConfiguration> {
 
     private final Logger log = Logger.getLogger(ManagedDeployableContainer.class.getName());
-    private final Provider saslProvider = new JBossSaslProvider();
     private Thread shutdownThread;
     private Process process;
 
@@ -82,16 +76,6 @@ public final class ManagedDeployableContainer extends CommonDeployableContainer<
         }
 
         try {
-
-            AccessController.doPrivileged(new PrivilegedAction<Object>() {
-                public Object run() {
-                    if (Security.getProperty(saslProvider.getName()) == null) {
-                        Security.insertProviderAt(saslProvider, 1);
-                    }
-                    return null;
-                }
-            });
-
             final String jbossHomeDir = config.getJbossHome();
             final String modulePath;
             if(config.getModulePath() != null && !config.getModulePath().isEmpty()) {
@@ -114,7 +98,11 @@ public final class ManagedDeployableContainer extends CommonDeployableContainer<
             fos.close();
 
             List<String> cmd = new ArrayList<String>();
-            cmd.add("java");
+            String javaExec = config.getJavaHome() + File.separatorChar + "bin" + File.separatorChar + "java";
+            if (config.getJavaHome().contains(" ")) {
+                javaExec = "\"" + javaExec + "\"";
+            }
+            cmd.add(javaExec);
             if (additionalJavaOpts != null) {
                 for (String opt : additionalJavaOpts.split("\\s+")) {
                     cmd.add(opt);
@@ -132,6 +120,8 @@ public final class ManagedDeployableContainer extends CommonDeployableContainer<
             cmd.add("org.jboss.logmanager");
             cmd.add("-jaxpmodule");
             cmd.add("javax.xml.jaxp-provider");
+            cmd.add("-mbeanserverbuildermodule");
+            cmd.add("org.jboss.as.jmx");
             cmd.add("org.jboss.as.standalone");
             cmd.add("-server-config");
             cmd.add(config.getServerConfig());

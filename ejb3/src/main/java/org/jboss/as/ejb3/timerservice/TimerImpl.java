@@ -30,8 +30,6 @@ import java.io.Serializable;
 import java.util.Date;
 
 import javax.ejb.EJBException;
-import javax.ejb.NoMoreTimeoutsException;
-import javax.ejb.NoSuchObjectLocalException;
 import javax.ejb.ScheduleExpression;
 import javax.ejb.Timer;
 import javax.ejb.TimerHandle;
@@ -43,11 +41,12 @@ import org.jboss.as.ee.component.Component;
 import org.jboss.as.ejb3.component.stateful.StatefulSessionComponent;
 import org.jboss.as.ejb3.context.CurrentInvocationContext;
 import org.jboss.as.ejb3.timerservice.persistence.TimerEntity;
-import org.jboss.as.ejb3.timerservice.task.TimerTask;
 import org.jboss.as.ejb3.timerservice.spi.TimedObjectInvoker;
+import org.jboss.as.ejb3.timerservice.task.TimerTask;
 import org.jboss.invocation.InterceptorContext;
-import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
+
 import static org.jboss.as.ejb3.EjbLogger.ROOT_LOGGER;
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 
 /**
  * Implementation of EJB3.1 {@link Timer}
@@ -65,27 +64,27 @@ public class TimerImpl implements Timer {
     /**
      * The timer state
      */
-    protected TimerState timerState;
+    protected volatile TimerState timerState;
 
     /**
      * The {@link javax.ejb.TimerService} through which this timer was created
      */
-    protected TimerServiceImpl timerService;
+    protected final TimerServiceImpl timerService;
 
     /**
      * The {@link TimedObjectInvoker} to which this timer corresponds
      */
-    protected TimedObjectInvoker timedObjectInvoker;
+    protected final TimedObjectInvoker timedObjectInvoker;
 
     /**
      * The info which was passed while creating the timer.
      */
-    protected Serializable info;
+    protected final Serializable info;
 
     /**
      * Indicates whether the timer is persistent
      */
-    protected boolean persistent;
+    protected final boolean persistent;
 
     /**
      * A {@link javax.ejb.TimerHandle} for this timer
@@ -95,27 +94,27 @@ public class TimerImpl implements Timer {
     /**
      * The initial (first) expiry date of this timer
      */
-    protected Date initialExpiration;
+    protected final Date initialExpiration;
 
     /**
      * The duration in milli sec. between timeouts
      */
-    protected long intervalDuration;
+    protected final long intervalDuration;
+
+    /**
+     * If this is an entity bean then this is the primary key
+     */
+    protected final Object primaryKey;
 
     /**
      * Next expiry date of this timer
      */
-    protected Date nextExpiration;
+    protected volatile Date nextExpiration;
 
     /**
      * The date of the previous run of this timer
      */
-    protected Date previousRun;
-
-    /**
-     * If the timer is persistent, then this represents its persistent state.
-     */
-    protected TimerEntity persistentState;
+    protected volatile Date previousRun;
 
     /**
      * Creates a {@link TimerImpl}
@@ -128,8 +127,8 @@ public class TimerImpl implements Timer {
      * @param persistent       True if this timer is persistent. False otherwise
      */
     public TimerImpl(String id, TimerServiceImpl service, Date initialExpiry, long intervalDuration, Serializable info,
-                     boolean persistent) {
-        this(id, service, initialExpiry, intervalDuration, initialExpiry, info, persistent);
+                     boolean persistent, Object primaryKey, final TimerState timerState) {
+        this(id, service, initialExpiry, intervalDuration, initialExpiry, info, persistent, primaryKey, timerState);
     }
 
     /**
@@ -144,7 +143,7 @@ public class TimerImpl implements Timer {
      * @param persistent       True if this timer is persistent. False otherwise
      */
     public TimerImpl(String id, TimerServiceImpl service, Date initialExpiry, long intervalDuration, Date nextEpiry,
-                     Serializable info, boolean persistent) {
+                     Serializable info, boolean persistent, Object primaryKey, final TimerState timerState) {
         assert service != null : "service is null";
         assert id != null : "id is null";
 
@@ -158,12 +157,11 @@ public class TimerImpl implements Timer {
         this.intervalDuration = intervalDuration;
         this.nextExpiration = nextEpiry;
         this.previousRun = null;
+        this.primaryKey = primaryKey;
 
         // create a timer handle for this timer
         this.handle = new TimerHandleImpl(this.id, this.timedObjectInvoker.getTimedObjectId(), service);
-
-        setTimerState(TimerState.CREATED);
-
+        this.timerState = timerState;
     }
 
     /**
@@ -174,10 +172,8 @@ public class TimerImpl implements Timer {
      */
     public TimerImpl(TimerEntity persistedTimer, TimerServiceImpl service) {
         this(persistedTimer.getId(), service, persistedTimer.getInitialDate(), persistedTimer.getInterval(),
-                persistedTimer.getNextDate(), null, true);
+                persistedTimer.getNextDate(), persistedTimer.getInfo(), true, persistedTimer.getPrimaryKey(), persistedTimer.getTimerState());
         this.previousRun = persistedTimer.getPreviousRun();
-        this.timerState = persistedTimer.getTimerState();
-        this.info = persistedTimer.getInfo();
     }
 
     /**
@@ -207,20 +203,19 @@ public class TimerImpl implements Timer {
     public void cancel() throws IllegalStateException, EJBException {
         // first check whether the timer has expired or has been cancelled
         this.assertTimerState();
+        boolean startedInTx = timerState == TimerState.CREATED;
         if (timerState != TimerState.EXPIRED) {
             setTimerState(TimerState.CANCELED);
         }
-        // if in tx, register with tx so cancel on tx completion
-        final Transaction currentTx = this.timerService.getTransaction();
-        if (currentTx == null) {
+        if (timerService.transactionActive() && !startedInTx) {
+            final Transaction currentTx = this.timerService.getTransaction();
+            this.registerTimerCancellationWithTx(currentTx);
+        } else {
             // cancel any scheduled Future for this timer
             this.cancelTimeout();
-            // persist changes
-            timerService.persistTimer(this);
-        } else {
-            this.registerTimerCancellationWithTx(currentTx);
         }
-
+        // persist changes
+        timerService.persistTimer(this);
     }
 
     /**
@@ -418,9 +413,9 @@ public class TimerImpl implements Timer {
      * <li>{@link TimerState#CANCELED}</li>
      * <li>{@link TimerState#EXPIRED}</li>
      * </ul>
-     *
+     * <p/>
      * And if the corresponding timer service is still up
-     *
+     * <p/>
      * </p>
      *
      * @return
@@ -499,13 +494,14 @@ public class TimerImpl implements Timer {
         if (timerState == TimerState.CANCELED)
             throw MESSAGES.timerWasCanceled();
         final InterceptorContext ctx = CurrentInvocationContext.get();
-        if(ctx != null) {
-            if(ctx.getPrivateData(Component.class) instanceof StatefulSessionComponent) {
-                if(ctx.getMethod() == null) {
+        if (ctx != null) {
+            if (ctx.getPrivateData(Component.class) instanceof StatefulSessionComponent) {
+                if (ctx.getMethod() == null) {
                     throw new IllegalStateException("Timer methods may not be invoked from lifecycle methods of a stateful session bean");
                 }
             }
         }
+        TimerServiceDisabledTacker.assertEnabled();
     }
 
     /**
@@ -515,7 +511,7 @@ public class TimerImpl implements Timer {
         ROOT_LOGGER.debug("expireTimer: " + this);
         setTimerState(TimerState.EXPIRED);
         // remove from timerservice
-        timerService.removeTimer(this);
+        timerService.persistTimer(this);
         // Cancel any scheduled timer task for this timer
         this.cancelTimeout();
     }
@@ -536,16 +532,9 @@ public class TimerImpl implements Timer {
         if (this.persistent == false) {
             throw MESSAGES.failToPersistTimer(this);
         }
-        if (this.persistentState == null) {
-            // create a new new persistent state
-            this.persistentState = this.createPersistentState();
-        } else {
-            // just refresh the fields which change in the persistent timer
-            this.persistentState.setNextDate(this.nextExpiration);
-            this.persistentState.setPreviousRun(this.previousRun);
-            this.persistentState.setTimerState(this.timerState);
-        }
-        return this.persistentState;
+
+        //we always create a new copy of the persistent state
+        return this.createPersistentState();
     }
 
     /**
@@ -614,6 +603,7 @@ public class TimerImpl implements Timer {
     public int hashCode() {
         return this.handle.hashCode();
     }
+
 
     /**
      * A nice formatted string output for this timer
@@ -725,36 +715,21 @@ public class TimerImpl implements Timer {
         public void afterCompletion(int status) {
             if (status == Status.STATUS_COMMITTED) {
                 ROOT_LOGGER.debug("commit timer cancellation: " + this.timer);
-
-                final TimerState timerState = this.timer.getState();
-                switch (timerState) {
-                    case CANCELED:
-                    case IN_TIMEOUT:
-                    case RETRY_TIMEOUT:
-                        this.timer.cancelTimeout();
-                        timerService.persistTimer(timer);
-                        break;
-
-                }
+                this.timer.cancelTimeout();
             } else if (status == Status.STATUS_ROLLEDBACK) {
                 ROOT_LOGGER.debug("rollback timer cancellation: " + this.timer);
-
-                TimerState timerState = this.timer.getState();
-                switch (timerState) {
-                    case CANCELED:
-                        this.timer.setTimerState(TimerState.ACTIVE);
-                        break;
-
-                }
-
+                this.timer.setTimerState(TimerState.ACTIVE);
             }
         }
 
         @Override
         public void beforeCompletion() {
-            // TODO Auto-generated method stub
 
         }
 
+    }
+
+    public Object getPrimaryKey() {
+        return primaryKey;
     }
 }

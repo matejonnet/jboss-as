@@ -22,6 +22,18 @@
 
 package org.jboss.as.logging;
 
+import org.jboss.as.controller.ReloadRequiredRemoveStepHandler;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIBE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DISABLE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ENABLE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PROPERTIES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
+
+import java.util.EnumSet;
+
 import org.jboss.as.controller.AbstractAddStepHandler;
 import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.Extension;
@@ -30,17 +42,50 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.SubsystemRegistration;
 import org.jboss.as.controller.parsing.ExtensionParsingContext;
+import org.jboss.as.controller.registry.AttributeAccess;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.OperationEntry;
+import org.jboss.as.logging.handlers.AbstractLogHandlerWriteAttributeHandler;
+import org.jboss.as.logging.handlers.HandlerDisable;
+import org.jboss.as.logging.handlers.HandlerEnable;
+import org.jboss.as.logging.handlers.HandlerLevelChange;
+import org.jboss.as.logging.handlers.LoggerHandlerRemove;
+import org.jboss.as.logging.handlers.async.AsyncHandlerAdd;
+import org.jboss.as.logging.handlers.async.AsyncHandlerAssignSubhandler;
+import org.jboss.as.logging.handlers.async.AsyncHandlerUnassignSubhandler;
+import org.jboss.as.logging.handlers.async.AsyncHandlerUpdateProperties;
+import org.jboss.as.logging.handlers.async.AsyncHandlerWriteAttributeHandler;
+import org.jboss.as.logging.handlers.console.ConsoleHandlerAdd;
+import org.jboss.as.logging.handlers.console.ConsoleHandlerUpdateProperties;
+import org.jboss.as.logging.handlers.console.ConsoleHandlerWriteAttributeHandler;
+import org.jboss.as.logging.handlers.custom.CustomHandlerAdd;
+import org.jboss.as.logging.handlers.custom.CustomHandlerUpdateProperties;
+import org.jboss.as.logging.handlers.custom.CustomHandlerWriteAttributeHandler;
+import org.jboss.as.logging.handlers.file.FileHandlerAdd;
+import org.jboss.as.logging.handlers.file.FileHandlerUpdateProperties;
+import org.jboss.as.logging.handlers.file.FileHandlerWriteAttributeHandler;
+import org.jboss.as.logging.handlers.file.HandlerFileChange;
+import org.jboss.as.logging.handlers.file.PeriodicHandlerUpdateProperties;
+import org.jboss.as.logging.handlers.file.PeriodicHandlerWriteAttributeHandler;
+import org.jboss.as.logging.handlers.file.PeriodicRotatingFileHandlerAdd;
+import org.jboss.as.logging.handlers.file.SizeRotatingFileHandlerAdd;
+import org.jboss.as.logging.handlers.file.SizeRotatingHandlerUpdateProperties;
+import org.jboss.as.logging.handlers.file.SizeRotatingHandlerWriteAttributeHandler;
+import org.jboss.as.logging.loggers.AbstractLoggerWriteAttributeHandler;
+import org.jboss.as.logging.loggers.LoggerAdd;
+import org.jboss.as.logging.loggers.LoggerAssignHandler;
+import org.jboss.as.logging.loggers.LoggerFileHandlerRemove;
+import org.jboss.as.logging.loggers.LoggerLevelChange;
+import org.jboss.as.logging.loggers.LoggerRemove;
+import org.jboss.as.logging.loggers.LoggerUnassignHandler;
+import org.jboss.as.logging.loggers.LoggerWriteAttributeHandler;
+import org.jboss.as.logging.loggers.RootLoggerAdd;
+import org.jboss.as.logging.loggers.RootLoggerAssignHandler;
+import org.jboss.as.logging.loggers.RootLoggerLevelChange;
+import org.jboss.as.logging.loggers.RootLoggerRemove;
+import org.jboss.as.logging.loggers.RootLoggerUnassignHandler;
+import org.jboss.as.logging.loggers.RootLoggerWriteAttributeHandler;
 import org.jboss.dmr.ModelNode;
-
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIBE;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DISABLE;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ENABLE;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
 
 /**
  * @author Emanuel Muckenhuber
@@ -67,6 +112,7 @@ public class LoggingExtension implements Extension {
         final ManagementResourceRegistration registration = subsystem.registerSubsystemModel(LoggingSubsystemProviders.SUBSYSTEM);
         registration.registerOperationHandler(ADD, NewLoggingSubsystemAdd.ADD_INSTANCE, LoggingSubsystemProviders.SUBSYSTEM_ADD, false);
         registration.registerOperationHandler(DESCRIBE, LoggingDescribeHandler.INSTANCE, LoggingDescribeHandler.INSTANCE, false, OperationEntry.EntryType.PRIVATE);
+        registration.registerOperationHandler(REMOVE, ReloadRequiredRemoveStepHandler.INSTANCE, LoggingSubsystemProviders.SUBSYSTEM_REMOVE, false);
 
         subsystem.registerXMLElementWriter(LoggingSubsystemParser.INSTANCE);
 
@@ -149,6 +195,8 @@ public class LoggingExtension implements Extension {
         customHandler.registerOperationHandler(HandlerLevelChange.OPERATION_NAME, HandlerLevelChange.INSTANCE, LoggingSubsystemProviders.HANDLER_CHANGE_LEVEL, false);
         customHandler.registerOperationHandler(CustomHandlerUpdateProperties.OPERATION_NAME, CustomHandlerUpdateProperties.INSTANCE, LoggingSubsystemProviders.CUSTOM_HANDLER_UPDATE, false);
         addWriteAttributes(customHandler, CustomHandlerWriteAttributeHandler.INSTANCE);
+        // The properties attribute must be defined manually as it's not an AttributeDefinition
+        customHandler.registerReadWriteAttribute(PROPERTIES, null, CustomHandlerWriteAttributeHandler.INSTANCE, EnumSet.of(AttributeAccess.Flag.RESTART_NONE));
     }
 
     /**

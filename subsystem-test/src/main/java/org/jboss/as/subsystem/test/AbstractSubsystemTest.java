@@ -4,6 +4,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEP
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIPTION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.FAILURE_DESCRIPTION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATION_NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OUTCOME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_ATTRIBUTE_OPERATION;
@@ -14,6 +15,9 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REA
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_OPERATION_NAMES_OPERATION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_RESOURCE_DESCRIPTION_OPERATION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_RESOURCE_OPERATION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REPLY_PROPERTIES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUEST_PROPERTIES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESULT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUCCESS;
@@ -32,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -59,12 +64,16 @@ import org.jboss.as.controller.ExtensionContext;
 import org.jboss.as.controller.ExtensionContextImpl;
 import org.jboss.as.controller.ModelController;
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.ProcessType;
 import org.jboss.as.controller.ProxyController;
 import org.jboss.as.controller.ResourceDefinition;
+import org.jboss.as.controller.RunningModeControl;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
+import org.jboss.as.controller.descriptions.OverrideDescriptionProvider;
 import org.jboss.as.controller.descriptions.common.CommonProviders;
 import org.jboss.as.controller.operations.common.Util;
 import org.jboss.as.controller.operations.global.GlobalOperationHandlers;
@@ -251,7 +260,7 @@ public abstract class AbstractSubsystemTest {
         StringConfigurationPersister persister = new StringConfigurationPersister(Collections.<ModelNode>emptyList(), testParser);
 
         Extension extension = mainExtension.getClass().newInstance();
-        extension.initialize(new ExtensionContextImpl(MOCK_RESOURCE_REG, MOCK_RESOURCE_REG, persister, ExtensionContext.ProcessType.EMBEDDED));
+        extension.initialize(new ExtensionContextImpl(MOCK_RESOURCE_REG, MOCK_RESOURCE_REG, persister, ProcessType.EMBEDDED_SERVER).createTracking("Test"));
 
         ConfigurationPersister.PersistenceResource resource = persister.store(model, Collections.<PathAddress>emptySet());
         resource.commit();
@@ -317,7 +326,7 @@ public abstract class AbstractSubsystemTest {
         }
         allOps.addAll(bootOperations);
         StringConfigurationPersister persister = new StringConfigurationPersister(allOps, testParser);
-        ModelControllerService svc = new ModelControllerService(additionalInit.getType(), mainExtension, controllerInitializer, additionalInit, processState, persister, additionalInit.isValidateOperations());
+        ModelControllerService svc = new ModelControllerService(mainExtension, controllerInitializer, additionalInit, processState, persister, additionalInit.isValidateOperations());
         ServiceBuilder<ModelController> builder = target.addService(Services.JBOSS_SERVER_CONTROLLER, svc);
         builder.install();
 
@@ -350,6 +359,71 @@ public abstract class AbstractSubsystemTest {
         Assert.assertEquals(SUCCESS, result.get(OUTCOME).asString());
         Assert.assertTrue(result.hasDefined(RESULT));
         return result.get(RESULT);
+    }
+
+    /**
+     * Checks that the subystem resources can be removed, i.e. that people have registered
+     * working 'remove' operations for every 'add' level.
+     *
+     * @param kernelServices the kernel services used to access the controller
+     */
+    protected void assertRemoveSubsystemResources(KernelServices kernelServices) {
+        Resource rootResource = grabRootResource(kernelServices);
+
+        List<PathAddress> addresses = new ArrayList<PathAddress>();
+        PathAddress pathAddress = PathAddress.pathAddress(PathElement.pathElement(SUBSYSTEM, mainSubsystemName));
+        Resource subsystemResource = rootResource.getChild(pathAddress.getLastElement());
+        Assert.assertNotNull(subsystemResource);
+        addresses.add(pathAddress);
+
+        getAllChildAddressesForRemove(pathAddress, addresses, subsystemResource);
+
+        for (ListIterator<PathAddress> iterator = addresses.listIterator(addresses.size()) ; iterator.hasPrevious() ; ) {
+            PathAddress cur = iterator.previous();
+            ModelNode remove = new ModelNode();
+            remove.get(OP).set(REMOVE);
+            remove.get(OP_ADDR).set(cur.toModelNode());
+            ModelNode result = kernelServices.executeOperation(remove);
+            Assert.assertEquals("Error removing " + cur + ": " + result.get(FAILURE_DESCRIPTION).asString(), SUCCESS, result.get(OUTCOME).asString());
+        }
+
+        ModelNode model = kernelServices.readWholeModel().get(SUBSYSTEM, mainSubsystemName);
+        Assert.assertFalse("Subsystem resources were not removed " + model, model.isDefined());
+    }
+
+    private void getAllChildAddressesForRemove(PathAddress address, List<PathAddress> addresses, Resource resource) {
+        List<PathElement> childElements = new ArrayList<PathElement>();
+        for (String type : resource.getChildTypes()) {
+            for (String childName : resource.getChildrenNames(type)) {
+                PathElement element = PathElement.pathElement(type, childName);
+                childElements.add(element);
+            }
+        }
+
+        for (PathElement childElement : childElements) {
+            addresses.add(address.append(childElement));
+        }
+
+        for (PathElement childElement : childElements) {
+            getAllChildAddressesForRemove(address.append(childElement), addresses, resource.getChild(childElement));
+        }
+    }
+
+    /**
+     * Grabs the current root resource
+     *
+     * @param kernelServices the kernel services used to access the controller
+     */
+    protected Resource grabRootResource(KernelServices kernelServices) {
+        ModelNode op = new ModelNode();
+        op.get(OP).set(RootResourceGrabber.NAME);
+        op.get(OP_ADDR).setEmptyList();
+        ModelNode result = kernelServices.executeOperation(op);
+        Assert.assertEquals(result.get(FAILURE_DESCRIPTION).asString(), SUCCESS, result.get(OUTCOME).asString());
+
+        Resource rootResource = RootResourceGrabber.INSTANCE.resource;
+        Assert.assertNotNull(rootResource);
+        return rootResource;
     }
 
     /**
@@ -518,9 +592,12 @@ public abstract class AbstractSubsystemTest {
             String defaultNamespace = writer.getNamespaceContext().getNamespaceURI(XMLConstants.DEFAULT_NS_PREFIX);
             try {
                 ModelNode subsystem = context.getModelNode().get(SUBSYSTEM, mainSubsystemName);
-                XMLElementWriter<SubsystemMarshallingContext> subsystemWriter = context.getSubsystemWriter(mainSubsystemName);
-                if (subsystemWriter != null) {
-                    subsystemWriter.writeContent(writer, new SubsystemMarshallingContext(subsystem, writer));
+                if (subsystem.isDefined()) {
+                    //We might have been removed
+                    XMLElementWriter<SubsystemMarshallingContext> subsystemWriter = context.getSubsystemWriter(mainSubsystemName);
+                    if (subsystemWriter != null) {
+                        subsystemWriter.writeContent(writer, new SubsystemMarshallingContext(subsystem, writer));
+                    }
                 }
             } finally {
                 writer.setDefaultNamespace(defaultNamespace);
@@ -556,8 +633,9 @@ public abstract class AbstractSubsystemTest {
         volatile ManagementResourceRegistration rootRegistration;
         volatile Exception error;
 
-        ModelControllerService(final OperationContext.Type type, final Extension mainExtension, final ControllerInitializer controllerInitializer, final AdditionalInitialization additionalPreStep, final ControlledProcessState processState, final StringConfigurationPersister persister, boolean validateOps) {
-            super(type, persister, processState, DESC_PROVIDER, null, ExpressionResolver.DEFAULT);
+        ModelControllerService(final Extension mainExtension, final ControllerInitializer controllerInitializer, final AdditionalInitialization additionalPreStep, final ControlledProcessState processState, final StringConfigurationPersister persister, boolean validateOps) {
+            super(additionalPreStep.getProcessType(), new RunningModeControl(additionalPreStep.getRunningMode()), persister,
+                    processState, DESC_PROVIDER, null, ExpressionResolver.DEFAULT);
             this.persister = persister;
             this.additionalInit = additionalPreStep;
             this.mainExtension = mainExtension;
@@ -579,6 +657,9 @@ public abstract class AbstractSubsystemTest {
             rootRegistration.registerOperationHandler(READ_OPERATION_DESCRIPTION_OPERATION, GlobalOperationHandlers.READ_OPERATION_DESCRIPTION, CommonProviders.READ_OPERATION_PROVIDER, true);
             rootRegistration.registerOperationHandler(WRITE_ATTRIBUTE_OPERATION, GlobalOperationHandlers.WRITE_ATTRIBUTE, CommonProviders.WRITE_ATTRIBUTE_PROVIDER, true);
 
+            //Handler to be able to get hold of the root resource
+            rootRegistration.registerOperationHandler(RootResourceGrabber.NAME, RootResourceGrabber.INSTANCE, RootResourceGrabber.INSTANCE, false);
+
             ManagementResourceRegistration deployments = rootRegistration.registerSubModel(PathElement.pathElement(DEPLOYMENT), ServerDescriptionProviders.DEPLOYMENT_PROVIDER);
 
             //Hack to be able to access the registry for the jmx facade
@@ -587,7 +668,7 @@ public abstract class AbstractSubsystemTest {
 
             controllerInitializer.initializeModel(rootResource, rootRegistration);
 
-            ExtensionContext context = new ExtensionContextImpl(rootRegistration, deployments, persister, ExtensionContext.ProcessType.EMBEDDED);
+            ExtensionContext context = new ExtensionContextImpl(rootRegistration, deployments, persister, ProcessType.EMBEDDED_SERVER).createTracking("Test");
             additionalInit.initializeExtraSubystemsAndModel(context, rootResource, rootRegistration);
             mainExtension.initialize(context);
         }
@@ -753,6 +834,11 @@ public abstract class AbstractSubsystemTest {
         }
 
         @Override
+        public ManagementResourceRegistration getOverrideModel(String name) {
+            return null;
+        }
+
+        @Override
         public ManagementResourceRegistration getSubModel(PathAddress address) {
             return null;
         }
@@ -768,7 +854,25 @@ public abstract class AbstractSubsystemTest {
         }
 
         @Override
-        public void registerSubModel(PathElement address, ManagementResourceRegistration subModel) {
+        public void unregisterSubModel(PathElement address) {
+        }
+
+        @Override
+        public boolean isAllowsOverride() {
+            return true;
+        }
+
+        @Override
+        public void setRuntimeOnly(boolean runtimeOnly) {
+        }
+
+        @Override
+        public ManagementResourceRegistration registerOverrideModel(String name, OverrideDescriptionProvider descriptionProvider) {
+            return MOCK_RESOURCE_REG;
+        }
+
+        @Override
+        public void unregisterOverrideModel(String name) {
         }
 
         @Override
@@ -794,6 +898,11 @@ public abstract class AbstractSubsystemTest {
         @Override
         public void registerOperationHandler(String operationName, OperationStepHandler handler,
                 DescriptionProvider descriptionProvider, boolean inherited, EntryType entryType, EnumSet<Flag> flags) {
+        }
+
+        @Override
+        public void unregisterOperationHandler(String operationName) {
+
         }
 
         @Override
@@ -834,6 +943,10 @@ public abstract class AbstractSubsystemTest {
         }
 
         @Override
+        public void unregisterAttribute(String attributeName) {
+        }
+
+        @Override
         public void registerProxyController(PathElement address, ProxyController proxyController) {
         }
 
@@ -870,5 +983,28 @@ public abstract class AbstractSubsystemTest {
             }
             file.delete();
         }
+    }
+
+    private static class RootResourceGrabber implements OperationStepHandler, DescriptionProvider {
+        static String NAME = "grab-root-resource";
+        static RootResourceGrabber INSTANCE = new RootResourceGrabber();
+        volatile Resource resource;
+        @Override
+        public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
+            resource = context.getRootResource();
+            context.getResult().setEmptyObject();
+            context.completeStep();
+        }
+        @Override
+        public ModelNode getModelDescription(Locale locale) {
+            ModelNode node = new ModelNode();
+            node.get(OPERATION_NAME).set(NAME);
+            node.get(DESCRIPTION).set("Grabs the root resource");
+            node.get(REQUEST_PROPERTIES).setEmptyObject();
+            node.get(REPLY_PROPERTIES).setEmptyObject();
+            return node;
+        }
+
+
     }
 }
