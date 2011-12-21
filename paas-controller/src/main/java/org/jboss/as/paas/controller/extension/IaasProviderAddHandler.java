@@ -21,11 +21,14 @@ import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.paas.controller.iaas.IaasController;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
+import org.jboss.logging.Logger;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
 public class IaasProviderAddHandler extends AbstractAddStepHandler implements DescriptionProvider {
+
+    private static final Logger log = Logger.getLogger(IaasProviderAddHandler.class);
 
     public static final IaasProviderAddHandler INSTANCE = new IaasProviderAddHandler();
 
@@ -37,13 +40,13 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
     private static final String ATTRIBUTE_IMAGE_ID = "image-id";
 
     private IaasProviderAddHandler() {
-        System.out.println(">>>>>>>>>>> IaasProviderAddHandler constructed.");
+        log.trace("IaasProviderAddHandler constructed.");
     }
 
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
-        System.out.println(">>>>>>>>>>>>>> IaasProviderAddHandler.execute");
         super.execute(context, operation);
+        log.trace("IaasProviderAddHandler.execute");
 
         // <iaas-provider provider="myprovider" driver="mock"
         // url="http://localhost:3001/api" username="mockuser"
@@ -69,16 +72,16 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
 
     }
 
-    /*
+    /**
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.jboss.as.controller.descriptions.DescriptionProvider#getModelDescription
      * (java.util.Locale)
      */
     @Override
     public ModelNode getModelDescription(Locale locale) {
-        System.out.println(">>>>>>>>>>> IaasProviderAddHandler.getModelDescription.");
+        log.trace("IaasProviderAddHandler.getModelDescription.");
 
         ModelNode node = new ModelNode();
         node.get(DESCRIPTION).set("Adds a tracked deployment type");
@@ -106,9 +109,9 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         return node;
     }
 
-    /*
+    /**
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.jboss.as.controller.AbstractAddStepHandler#populateModel(org.jboss
      * .dmr.ModelNode, org.jboss.dmr.ModelNode)
@@ -116,7 +119,7 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
     @Override
     protected void populateModel(ModelNode operation, ModelNode model) throws OperationFailedException {
 
-        System.out.println(">>>>>>>>>>> IaasProviderAddHandler.populateModel");
+        log.trace("IaasProviderAddHandler.populateModel");
 
         String driver = "";
         // Read the value from the operation

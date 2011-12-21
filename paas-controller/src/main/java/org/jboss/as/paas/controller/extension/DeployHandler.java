@@ -35,9 +35,9 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
 
     private DeployHandler() {}
 
-    /*
+    /**
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.jboss.as.controller.OperationStepHandler#execute(org.jboss.as.controller
      * .OperationContext, org.jboss.dmr.ModelNode)
@@ -50,7 +50,7 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
 
         log.debug("Executing deploy handle ...");
 
-        PaasProcessor paasProcessor = new PaasProcessor();
+        PaasProcessor paasProcessor = new PaasProcessor(context);
 
         final String filePath = operation.get(ATTRIBUTE_PATH).asString();
         final String provider = operation.get(ATTRIBUTE_PROVIDER).asString();
@@ -84,7 +84,7 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
         String appName = f.getName();
         String serverGroupName = getServerGroupName(appName);
 
-        paasProcessor.addHostToServerGroup(serverGroupName, context, newInstance, provider);
+        paasProcessor.addHostToServerGroup(serverGroupName, newInstance, provider);
 
         jbossDmrActions.deployToServerGroup(f, appName, serverGroupName);
 

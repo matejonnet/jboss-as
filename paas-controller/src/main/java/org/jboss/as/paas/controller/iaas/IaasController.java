@@ -63,6 +63,7 @@ public class IaasController {
         int maxWaitTime = 120000; // 2min
         long started = System.currentTimeMillis();
 
+        log.debug("Waiting instance to boot ...");
         // wait for instance boot up
         while (!instance.isRunning() || instance.getPrivateAddresses().size() == 0) {
             if (instance.isRunning()) {

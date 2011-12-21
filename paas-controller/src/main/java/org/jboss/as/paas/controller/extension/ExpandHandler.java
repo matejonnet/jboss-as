@@ -26,9 +26,6 @@ public class ExpandHandler extends BaseHandler implements OperationStepHandler {
 
     private ExpandHandler() {}
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.controller.OperationStepHandler#execute(org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode)
-     */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
         if (!super.execute(context)) {
@@ -40,18 +37,18 @@ public class ExpandHandler extends BaseHandler implements OperationStepHandler {
         final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
         final String provider = operation.get(ATTRIBUTE_PROVIDER).asString();
         final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() ? operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean() : false;
-//TODO validate required attributes
-//        if(appName == null) {
-//            throw new OperationFormatException("Required argument name are missing.");
-//        }
+        // TODO validate required attributes
+        // if(appName == null) {
+        // throw new
+        // OperationFormatException("Required argument name are missing.");
+        // }
 
-        PaasProcessor paasProcessor = new PaasProcessor();
+        PaasProcessor paasProcessor = new PaasProcessor(context);
 
-        InstanceSlot slot = paasProcessor.getSlot(newInstance, getServerGroupName(appName), context, provider);
+        InstanceSlot slot = paasProcessor.getSlot(newInstance, getServerGroupName(appName), provider);
         compositeDmrActions.addHostToServerGroup(slot, getServerGroupName(appName));
 
         context.completeStep();
     }
-
 
 }

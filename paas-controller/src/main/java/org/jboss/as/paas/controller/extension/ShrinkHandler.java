@@ -22,9 +22,6 @@ public class ShrinkHandler extends BaseHandler implements OperationStepHandler {
 
     private ShrinkHandler() {}
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.controller.OperationStepHandler#execute(org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode)
-     */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
         if (!super.execute(context)) {
@@ -32,18 +29,18 @@ public class ShrinkHandler extends BaseHandler implements OperationStepHandler {
         }
 
         final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
-        //TODO validate required attributes
-        //        if(appName == null) {
-        //            throw new OperationFormatException("Required argument name are missing.");
-        //        }
+        // TODO validate required attributes
+        // if(appName == null) {
+        // throw new
+        // OperationFormatException("Required argument name are missing.");
+        // }
 
-        PaasProcessor paasProcessor = new PaasProcessor();
+        PaasProcessor paasProcessor = new PaasProcessor(context);
 
         String serverGroupName = getServerGroupName(appName);
-        paasProcessor.removeHostFromServerGroup(serverGroupName, context);
+        paasProcessor.removeHostFromServerGroup(serverGroupName);
 
         context.completeStep();
     }
-
 
 }

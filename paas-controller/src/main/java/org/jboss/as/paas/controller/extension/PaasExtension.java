@@ -38,7 +38,6 @@ import org.jboss.staxmapper.XMLElementWriter;
 import org.jboss.staxmapper.XMLExtendedStreamReader;
 import org.jboss.staxmapper.XMLExtendedStreamWriter;
 
-
 /**
  *
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -47,14 +46,15 @@ public class PaasExtension implements Extension {
 
     private static final Logger log = Logger.getLogger(PaasExtension.class);
 
-
     /** The name space used for the {@code substystem} element */
-    //    public static final String NAMESPACE = "urn:org.jboss.as.paas.controller:1.0";
+    // public static final String NAMESPACE =
+    // "urn:org.jboss.as.paas.controller:1.0";
     public static final String NAMESPACE = "urn:jboss:domain:paas-controller:1.0";
 
     /** The name of our subsystem within the model. */
     public static final String SUBSYSTEM_NAME = "paas-controller";
-    //public static final String SUBSYSTEM_NAME = "org.jboss.as.paas.controller";
+    // public static final String SUBSYSTEM_NAME =
+    // "org.jboss.as.paas.controller";
 
     /** The parser used for parsing our subsystem */
     private final SubsystemParser parser = new SubsystemParser();
@@ -67,48 +67,56 @@ public class PaasExtension implements Extension {
     @Override
     public void initialize(ExtensionContext context) {
 
-        System.out.println(">>>>>>>>>>> PaasExtension.initialize");
-        log.debug("PaasExtension.initialize");
+        log.info("Initializing PaasExtension...");
 
-        //TODO register subsysetem outside the profile
-        //custom operations must execute on domain controller only. Now there is an if (isDomainController)
+        // TODO register subsysetem outside the profile
+        // custom operations must execute on domain controller only. Now there
+        // is an if (isDomainController)
         final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME);
         final ManagementResourceRegistration registration = subsystem.registerSubsystemModel(PaasProviders.SUBSYSTEM);
-        //We always need to add an 'add' operation
+        // We always need to add an 'add' operation
         registration.registerOperationHandler(ADD, PaasAddHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
 
-        //add module specific operations
+        // add module specific operations
         registration.registerOperationHandler(ListApplicationsHandler.OPERATION_NAME, ListApplicationsHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
         registration.registerOperationHandler(DeployHandler.OPERATION_NAME, DeployHandler.INSTANCE, DeployHandler.DESC, false);
         registration.registerOperationHandler(UnDeployHandler.OPERATION_NAME, UnDeployHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
         registration.registerOperationHandler(ExpandHandler.OPERATION_NAME, ExpandHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
         registration.registerOperationHandler(ShrinkHandler.OPERATION_NAME, ShrinkHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
 
-        //We always need to add a 'describe' operation
+        // We always need to add a 'describe' operation
         registration.registerOperationHandler(DESCRIBE, PaasDescribeHandler.INSTANCE, PaasDescribeHandler.INSTANCE, false, OperationEntry.EntryType.PRIVATE);
 
-        //Add the provider child
+        // Add the provider child
         ManagementResourceRegistration providerChild = registration.registerSubModel(PathElement.pathElement("provider"), PaasProviders.PROVIDER_CHILD);
         providerChild.registerOperationHandler(ModelDescriptionConstants.ADD, IaasProviderAddHandler.INSTANCE, IaasProviderAddHandler.INSTANCE);
         providerChild.registerOperationHandler(ModelDescriptionConstants.REMOVE, IaasProviderRemoveHandler.INSTANCE, IaasProviderRemoveHandler.INSTANCE);
-        //TODO typeChild.registerReadWriteAttribute("tick", null, TrackerTickHandler.INSTANCE, Storage.CONFIGURATION);
-        //providerChild.registerReadWriteAttribute("driver", null, ProviderDriverHandle.INSTANCE, Storage.CONFIGURATION);
-        //        providerChild.registerReadWriteAttribute("url", null, Storage.CONFIGURATION);
-        //        providerChild.registerReadWriteAttribute("username", null, Storage.CONFIGURATION);
-        //        providerChild.registerReadWriteAttribute("password", null, Storage.CONFIGURATION);
-        //        providerChild.registerReadWriteAttribute("image-id", null, Storage.CONFIGURATION);
+        // TODO typeChild.registerReadWriteAttribute("tick", null,
+        // TrackerTickHandler.INSTANCE, Storage.CONFIGURATION);
+        // providerChild.registerReadWriteAttribute("driver", null,
+        // ProviderDriverHandle.INSTANCE, Storage.CONFIGURATION);
+        // providerChild.registerReadWriteAttribute("url", null,
+        // Storage.CONFIGURATION);
+        // providerChild.registerReadWriteAttribute("username", null,
+        // Storage.CONFIGURATION);
+        // providerChild.registerReadWriteAttribute("password", null,
+        // Storage.CONFIGURATION);
+        // providerChild.registerReadWriteAttribute("image-id", null,
+        // Storage.CONFIGURATION);
 
         ManagementResourceRegistration serverInstanceChild = registration.registerSubModel(PathElement.pathElement("instance"), PaasProviders.INSTANCE_CHILD);
         serverInstanceChild.registerOperationHandler(ModelDescriptionConstants.ADD, ServerInstanceAddHandler.INSTANCE, ServerInstanceAddHandler.INSTANCE);
         serverInstanceChild.registerOperationHandler(ModelDescriptionConstants.REMOVE, ServerInstanceRemoveHandler.INSTANCE, ServerInstanceRemoveHandler.INSTANCE);
 
-        //TODO read only ?
+        // TODO read only ?
         providerChild.registerReadOnlyAttribute("provider", null, Storage.CONFIGURATION);
-        //providerChild.registerReadWriteAttribute("provider", null, InstanceProviderHandle.INSTANCE, Storage.CONFIGURATION);
-
+        // providerChild.registerReadWriteAttribute("provider", null,
+        // InstanceProviderHandle.INSTANCE, Storage.CONFIGURATION);
 
         ManagementResourceRegistration serverGroupChildRegistration = serverInstanceChild.registerSubModel(PathElement.pathElement("server-group"), PaasProviders.SERVER_GROUP_CHILD);
-        //ManagementResourceRegistration serverGroupChild = registration.registerSubModel(PathElement.pathElement("server-group"), PaasProviders.INSTANCE_CHILD);
+        // ManagementResourceRegistration serverGroupChild =
+        // registration.registerSubModel(PathElement.pathElement("server-group"),
+        // PaasProviders.INSTANCE_CHILD);
         serverGroupChildRegistration.registerOperationHandler(ModelDescriptionConstants.ADD, ServerGroupAddHandler.INSTANCE, ServerGroupAddHandler.INSTANCE);
         serverGroupChildRegistration.registerOperationHandler(ModelDescriptionConstants.REMOVE, ServerGroupRemoveHandler.INSTANCE, ServerGroupRemoveHandler.INSTANCE);
 
@@ -133,10 +141,10 @@ public class PaasExtension implements Extension {
             // Require no attributes
             ParseUtils.requireNoAttributes(reader);
 
-            //Add the main subsystem 'add' operation
+            // Add the main subsystem 'add' operation
             list.add(createAddSubsystemOperation());
 
-            //Read the children
+            // Read the children
             while (reader.hasNext() && reader.nextTag() != END_ELEMENT) {
                 if (reader.getLocalName().equals("iaas-providers")) {
                     while (reader.hasNext() && reader.nextTag() != END_ELEMENT) {
@@ -154,7 +162,7 @@ public class PaasExtension implements Extension {
                     throw ParseUtils.unexpectedElement(reader);
                 }
             }
-            //TODO remove: break point holder
+            // TODO remove: break point holder
             System.currentTimeMillis();
         }
 
@@ -170,19 +178,19 @@ public class PaasExtension implements Extension {
             String iaasPassword = null;
             String iaasImageId = null;
 
-            for (int i = 0 ; i < reader.getAttributeCount() ; i++) {
+            for (int i = 0; i < reader.getAttributeCount(); i++) {
                 String attr = reader.getAttributeLocalName(i);
-                if (attr.equals("provider")){
+                if (attr.equals("provider")) {
                     provider = reader.getAttributeValue(i);
-                } else if (attr.equals("driver")){
+                } else if (attr.equals("driver")) {
                     iaasDriver = reader.getAttributeValue(i);
-                } else if (attr.equals("url")){
+                } else if (attr.equals("url")) {
                     iaasUrl = reader.getAttributeValue(i);
-                } else if (attr.equals("username")){
+                } else if (attr.equals("username")) {
                     iaasUsername = reader.getAttributeValue(i);
-                } else if (attr.equals("password")){
+                } else if (attr.equals("password")) {
                     iaasPassword = reader.getAttributeValue(i);
-                } else if (attr.equals("image-id")){
+                } else if (attr.equals("image-id")) {
                     iaasImageId = reader.getAttributeValue(i);
                 } else {
                     throw ParseUtils.unexpectedAttribute(reader, i);
@@ -193,7 +201,7 @@ public class PaasExtension implements Extension {
                 throw ParseUtils.missingRequiredElement(reader, Collections.singleton("provider"));
             }
 
-            //Add the 'add' operation for each 'type' child
+            // Add the 'add' operation for each 'type' child
             ModelNode addType = new ModelNode();
             addType.get(OP).set(ModelDescriptionConstants.ADD);
             PathAddress addr = PathAddress.pathAddress(PathElement.pathElement(SUBSYSTEM, SUBSYSTEM_NAME), PathElement.pathElement("provider", provider));
@@ -222,13 +230,13 @@ public class PaasExtension implements Extension {
             String provider = null;
             String ip = null;
 
-            for (int i = 0 ; i < reader.getAttributeCount() ; i++) {
+            for (int i = 0; i < reader.getAttributeCount(); i++) {
                 String attr = reader.getAttributeLocalName(i);
-                if (attr.equals("id")){
+                if (attr.equals("id")) {
                     id = reader.getAttributeValue(i);
-                } else if (attr.equals("provider")){
+                } else if (attr.equals("provider")) {
                     provider = reader.getAttributeValue(i);
-                } else if (attr.equals("ip")){
+                } else if (attr.equals("ip")) {
                     ip = reader.getAttributeValue(i);
                 } else {
                     throw ParseUtils.unexpectedAttribute(reader, i);
@@ -239,7 +247,7 @@ public class PaasExtension implements Extension {
                 throw ParseUtils.missingRequiredElement(reader, Collections.singleton("id"));
             }
 
-            //Add the 'add' operation for each 'type' child
+            // Add the 'add' operation for each 'type' child
             ModelNode addType = new ModelNode();
             addType.get(OP).set(ModelDescriptionConstants.ADD);
             PathAddress addr = PathAddress.pathAddress(PathElement.pathElement(SUBSYSTEM, SUBSYSTEM_NAME), PathElement.pathElement("instance", id));
@@ -262,7 +270,6 @@ public class PaasExtension implements Extension {
             }
         }
 
-
         /**
          * @param reader
          * @param serverGroups
@@ -276,11 +283,11 @@ public class PaasExtension implements Extension {
             String name = null;
             String position = null;
 
-            for (int i = 0 ; i < reader.getAttributeCount() ; i++) {
+            for (int i = 0; i < reader.getAttributeCount(); i++) {
                 String attr = reader.getAttributeLocalName(i);
-                if (attr.equals("name")){
+                if (attr.equals("name")) {
                     name = reader.getAttributeValue(i);
-                } else if (attr.equals("position")){
+                } else if (attr.equals("position")) {
                     position = reader.getAttributeValue(i);
                 } else {
                     throw ParseUtils.unexpectedAttribute(reader, i);
@@ -297,10 +304,7 @@ public class PaasExtension implements Extension {
 
             ModelNode addType = new ModelNode();
             addType.get(OP).set(ModelDescriptionConstants.ADD);
-            PathAddress addr = PathAddress.pathAddress(
-                    PathElement.pathElement(SUBSYSTEM, SUBSYSTEM_NAME),
-                    PathElement.pathElement("instance", instanceId),
-                    PathElement.pathElement("server-group", name));
+            PathAddress addr = PathAddress.pathAddress(PathElement.pathElement(SUBSYSTEM, SUBSYSTEM_NAME), PathElement.pathElement("instance", instanceId), PathElement.pathElement("server-group", name));
             addType.get(OP_ADDR).set(addr.toModelNode());
 
             if (position != null)
@@ -309,18 +313,17 @@ public class PaasExtension implements Extension {
             list.add(addType);
         }
 
-
         /** {@inheritDoc} */
         @Override
         public void writeContent(final XMLExtendedStreamWriter writer, final SubsystemMarshallingContext context) throws XMLStreamException {
-            //Write out the main subsystem element
+            // Write out the main subsystem element
             context.startSubsystemElement(PaasExtension.NAMESPACE, false);
 
             writer.writeStartElement("iaas-providers");
             ModelNode node = context.getModelNode();
             ModelNode iaasProvider = node.get("provider");
             for (Property property : iaasProvider.asPropertyList()) {
-                //write each child element to xml
+                // write each child element to xml
                 writer.writeStartElement("iaas-provider");
                 writer.writeAttribute("provider", property.getName());
                 ModelNode entry = property.getValue();
@@ -341,13 +344,13 @@ public class PaasExtension implements Extension {
                 }
                 writer.writeEndElement();
             }
-            //End providers
+            // End providers
             writer.writeEndElement();
 
             writer.writeStartElement("instances");
             ModelNode instance = node.get("instance");
             for (Property property : instance.asPropertyList()) {
-                //write each child element to xml
+                // write each child element to xml
                 writer.writeStartElement("instance");
                 writer.writeAttribute("id", property.getName());
                 ModelNode entry = property.getValue();
@@ -360,23 +363,23 @@ public class PaasExtension implements Extension {
 
                 ModelNode serverGroups = entry.get("server-group");
                 if (serverGroups.isDefined())
-                for (Property serverGroup : serverGroups.asPropertyList()) {
-                    //write each child element to xml
-                    writer.writeStartElement("server-group");
-                    writer.writeAttribute("name", serverGroup.getName());
-                    ModelNode sgEntry = serverGroup.getValue();
-                    if (sgEntry.hasDefined("position")) {
-                        writer.writeAttribute("position", sgEntry.get("position").asString());
+                    for (Property serverGroup : serverGroups.asPropertyList()) {
+                        // write each child element to xml
+                        writer.writeStartElement("server-group");
+                        writer.writeAttribute("name", serverGroup.getName());
+                        ModelNode sgEntry = serverGroup.getValue();
+                        if (sgEntry.hasDefined("position")) {
+                            writer.writeAttribute("position", sgEntry.get("position").asString());
+                        }
+                        writer.writeEndElement();
                     }
-                    writer.writeEndElement();
-                }
-                //End instance
+                // End instance
                 writer.writeEndElement();
             }
-            //End instances
+            // End instances
             writer.writeEndElement();
 
-            //End subsystem
+            // End subsystem
             writer.writeEndElement();
         }
     }
@@ -389,7 +392,7 @@ public class PaasExtension implements Extension {
     private static class PaasDescribeHandler implements OperationStepHandler, DescriptionProvider {
         static final PaasDescribeHandler INSTANCE = new PaasDescribeHandler();
 
-        //TODO
+        // TODO
         @Override
         public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
             context.getResult().add(createAddSubsystemOperation());

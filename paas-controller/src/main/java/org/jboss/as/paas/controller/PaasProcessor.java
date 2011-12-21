@@ -23,6 +23,15 @@ public class PaasProcessor {
 
     private static final Logger log = Logger.getLogger(PaasProcessor.class);
 
+    OperationContext context;
+
+    /**
+     *
+     */
+    public PaasProcessor(OperationContext context) {
+        this.context = context;
+    }
+
     /**
      * loop throught instances which doesn't serve this group jet
      * return null if none available
@@ -32,7 +41,7 @@ public class PaasProcessor {
      *
      * @return
      */
-    private InstanceSlot getFreeSlot(String group, OperationContext context, String createOnProvider) {
+    private InstanceSlot getFreeSlot(String group, String createOnProvider) {
 
         PaasDmrActions paasDmrActions = new PaasDmrActions(context);
 
@@ -94,7 +103,7 @@ public class PaasProcessor {
      * @param appName
      * @return
      */
-    public InstanceSlot getSlot(boolean newInstance, String serverGroupName, OperationContext context, String provider) {
+    public InstanceSlot getSlot(boolean newInstance, String serverGroupName, String provider) {
         boolean newInstanceRequired;
         if (newInstance) {
             newInstanceRequired = true;
@@ -104,7 +113,7 @@ public class PaasProcessor {
 
         InstanceSlot slot = null;
         if (!newInstanceRequired) {
-            slot = getFreeSlot(serverGroupName, context, provider);
+            slot = getFreeSlot(serverGroupName, provider);
         }
 
         if (slot == null) {
@@ -112,7 +121,7 @@ public class PaasProcessor {
         }
 
         if (newInstanceRequired) {
-            slot = addNewServerInstanceToDomain(provider, context);
+            slot = addNewServerInstanceToDomain(provider);
         }
 
         return slot;
@@ -125,17 +134,17 @@ public class PaasProcessor {
      * @param newInstance
      * @param provider
      */
-    public void addHostToServerGroup(String serverGroupName, OperationContext context, boolean newInstance, String provider) {
+    public void addHostToServerGroup(String serverGroupName, boolean newInstance, String provider) {
+
+        InstanceSlot slot = getSlot(newInstance, serverGroupName, provider);
+
         JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
         CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
-
         jbossDmrActions.createServerGroup(serverGroupName);
-        InstanceSlot slot = getSlot(newInstance, serverGroupName, context, provider);
-
         compositeDmrActions.addHostToServerGroup(slot, serverGroupName);
     }
 
-    public void removeHostFromServerGroup(String serverGroupName, OperationContext context) {
+    public void removeHostFromServerGroup(String serverGroupName) {
         CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
 
         try {
@@ -156,15 +165,14 @@ public class PaasProcessor {
      * @return
      *
      */
-    private InstanceSlot addNewServerInstanceToDomain(String provider, OperationContext context) {
+    private InstanceSlot addNewServerInstanceToDomain(String provider) {
         try {
             // TODO update config instances/instance
             String instanceId = IaasController.getInstance().createNewInstance(provider);
             String hostIp = IaasController.getInstance().getInstanceIp(provider, instanceId);
 
-            context.completeStep();
-
-            waitNewHostToRegisterToDC(hostIp, context);
+            log.debugf("Waiting %s to register.", hostIp);
+            waitNewHostToRegisterToDC(hostIp);
 
             // TODO uncomment to replace external configurator
             // ControllerClient cc = new ControllerClient(username, password,
@@ -183,7 +191,7 @@ public class PaasProcessor {
      * @param hostIp
      *
      */
-    private void waitNewHostToRegisterToDC(String hostIp, OperationContext context) {
+    private void waitNewHostToRegisterToDC(String hostIp) {
         // TODO make configurable
         int maxWaitTime = 30000; // 30sec
         long started = System.currentTimeMillis();
