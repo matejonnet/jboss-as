@@ -31,32 +31,26 @@ public interface IaasInstance {
             return new IaasInstanceJCloudWrapper(instance);
         }
 
-
-
     }
 
     /**
      * @return
      */
-    public List<String> getPublicAddresses();
-
-
-    /**
-     * @return
-     */
-    public boolean isRunning();
-
+    List<String> getPublicAddresses();
 
     /**
      * @return
      */
-    public String getId();
-
+    boolean isRunning();
 
     /**
      * @return
      */
-    public List<String> getPrivateAddresses();
+    String getId();
 
+    /**
+     * @return
+     */
+    List<String> getPrivateAddresses();
 
 }

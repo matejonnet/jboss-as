@@ -26,18 +26,21 @@ import org.jboss.logging.Logger;
 public class DeployHandler extends BaseHandler implements OperationStepHandler {
     public static final DeployHandler INSTANCE = new DeployHandler();
     public static final String OPERATION_NAME = "deploy";
-    //TODO rename attribute to PROPERTY
+    // TODO rename attribute to PROPERTY
     private static final String ATTRIBUTE_PATH = "path";
     private static final String ATTRIBUTE_PROVIDER = "provider";
     private static final String ATTRIBUTE_NEW_INSTANCE = "new-instance";
 
     private final Logger log = Logger.getLogger(DeployHandler.class);
 
-
     private DeployHandler() {}
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.controller.OperationStepHandler#execute(org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode)
+    /*
+     * (non-Javadoc)
+     * 
+     * @see
+     * org.jboss.as.controller.OperationStepHandler#execute(org.jboss.as.controller
+     * .OperationContext, org.jboss.dmr.ModelNode)
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
@@ -45,33 +48,32 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
             return;
         }
 
-        PaasProcessor paasProcessor = new PaasProcessor();
+        log.debug("Executing deploy handle ...");
 
-        System.out.println(">>>>>>>>> DeployHandle.execute: continue ... ");
+        PaasProcessor paasProcessor = new PaasProcessor();
 
         final String filePath = operation.get(ATTRIBUTE_PATH).asString();
         final String provider = operation.get(ATTRIBUTE_PROVIDER).asString();
         final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() ? operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean() : false;
 
-
-        //TODO validate required attributes
+        // TODO validate required attributes
 
         final File f;
-        if(filePath != null) {
+        if (filePath != null) {
             f = new File(filePath);
-            if(!f.exists()) {
+            if (!f.exists()) {
                 String message = "Path " + f.getAbsolutePath() + " doesn't exist. File must be located on localhost.";
                 context.getResult().add(message);
                 log.warn(message);
-                //TODO remove
+                // TODO remove
                 System.out.println(message);
                 return;
             }
-            if(f.isDirectory()) {
+            if (f.isDirectory()) {
                 String message = f.getAbsolutePath() + " is a directory.";
                 context.getResult().add(message);
                 log.warn(message);
-                //TODO remove
+                // TODO remove
                 System.out.println(message);
                 return;
             }
@@ -113,14 +115,6 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
 
             return node;
         }
-     };
-
-
-
-
-
-
-
-
+    };
 
 }

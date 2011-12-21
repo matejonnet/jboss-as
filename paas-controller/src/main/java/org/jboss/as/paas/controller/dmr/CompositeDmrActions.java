@@ -71,7 +71,7 @@ public class CompositeDmrActions extends DmrActions {
      *
      */
     public void removeHostsFromServerGroup(String groupName, boolean removeFromAll) throws Exception {
-        Map<InstanceSlot,Integer> slotsToRemove = new HashMap<InstanceSlot,Integer>();
+        Map<InstanceSlot, Integer> slotsToRemove = new HashMap<InstanceSlot, Integer>();
 
         outer:
         for (ResourceEntry instance : paasDmrActions.getInstances()) {
@@ -79,14 +79,14 @@ public class CompositeDmrActions extends DmrActions {
             for (ResourceEntry serverGroup : serverGroups) {
                 if (groupName.equals(serverGroup.getName())) {
                     String providerName = instance.getModel().get("provider").asString();
-                    String hostIP = IaasController.getInstanceIp(providerName , instance.getName());
+                    String hostIP = IaasController.getInstance().getInstanceIp(providerName, instance.getName());
                     int slotPosition = serverGroup.getModel().get("position").asInt();
 
                     InstanceSlot slot = new InstanceSlot(hostIP, slotPosition, instance.getName());
                     removeHostFromServerGroup(groupName, slot);
                     int slotsInOwningGroup = serverGroups.size();
                     if (slotsInOwningGroup < 2) {
-                        IaasController.terminateInstance(providerName, slot.getInstanceId());
+                        IaasController.getInstance().terminateInstance(providerName, slot.getInstanceId());
                     }
                     if (!removeFromAll) {
                         break outer;

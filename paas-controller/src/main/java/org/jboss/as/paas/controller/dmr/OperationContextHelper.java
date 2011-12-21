@@ -9,6 +9,8 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
+import org.jboss.as.controller.ProcessType;
+import org.jboss.as.controller.RunningMode;
 import org.jboss.as.controller.client.MessageSeverity;
 import org.jboss.as.controller.client.Operation;
 import org.jboss.as.controller.registry.ImmutableManagementResourceRegistration;
@@ -265,6 +267,27 @@ public class OperationContextHelper {
             @Override
             public ModelNode resolveExpressions(ModelNode node) throws OperationFailedException {
                 return context.resolveExpressions(node);
+            }
+
+            @Override
+            public void addStep(OperationStepHandler step, Stage stage, boolean addFirst) throws IllegalArgumentException {
+                context.addStep(step, stage, addFirst);
+
+            }
+
+            @Override
+            public void addStep(ModelNode response, ModelNode operation, OperationStepHandler step, Stage stage, boolean addFirst) throws IllegalArgumentException {
+                context.addStep(response, operation, step, stage, addFirst);
+            }
+
+            @Override
+            public ProcessType getProcessType() {
+                return context.getProcessType();
+            }
+
+            @Override
+            public RunningMode getRunningMode() {
+                return context.getRunningMode();
             }
         };
     }

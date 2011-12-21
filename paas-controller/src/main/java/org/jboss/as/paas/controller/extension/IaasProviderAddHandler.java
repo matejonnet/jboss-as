@@ -40,15 +40,16 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         System.out.println(">>>>>>>>>>> IaasProviderAddHandler constructed.");
     }
 
-
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
         System.out.println(">>>>>>>>>>>>>> IaasProviderAddHandler.execute");
         super.execute(context, operation);
 
-        //<iaas-provider provider="myprovider" driver="mock" url="http://localhost:3001/api" username="mockuser" password="mockpassword" image-id="i-12345"/>
+        // <iaas-provider provider="myprovider" driver="mock"
+        // url="http://localhost:3001/api" username="mockuser"
+        // password="mockpassword" image-id="i-12345"/>
 
-        //String providerName = operation.get(ATTRIBUTE_PROVIDER).asString();
+        // String providerName = operation.get(ATTRIBUTE_PROVIDER).asString();
         String providerName = PathAddress.pathAddress(operation.get(ModelDescriptionConstants.ADDRESS)).getLastElement().getValue();
         String driver = operation.get(ATTRIBUTE_DRIVER).asString();
         String url = operation.get(ATTRIBUTE_URL).asString();
@@ -57,7 +58,7 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         String imageId = operation.get(ATTRIBUTE_IMAGE_ID).asString();
 
         try {
-            IaasController.addProvider(providerName, driver, url, username, password, imageId, context);
+            IaasController.getInstance().addProvider(providerName, driver, url, username, password, imageId, context);
         } catch (MalformedURLException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
@@ -68,8 +69,12 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
 
     }
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.controller.descriptions.DescriptionProvider#getModelDescription(java.util.Locale)
+    /*
+     * (non-Javadoc)
+     * 
+     * @see
+     * org.jboss.as.controller.descriptions.DescriptionProvider#getModelDescription
+     * (java.util.Locale)
      */
     @Override
     public ModelNode getModelDescription(Locale locale) {
@@ -101,8 +106,12 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         return node;
     }
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.controller.AbstractAddStepHandler#populateModel(org.jboss.dmr.ModelNode, org.jboss.dmr.ModelNode)
+    /*
+     * (non-Javadoc)
+     * 
+     * @see
+     * org.jboss.as.controller.AbstractAddStepHandler#populateModel(org.jboss
+     * .dmr.ModelNode, org.jboss.dmr.ModelNode)
      */
     @Override
     protected void populateModel(ModelNode operation, ModelNode model) throws OperationFailedException {
@@ -110,7 +119,7 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         System.out.println(">>>>>>>>>>> IaasProviderAddHandler.populateModel");
 
         String driver = "";
-        //Read the value from the operation
+        // Read the value from the operation
         if (operation.hasDefined(ATTRIBUTE_DRIVER)) {
             driver = operation.get(ATTRIBUTE_DRIVER).asString();
         }
@@ -142,28 +151,35 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
 
     }
 
-
-//
-//    /* (non-Javadoc)
-//     * @see org.jboss.as.controller.AbstractAddStepHandler#performRuntime(org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode, org.jboss.dmr.ModelNode, org.jboss.as.controller.ServiceVerificationHandler, java.util.List)
-//     */
-//    @Override
-//    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) throws OperationFailedException {
-//        System.out.println(">>>>>>>>>>>>>> IaasProviderAddHandler.performRuntime");
-//        // TODO Auto-generated method stub
-//        //super.performRuntime(context, operation, model, verificationHandler, newControllers);
-//        String provider = PathAddress.pathAddress(operation.get(ModelDescriptionConstants.ADDRESS)).getLastElement().getValue();
-//        //TODO add all parameters
-//        PaasService service = new PaasService(provider, model.get("driver").asString());
-//        ServiceName name = PaasService.createServiceName(provider);
-//        ServiceController<PaasService> controller = context.getServiceTarget()
-//                .addService(name, service)
-//                .addListener(verificationHandler)
-//                .setInitialMode(ServiceController.Mode.ACTIVE)
-//                .install();
-//        newControllers.add(controller);
-//
-//    }
-
+    //
+    // /* (non-Javadoc)
+    // * @see
+    // org.jboss.as.controller.AbstractAddStepHandler#performRuntime(org.jboss.as.controller.OperationContext,
+    // org.jboss.dmr.ModelNode, org.jboss.dmr.ModelNode,
+    // org.jboss.as.controller.ServiceVerificationHandler, java.util.List)
+    // */
+    // @Override
+    // protected void performRuntime(OperationContext context, ModelNode
+    // operation, ModelNode model, ServiceVerificationHandler
+    // verificationHandler, List<ServiceController<?>> newControllers) throws
+    // OperationFailedException {
+    // System.out.println(">>>>>>>>>>>>>> IaasProviderAddHandler.performRuntime");
+    // // TODO Auto-generated method stub
+    // //super.performRuntime(context, operation, model, verificationHandler,
+    // newControllers);
+    // String provider =
+    // PathAddress.pathAddress(operation.get(ModelDescriptionConstants.ADDRESS)).getLastElement().getValue();
+    // //TODO add all parameters
+    // PaasService service = new PaasService(provider,
+    // model.get("driver").asString());
+    // ServiceName name = PaasService.createServiceName(provider);
+    // ServiceController<PaasService> controller = context.getServiceTarget()
+    // .addService(name, service)
+    // .addListener(verificationHandler)
+    // .setInitialMode(ServiceController.Mode.ACTIVE)
+    // .install();
+    // newControllers.add(controller);
+    //
+    // }
 
 }

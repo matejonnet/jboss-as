@@ -18,7 +18,7 @@ import org.jboss.logging.Logger;
  */
 public class PaasProcessor {
 
-    //TODO make configurable per provider
+    // TODO make configurable per provider
     public static final int MAX_AS_PER_HOST = 3;
 
     private static final Logger log = Logger.getLogger(PaasProcessor.class);
@@ -39,7 +39,7 @@ public class PaasProcessor {
         for (ResourceEntry instance : paasDmrActions.getInstances()) {
             boolean hasFreeSlot = true;
             String providerName = instance.getModel().get("provider").asString();
-            //if defined createOnProvider, allow only defined provider
+            // if defined createOnProvider, allow only defined provider
             if (createOnProvider != null && !createOnProvider.equals(providerName)) {
                 continue;
             }
@@ -49,28 +49,31 @@ public class PaasProcessor {
             Set<ResourceEntry> serverGroups = instance.getChildren("server-group");
 
             if (serverGroups.size() > MAX_AS_PER_HOST) {
-                hasFreeSlot=false;
+                hasFreeSlot = false;
             }
 
-            //ResourceEntry iaasProvider = Util.getIaasProvider(context, providerName);
-           // String iaasDriver = iaasProvider.getModel().get("driver").asString();
+            // ResourceEntry iaasProvider = Util.getIaasProvider(context,
+            // providerName);
+            // String iaasDriver =
+            // iaasProvider.getModel().get("driver").asString();
 
             if (hasFreeSlot)
-            for (ResourceEntry serverGroup : serverGroups) {
-                //if server group is already on this instance don't allow another
-                if (group.equals(serverGroup.getName())) {
-                    hasFreeSlot=false;
+                for (ResourceEntry serverGroup : serverGroups) {
+                    // if server group is already on this instance don't allow
+                    // another
+                    if (group.equals(serverGroup.getName())) {
+                        hasFreeSlot = false;
+                    }
+                    usedPositions.add(serverGroup.getModel().get("position").asInt());
                 }
-                usedPositions.add(serverGroup.getModel().get("position").asInt());
-            }
 
             if (hasFreeSlot) {
-                //find first free slot
-                for (int i = 0; i < MAX_AS_PER_HOST ; i++) {
+                // find first free slot
+                for (int i = 0; i < MAX_AS_PER_HOST; i++) {
                     if (!usedPositions.contains(i)) {
                         String hostIP = null;
                         try {
-                            hostIP = IaasController.getInstanceIp(providerName, instance.getName());
+                            hostIP = IaasController.getInstance().getInstanceIp(providerName, instance.getName());
                         } catch (Exception e) {
                             // TODO Auto-generated catch block
                             e.printStackTrace();
@@ -109,7 +112,7 @@ public class PaasProcessor {
         }
 
         if (newInstanceRequired) {
-           slot = addNewServerInstanceToDomain(provider, context);
+            slot = addNewServerInstanceToDomain(provider, context);
         }
 
         return slot;
@@ -138,7 +141,7 @@ public class PaasProcessor {
         try {
             compositeDmrActions.removeHostsFromServerGroup(serverGroupName, false);
         } catch (Exception e) {
-            //TODO throw new OperationFailedException(e);
+            // TODO throw new OperationFailedException(e);
             e.printStackTrace();
         }
 
@@ -149,21 +152,25 @@ public class PaasProcessor {
      * - join it to domain controller
      * - associate it with server group
      * - start the server instance
+     *
      * @return
      *
      */
     private InstanceSlot addNewServerInstanceToDomain(String provider, OperationContext context) {
         try {
-            //TODO update config instances/instance
-            String instanceId = IaasController.createNewInstance(provider);
-            String hostIp = IaasController.getInstanceIp(provider, instanceId);
+            // TODO update config instances/instance
+            String instanceId = IaasController.getInstance().createNewInstance(provider);
+            String hostIp = IaasController.getInstance().getInstanceIp(provider, instanceId);
+
+            context.completeStep();
 
             waitNewHostToRegisterToDC(hostIp, context);
 
-            //TODO uncomment to replace external configurator
-            //ControllerClient cc = new ControllerClient(username, password, hostIp);
-            //ModelControllerClient client = cc.getClient();
-            //addHostToDomain(hostIp, client);
+            // TODO uncomment to replace external configurator
+            // ControllerClient cc = new ControllerClient(username, password,
+            // hostIp);
+            // ModelControllerClient client = cc.getClient();
+            // addHostToDomain(hostIp, client);
             return new InstanceSlot(hostIp, 0, instanceId);
         } catch (Exception e) {
             // TODO Auto-generated catch block
@@ -177,28 +184,27 @@ public class PaasProcessor {
      *
      */
     private void waitNewHostToRegisterToDC(String hostIp, OperationContext context) {
-        //TODO make configurable
-        int maxWaitTime = 30000; //30sec
+        // TODO make configurable
+        int maxWaitTime = 30000; // 30sec
         long started = System.currentTimeMillis();
 
-        //wait remote as to register
+        // wait remote as to register
         while (true) {
             boolean registred = false;
 
             try {
-                //try to navigate to host, to see if it is already registered
+                // try to navigate to host, to see if it is already registered
                 JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
                 jbossDmrActions.navigateToHostName(hostIp);
                 registred = true;
-            } catch (NoSuchElementException e) {
-            }
+            } catch (NoSuchElementException e) {}
 
             if (registred) {
                 break;
             }
 
             if (System.currentTimeMillis() - started > maxWaitTime) {
-                throw new RuntimeException("Instance hasn't registred in " + maxWaitTime / 1000 + " seconds.");
+                throw new RuntimeException("Instance hasn't registered in " + maxWaitTime / 1000 + " seconds.");
             }
             try {
                 log.debug("Waiting remote as to register. Going to sleep for 1000.");

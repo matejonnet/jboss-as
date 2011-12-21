@@ -25,14 +25,13 @@ public interface IaasDriver {
      */
     IaasInstance createInstance(String imageId);
 
-
     /**
      * @param instanceId
      * @return
      */
     boolean terminateInstance(String instanceId);
 
-    public void close();
+    void close();
 
     public class Factory {
 
@@ -48,11 +47,11 @@ public interface IaasDriver {
             } else if ("vm".equals(driverName)) {
                 driver = new VmIaasDriver(iaasProvider.getContext());
             } else if (driverName.startsWith("jcloud-")) {
-                //TODO validate required params
+                // TODO validate required params
                 String provider = driverName.split("-")[1];
-                driver = new JCloudIaasDriver(provider , iaasProvider.getUrl(), iaasProvider.getUsername(), iaasProvider.getPassword());
+                driver = new JCloudIaasDriver(provider, iaasProvider.getUrl(), iaasProvider.getUsername(), iaasProvider.getPassword());
             } else if (driverName.startsWith("delta-")) {
-                //TODO validate required params
+                // TODO validate required params
                 try {
                     driver = new DeltacloudIaasDriver(iaasProvider.getUrl(), iaasProvider.getUsername(), iaasProvider.getPassword());
                 } catch (MalformedURLException e) {
@@ -67,7 +66,7 @@ public interface IaasDriver {
             }
 
             if (driver == null) {
-                //TODO
+                // TODO
             }
             return driver;
         }

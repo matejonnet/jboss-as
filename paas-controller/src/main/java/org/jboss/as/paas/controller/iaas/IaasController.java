@@ -20,9 +20,17 @@ public class IaasController {
     private static final Logger log = Logger.getLogger(IaasController.class);
 
     private static final IaasController INSTANCE = new IaasController();
-    private Map<String, IaasProvider> providers = new HashMap<String, IaasProvider>();
+    private final Map<String, IaasProvider> providers = new HashMap<String, IaasProvider>();
 
-    public static void addProvider(String name, String driver, String url, String user, String password, String imageId, OperationContext context) throws MalformedURLException, DeltaCloudClientException {
+    private IaasController() {
+        // hide public constructor
+    }
+
+    public static IaasController getInstance() {
+        return INSTANCE;
+    }
+
+    public void addProvider(String name, String driver, String url, String user, String password, String imageId, OperationContext context) throws MalformedURLException, DeltaCloudClientException {
         IaasProvider provier;
         if ("vm".equals(driver)) {
             provier = new IaasProvider(name, driver, context);
@@ -37,23 +45,25 @@ public class IaasController {
      * @return
      * @throws Exception
      */
-    public static String createNewInstance(String providerName) throws Exception {
+    public String createNewInstance(String providerName) throws Exception {
         IaasProvider provider = INSTANCE.getProvider(providerName);
         return createNewInstance(provider).getId();
     }
 
-    public static IaasInstance createNewInstance(IaasProvider provider) throws Exception {
+    public IaasInstance createNewInstance(IaasProvider provider) throws Exception {
         log.infof("Creating new server instance using %s provider", provider.getName());
 
-        //TODO create new thread to create new server instance and add deployment jobs to queue ?? can domain controller handle this without sleep ?
+        // TODO create new thread to create new server instance and add
+        // deployment jobs to queue ?? can domain controller handle this without
+        // sleep ?
 
         IaasInstance instance = provider.createInstance();
 
-        //TODO make configurable
-        int maxWaitTime = 120000; //2min
+        // TODO make configurable
+        int maxWaitTime = 120000; // 2min
         long started = System.currentTimeMillis();
 
-        //wait for instance boot up
+        // wait for instance boot up
         while (!instance.isRunning() || instance.getPrivateAddresses().size() == 0) {
             if (instance.isRunning()) {
                 instance = provider.reloadInstanceMeta(instance);
@@ -73,11 +83,12 @@ public class IaasController {
 
         String newInstanceIp = instance.getPrivateAddresses().get(0);
 
-        //TODO pass for management interface
-        //Add password for remote server
-        //AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
-        //clusterPaasMngmt.addRemoteServer(newInstanceIp);
-        //uncommetn also in terminateInstance
+        // TODO pass for management interface
+        // Add password for remote server
+        // AsClusterPassManagement clusterPaasMngmt = new
+        // AsClusterPassManagement();
+        // clusterPaasMngmt.addRemoteServer(newInstanceIp);
+        // uncommetn also in terminateInstance
 
         configureInstance(newInstanceIp);
 
@@ -86,9 +97,8 @@ public class IaasController {
 
     /**
      * @param remoteIp
-     *
      */
-    private static void configureInstance(String remoteIp) {
+    private void configureInstance(String remoteIp) {
         new RemoteConfigurator().reconfigureRemote(remoteIp);
     }
 
@@ -98,18 +108,18 @@ public class IaasController {
      * @throws Exception
      * @throws DeltaCloudClientException
      */
-    public static boolean terminateInstance(String providerName, String instanceId) throws DeltaCloudClientException, Exception {
+    public boolean terminateInstance(String providerName, String instanceId) throws Exception {
         IaasProvider provider = INSTANCE.getProvider(providerName);
 
         String hostIp = provider.getPrivateAddresses(instanceId).get(0);
 
-        //TODO pass for management interface
-        //AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
-        //clusterPaasMngmt.removeRemoteSerer(hostIp);
+        // TODO pass for management interface
+        // AsClusterPassManagement clusterPaasMngmt = new
+        // AsClusterPassManagement();
+        // clusterPaasMngmt.removeRemoteSerer(hostIp);
 
         return provider.terminateInstance(instanceId);
     }
-
 
     /**
      * @param providerName
@@ -124,7 +134,7 @@ public class IaasController {
      * @return
      * @throws Exception
      */
-    public static String getInstanceIp(String providerName, String instanceId) throws Exception {
+    public String getInstanceIp(String providerName, String instanceId) throws Exception {
         return INSTANCE.getProvider(providerName).getPublicAddresses(instanceId).get(0);
     }
 

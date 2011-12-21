@@ -8,6 +8,11 @@
 # /opt/jboss-as/jboss-as-7/bin/bootstrap-jboss-as7-paas.sh
 
 #root@ubuntu:~# chmod +x /opt/jboss-as/jboss-as-7/bin/bootstrap-jboss-as7-paas.sh
+#root@ubuntu:~# chmod +x /opt/jboss-as/jboss-as-7/bin/bootstrap-jboss-as7-paas.sh
+#root@ubuntu:~# chmod +x /opt/jboss-as/jboss-as-7/bin/domain.sh
+#root@ubuntu:~# chmod +x /opt/jboss-as/jboss-as-7/bin/jboss-admin.sh
+#root@ubuntu:~# chmod +x /opt/jboss-as/jboss-as-7/bin/startjboss.sh
+
 
 
 #//TODO move all configuration to jboss-configurator.jar ?

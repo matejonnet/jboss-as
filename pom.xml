@@ -63,12 +63,12 @@
         <maven.compiler.source>1.6</maven.compiler.source>
         <maven.compiler.target>1.6</maven.compiler.target>
 
-        <!-- 
+        <!--
             Dependency versions. Please keep alphabetical.
-            
+
             Each version property should be of the form "version.<groupId>".
             For example: <version.org.jboss.as>
-            
+
             In cases where multiple artifacts use the same groupId but have different
             versions, add the artifactId or other qualifier to the property name.
             For example: <version.org.jboss.as.console>
@@ -400,7 +400,6 @@
                                             <exclude>biz.aQute:bnd</exclude>
                                             <exclude>com.fasterxml:classmate</exclude>
                                             <exclude>com.google.gwt.inject:gin</exclude>
-                                            <exclude>com.google.inject:guice</exclude>
                                             <exclude>com.gwtplatform:gwtp-all</exclude>
                                             <exclude>commons-httpclient:commons-httpclient</exclude>
                                             <exclude>commons-logging:commons-logging</exclude>
