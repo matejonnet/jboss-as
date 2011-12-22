@@ -55,11 +55,15 @@ public class LoggingSubsystemTestCase extends AbstractSubsystemBaseTest {
             }
         };
     }
+//
+//
+//    //TODO AS7-2421 remove this
+//    protected boolean testRemoval() {
+//        return false;
+//    }
 
-
-    //TODO AS7-2421 remove this
-    protected boolean testRemoval() {
-        return false;
+    @Override
+    protected void compareXml(String configId, String original, String marshalled) throws Exception {
+        super.compareXml(configId, original, marshalled, true);
     }
-
 }

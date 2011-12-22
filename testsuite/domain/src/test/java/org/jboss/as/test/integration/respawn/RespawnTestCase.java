@@ -76,10 +76,9 @@ import org.xnio.IoUtils;
  *
  * @author <a href="mailto:kabir.khan@jboss.com">Kabir Khan</a>
  */
-@Ignore("AS7-3093")
 public class RespawnTestCase {
 
-    private static final int TIMEOUT = 15000;
+    private static final int TIMEOUT = 30000;
     private static final String HOST_CONTROLLER = "host-controller";
     private static final String PROCESS_CONTROLLER = "process";
     private static final String SERVER_ONE = "respawn-one";

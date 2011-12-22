@@ -26,6 +26,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CHILDREN;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIPTION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HEAD_COMMENT_ALLOWED;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.LDAP_CONNECTION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MANAGEMENT_INTERFACE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MIN_OCCURS;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MODEL_DESCRIPTION;
@@ -38,6 +39,8 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TAI
 import java.util.Locale;
 import java.util.ResourceBundle;
 
+import org.jboss.as.controller.descriptions.ResourceDescriptionResolver;
+import org.jboss.as.controller.descriptions.StandardResourceDescriptionResolver;
 import org.jboss.dmr.ModelNode;
 
 /**
@@ -48,6 +51,10 @@ import org.jboss.dmr.ModelNode;
 public class ManagementDescription {
 
     private static final String RESOURCE_NAME = ManagementDescription.class.getPackage().getName() + ".LocalDescriptions";
+
+    public static ResourceDescriptionResolver getResourceDescriptionResolver(final String keyPrefix) {
+        return new StandardResourceDescriptionResolver(keyPrefix, RESOURCE_NAME, ManagementDescription.class.getClassLoader(), true, false);
+    }
 
     private static ResourceBundle getResourceBundle(Locale locale) {
         if (locale == null) {
@@ -70,9 +77,9 @@ public class ManagementDescription {
         root.get(CHILDREN, SECURITY_REALM, MIN_OCCURS).set(0);
         root.get(CHILDREN, SECURITY_REALM, MODEL_DESCRIPTION);
 
-        root.get(CHILDREN, OUTBOUND_CONNECTION, DESCRIPTION).set(bundle.getString("core.management.outbound-connections"));
-        root.get(CHILDREN, OUTBOUND_CONNECTION, MIN_OCCURS).set(0);
-        root.get(CHILDREN, OUTBOUND_CONNECTION, MODEL_DESCRIPTION);
+        root.get(CHILDREN, LDAP_CONNECTION, DESCRIPTION).set(bundle.getString("core.management.ldap-connections"));
+        root.get(CHILDREN, LDAP_CONNECTION, MIN_OCCURS).set(0);
+        root.get(CHILDREN, LDAP_CONNECTION, MODEL_DESCRIPTION);
 
         if (interfaces) {
             root.get(CHILDREN, MANAGEMENT_INTERFACE, DESCRIPTION).set(bundle.getString("core.management.management-interfaces"));
@@ -81,60 +88,5 @@ public class ManagementDescription {
         }
 
         return root;
-    }
-
-    public static ModelNode getManagementSecurityRealmDescription(Locale locale) {
-        final ResourceBundle bundle = getResourceBundle(locale);
-        final ModelNode root = new ModelNode();
-        root.get(DESCRIPTION).set(bundle.getString("core.management.security-realm"));
-        // TODO attributes
-        root.get(OPERATIONS).setEmptyObject();
-        return root;
-    }
-
-    public static ModelNode getAddManagementSecurityRealmDescription(Locale locale) {
-        final ResourceBundle bundle = getResourceBundle(locale);
-        final ModelNode root = new ModelNode();
-        root.get(OPERATION_NAME).set(ADD);
-        root.get(DESCRIPTION).set(bundle.getString("core.management.security-realm.add"));
-        //TODO attributes
-        return root;
-    }
-
-    public static ModelNode getManagementOutboundConnectionDescription(Locale locale) {
-        final ResourceBundle bundle = getResourceBundle(locale);
-        final ModelNode root = new ModelNode();
-        root.get(DESCRIPTION).set(bundle.getString("core.management.outbound-connection"));
-        // TODO attributes
-        root.get(OPERATIONS).setEmptyObject();
-        return root;
-    }
-
-    public static ModelNode getAddManagementOutboundConnectionDescription(Locale locale) {
-        final ResourceBundle bundle = getResourceBundle(locale);
-        final ModelNode root = new ModelNode();
-        root.get(DESCRIPTION).set(bundle.getString("core.management.outbound-connection"));
-        root.get(OPERATION_NAME).set(ADD);
-        root.get(DESCRIPTION).set(bundle.getString("core.management.outbound-connection.add"));
-        // TODO attributes
-        return root;
-    }
-
-    public static ModelNode getNativeRemotingManagementDescription(final Locale locale) {
-        final ResourceBundle bundle = getResourceBundle(locale);
-        final ModelNode root = new ModelNode();
-        root.get(DESCRIPTION).set(bundle.getString("core.management.native-remoting-interface"));
-        root.get(HEAD_COMMENT_ALLOWED).set(true);
-        root.get(TAIL_COMMENT_ALLOWED).set(false);
-        return root;
-    }
-
-    public static ModelNode getAddNativeRemotingManagementDescription(final Locale locale) {
-        final ResourceBundle bundle = getResourceBundle(locale);
-        final ModelNode op = new ModelNode();
-        op.get(DESCRIPTION).set(bundle.getString("core.management.native-remoting-interface.add"));
-        op.get(OPERATION_NAME).set(ADD);
-
-        return op;
     }
 }

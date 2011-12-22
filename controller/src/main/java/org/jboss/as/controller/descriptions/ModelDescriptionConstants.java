@@ -111,6 +111,7 @@ public class ModelDescriptionConstants {
     public static final String JVM_TYPE = "type";
     public static final String KEYSTORE = "keystore";
     public static final String LDAP = "ldap";
+    public static final String LDAP_CONNECTION = "ldap-connection";
     public static final String LOCAL = "local";
     public static final String LOCAL_DESTINATION_OUTBOUND_SOCKET_BINDING = "local-destination-outbound-socket-binding";
     public static final String LOCALE = "locale";
@@ -222,6 +223,7 @@ public class ModelDescriptionConstants {
     public static final String SERVER_GROUP = "server-group";
     public static final String SERVER_GROUPS = "server-groups";
     public static final String SERVER_IDENTITIES = "server-identities";
+    public static final String SERVER_IDENTITY = "server-identity";
     public static final String SERVER_OPERATIONS = "server-operations";
     public static final String SERVICE_CONTAINER = "service-container";
     public static final String OPERATION_REQUIRES_RELOAD = "operation-requires-reload";

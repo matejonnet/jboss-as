@@ -60,9 +60,8 @@ public class JcaSubsystemTestCase extends AbstractSubsystemBaseTest {
             "</subsystem>";
     }
 
-    //TODO AS7-2421 remove me
-    protected boolean testRemoval() {
-        return false;
+    @Override
+    protected void compareXml(String configId, String original, String marshalled) throws Exception {
+        super.compareXml(configId, original, marshalled, true);
     }
-
 }

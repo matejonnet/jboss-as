@@ -57,6 +57,7 @@ import junit.framework.AssertionFailedError;
 
 import org.jboss.as.controller.AbstractControllerService;
 import org.jboss.as.controller.AttributeDefinition;
+import org.jboss.as.controller.CompositeOperationHandler;
 import org.jboss.as.controller.ControlledProcessState;
 import org.jboss.as.controller.ExpressionResolver;
 import org.jboss.as.controller.Extension;
@@ -139,7 +140,7 @@ public abstract class AbstractSubsystemTest {
 
     private final AtomicInteger counter = new AtomicInteger();
 
-    private final String mainSubsystemName;
+    protected final String mainSubsystemName;
     private final Extension mainExtension;
     private TestParser testParser;
     private boolean addedExtraParsers;
@@ -368,6 +369,26 @@ public abstract class AbstractSubsystemTest {
      * @param kernelServices the kernel services used to access the controller
      */
     protected void assertRemoveSubsystemResources(KernelServices kernelServices) {
+        assertRemoveSubsystemResources(kernelServices, null);
+    }
+
+    /**
+     * Checks that the subystem resources can be removed, i.e. that people have registered
+     * working 'remove' operations for every 'add' level.
+     *
+     * @param kernelServices the kernel services used to access the controller
+     * @param ignoredChildAddresses child addresses that should not be removed, they are managed by one of the parent resources.
+     * This set cannot contain the subsystem resource itself
+     */
+    protected void assertRemoveSubsystemResources(KernelServices kernelServices, Set<PathAddress> ignoredChildAddresses) {
+
+        if (ignoredChildAddresses == null) {
+            ignoredChildAddresses = Collections.<PathAddress>emptySet();
+        } else {
+            PathAddress subsystem = PathAddress.pathAddress(PathElement.pathElement(SUBSYSTEM, mainSubsystemName));
+            Assert.assertFalse("Cannot exclude removal of subsystem itself", ignoredChildAddresses.contains(subsystem));
+        }
+
         Resource rootResource = grabRootResource(kernelServices);
 
         List<PathAddress> addresses = new ArrayList<PathAddress>();
@@ -378,14 +399,24 @@ public abstract class AbstractSubsystemTest {
 
         getAllChildAddressesForRemove(pathAddress, addresses, subsystemResource);
 
+        ModelNode composite = new ModelNode();
+        composite.get(OP).set(CompositeOperationHandler.NAME);
+        composite.get(OP_ADDR).setEmptyList();
+        composite.get("rollback-on-runtime-failure").set(true);
+
+
         for (ListIterator<PathAddress> iterator = addresses.listIterator(addresses.size()) ; iterator.hasPrevious() ; ) {
             PathAddress cur = iterator.previous();
-            ModelNode remove = new ModelNode();
-            remove.get(OP).set(REMOVE);
-            remove.get(OP_ADDR).set(cur.toModelNode());
-            ModelNode result = kernelServices.executeOperation(remove);
-            Assert.assertEquals("Error removing " + cur + ": " + result.get(FAILURE_DESCRIPTION).asString(), SUCCESS, result.get(OUTCOME).asString());
+            if (!ignoredChildAddresses.contains(cur)) {
+                ModelNode remove = new ModelNode();
+                remove.get(OP).set(REMOVE);
+                remove.get(OP_ADDR).set(cur.toModelNode());
+                composite.get("steps").add(remove);
+            }
         }
+
+
+        ModelNode result = kernelServices.executeOperation(composite);
 
         ModelNode model = kernelServices.readWholeModel().get(SUBSYSTEM, mainSubsystemName);
         Assert.assertFalse("Subsystem resources were not removed " + model, model.isDefined());
@@ -560,6 +591,46 @@ public abstract class AbstractSubsystemTest {
         }
     }
 
+    /**
+     * Validate the marshalled xml without adjusting the namespaces for the original and marshalled xml.
+     * @param configId the id of the xml configuration
+     * @param original the original subsystem xml
+     * @param marshalled the marshalled subsystem xml
+     *
+     * @throws Exception
+     */
+    protected void compareXml(String configId, final String original, final String marshalled) throws Exception {
+        compareXml(configId, original, marshalled, false);
+    }
+
+    /**
+     * Validate the marshalled xml without adjusting the namespaces for the original and marshalled xml.
+     * @param configId TODO
+     * @param original the original subsystem xml
+     * @param marshalled the marshalled subsystem xml
+     * @param ignoreNamespace if {@code true} the subsystem's namespace is ignored, otherwise it is taken into account when comparing the normalized xml.
+     *
+     * @throws Exception
+     */
+    protected void compareXml(String configId, final String original, final String marshalled, final boolean ignoreNamespace) throws Exception {
+        final String xmlOriginal;
+        final String xmlMarshalled;
+        if (ignoreNamespace) {
+            xmlOriginal = removeNamespace(original);
+            xmlMarshalled = removeNamespace(marshalled);
+        } else {
+            xmlOriginal = original;
+            xmlMarshalled = marshalled;
+        }
+
+
+        Assert.assertEquals(normalizeXML(xmlOriginal), normalizeXML(xmlMarshalled));
+    }
+
+    private String removeNamespace(String xml) {
+        return xml.replaceFirst(" xmlns=\".*\"", "");
+    }
+
     private final class ExtensionParsingContextImpl implements ExtensionParsingContext {
         private final XMLMapper mapper;
 
@@ -656,6 +727,7 @@ public abstract class AbstractSubsystemTest {
             rootRegistration.registerOperationHandler(READ_OPERATION_NAMES_OPERATION, GlobalOperationHandlers.READ_OPERATION_NAMES, CommonProviders.READ_OPERATION_NAMES_PROVIDER, true);
             rootRegistration.registerOperationHandler(READ_OPERATION_DESCRIPTION_OPERATION, GlobalOperationHandlers.READ_OPERATION_DESCRIPTION, CommonProviders.READ_OPERATION_PROVIDER, true);
             rootRegistration.registerOperationHandler(WRITE_ATTRIBUTE_OPERATION, GlobalOperationHandlers.WRITE_ATTRIBUTE, CommonProviders.WRITE_ATTRIBUTE_PROVIDER, true);
+            rootRegistration.registerOperationHandler(CompositeOperationHandler.NAME, CompositeOperationHandler.INSTANCE, CompositeOperationHandler.INSTANCE, false, EntryType.PRIVATE);
 
             //Handler to be able to get hold of the root resource
             rootRegistration.registerOperationHandler(RootResourceGrabber.NAME, RootResourceGrabber.INSTANCE, RootResourceGrabber.INSTANCE, false);

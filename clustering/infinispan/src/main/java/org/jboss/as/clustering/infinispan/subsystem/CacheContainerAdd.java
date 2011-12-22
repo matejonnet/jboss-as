@@ -24,14 +24,12 @@ package org.jboss.as.clustering.infinispan.subsystem;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OUTBOUND_CONNECTION;
 
 import javax.management.MBeanServer;
 import javax.transaction.TransactionManager;
 import javax.transaction.TransactionSynchronizationRegistry;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
@@ -45,8 +43,8 @@ import org.jboss.as.controller.AbstractAddStepHandler;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.ServiceVerificationHandler;
-import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.operations.common.Util;
+import org.jboss.as.controller.registry.Resource;
 import org.jboss.as.naming.ManagedReferenceFactory;
 import org.jboss.as.naming.ManagedReferenceInjector;
 import org.jboss.as.naming.ServiceBasedNamingStore;
@@ -56,7 +54,6 @@ import org.jboss.as.naming.service.BinderService;
 import org.jboss.as.threads.ThreadsServices;
 import org.jboss.as.txn.service.TxnServices;
 import org.jboss.dmr.ModelNode;
-import org.jboss.dmr.Property;
 import org.jboss.logging.Logger;
 import org.jboss.msc.inject.Injector;
 import org.jboss.msc.service.ServiceBuilder;
@@ -74,7 +71,7 @@ import org.jgroups.Channel;
  * @author Tristan Tarrant
  * @author Richard Achmatowicz
  */
-public class CacheContainerAdd extends AbstractAddStepHandler implements DescriptionProvider {
+public class CacheContainerAdd extends AbstractAddStepHandler {
 
     private static final Logger log = Logger.getLogger(CacheContainerAdd.class.getPackage().getName());
 
@@ -128,16 +125,19 @@ public class CacheContainerAdd extends AbstractAddStepHandler implements Descrip
 
     @Override
     protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) {
+        // Because we use child resources in a read-only manner to configure the cache container, replace the local model with the full model
+        model = Resource.Tools.readModel(context.readResource(PathAddress.EMPTY_ADDRESS));
+
         final PathAddress address = PathAddress.pathAddress(operation.get(OP_ADDR));
         final String name = address.getLastElement().getValue();
 
-        String defaultCache = operation.require(ModelKeys.DEFAULT_CACHE).asString();
+        String defaultCache = model.require(ModelKeys.DEFAULT_CACHE).asString();
 
         Transport transportConfig = new Transport();
         EmbeddedCacheManager config = new EmbeddedCacheManager(name, defaultCache, transportConfig);
 
         ServiceName[] aliases = null;
-        if (operation.hasDefined(ModelKeys.ALIAS)) {
+        if (model.hasDefined(ModelKeys.ALIAS)) {
             List<ModelNode> list = operation.get(ModelKeys.ALIAS).asList();
             aliases = new ServiceName[list.size()];
             for (int i = 0; i < list.size(); i++) {
@@ -156,7 +156,7 @@ public class CacheContainerAdd extends AbstractAddStepHandler implements Descrip
                 .addAliases(aliases)
                 .setInitialMode(ServiceController.Mode.ON_DEMAND);
 
-        String jndiName = (operation.hasDefined(ModelKeys.JNDI_NAME) ? toJndiName(operation.get(ModelKeys.JNDI_NAME).asString()) : JndiName.of("java:jboss").append(InfinispanExtension.SUBSYSTEM_NAME).append(name)).getAbsoluteName();
+        String jndiName = (model.hasDefined(ModelKeys.JNDI_NAME) ? toJndiName(model.get(ModelKeys.JNDI_NAME).asString()) : JndiName.of("java:jboss").append(InfinispanExtension.SUBSYSTEM_NAME).append(name)).getAbsoluteName();
         final ContextNames.BindInfo bindInfo = ContextNames.bindInfoFor(jndiName);
 
         BinderService binder = new BinderService(bindInfo.getBindName());
@@ -180,7 +180,7 @@ public class CacheContainerAdd extends AbstractAddStepHandler implements Descrip
         // in the form of a ModelNode, so we need to retrieve it from the model
         //
         if (model.hasDefined(ModelKeys.SINGLETON)) {
-            ModelNode transport = operation.get(ModelKeys.SINGLETON, ModelKeys.TRANSPORT);
+            ModelNode transport = model.get(ModelKeys.SINGLETON, ModelKeys.TRANSPORT);
             if (transport.hasDefined(ModelKeys.STACK)) {
                 stack = transport.get(ModelKeys.STACK).asString();
             }
@@ -203,9 +203,9 @@ public class CacheContainerAdd extends AbstractAddStepHandler implements Descrip
         // add an optional dependency on a ChannelService which has the cache-container name
         containerBuilder.addDependency(DependencyType.OPTIONAL, channelServiceName, Channel.class, transportConfig.getChannelInjector());
 
-        addExecutorDependency(containerBuilder, operation, ModelKeys.LISTENER_EXECUTOR, config.getListenerExecutorInjector());
-        addScheduledExecutorDependency(containerBuilder, operation, ModelKeys.EVICTION_EXECUTOR, config.getEvictionExecutorInjector());
-        addScheduledExecutorDependency(containerBuilder, operation, ModelKeys.REPLICATION_QUEUE_EXECUTOR, config.getReplicationQueueExecutorInjector());
+        addExecutorDependency(containerBuilder, model, ModelKeys.LISTENER_EXECUTOR, config.getListenerExecutorInjector());
+        addScheduledExecutorDependency(containerBuilder, model, ModelKeys.EVICTION_EXECUTOR, config.getEvictionExecutorInjector());
+        addScheduledExecutorDependency(containerBuilder, model, ModelKeys.REPLICATION_QUEUE_EXECUTOR, config.getReplicationQueueExecutorInjector());
 
         newControllers.add(containerBuilder.install());
 
@@ -220,16 +220,6 @@ public class CacheContainerAdd extends AbstractAddStepHandler implements Descrip
 
         log.debugf("Cache container %s installed", name);
      }
-
-    /**
-     * {@inheritDoc}
-     *
-     * @see org.jboss.as.controller.descriptions.DescriptionProvider#getModelDescription(java.util.Locale)
-     */
-    @Override
-    public ModelNode getModelDescription(Locale locale) {
-        return InfinispanDescriptions.getCacheContainerAddDescription(locale);
-    }
 
     private void addExecutorDependency(ServiceBuilder<CacheContainer> builder, ModelNode model, String key, Injector<Executor> injector) {
         if (model.hasDefined(key)) {

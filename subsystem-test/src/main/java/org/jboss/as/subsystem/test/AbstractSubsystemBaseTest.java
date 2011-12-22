@@ -23,12 +23,16 @@
 package org.jboss.as.subsystem.test;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import junit.framework.Assert;
 
 import org.jboss.as.controller.Extension;
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.dmr.ModelNode;
 import org.junit.Test;
@@ -68,17 +72,6 @@ public abstract class AbstractSubsystemBaseTest extends AbstractSubsystemTest {
         return readResource(configId);
     }
 
-    /**
-     * Validate the marshalled xml.
-     *
-     * @param original the original subsystem xml
-     * @param marshalled the marshalled subsystem xml
-     * @throws Exception
-     */
-    protected void validateXml(final String original, final String marshalled) throws Exception {
-        // TODO check if the marshalled xml can be validated against the schema
-    }
-
     @Test
     public void testSubsystem() throws Exception {
         standardSubsystemTest(null);
@@ -113,7 +106,7 @@ public abstract class AbstractSubsystemBaseTest extends AbstractSubsystemTest {
 
         // validate the the normalized xmls
         String normalizedSubsystem = normalizeXML(subsystemXml);
-        validateXml(normalizedSubsystem, normalizeXML(marshalled));
+        compareXml(configId, normalizedSubsystem, normalizeXML(marshalled));
 
         //Install the persisted xml from the first controller into a second controller
         final KernelServices servicesB = super.installInController(additionalInit, marshalled);
@@ -135,9 +128,7 @@ public abstract class AbstractSubsystemBaseTest extends AbstractSubsystemTest {
 
         super.compare(modelA, modelC);
 
-        if (testRemoval()) {
-            super.assertRemoveSubsystemResources(servicesA);
-        }
+        super.assertRemoveSubsystemResources(servicesA, getIgnoredChildResourcesForRemovalTest());
     }
 
     protected ModelNode createDescribeOperation() {
@@ -160,10 +151,22 @@ public abstract class AbstractSubsystemBaseTest extends AbstractSubsystemTest {
     }
 
     /**
-     * @deprecated Anyone overriding this should fix their subsystem
+     * Returns a set of child resources addresses that should not be removed directly. Rather they should be managed
+     * by their parent resource
+     *
+     * @return the set of child resource addresses
+     * @see AbstractSubsystemTest#assertRemoveSubsystemResources(KernelServices, Set)
      */
-    @Deprecated
-    protected boolean testRemoval() {
-        return true;
+    protected Set<PathAddress> getIgnoredChildResourcesForRemovalTest() {
+        return Collections.<PathAddress>emptySet();
     }
+
+    public static void main(String[] args) {
+        String s = "xmlns=\"urn:jboss:domain:transactions:1.1\"";
+
+        System.out.println(Pattern.compile("xmlns=\"aaa\"").matcher("xmlns=\"aaa\"").matches());
+        System.out.println(Pattern.compile("xmlns=\".*\"").matcher("xmlns=\"xxyyy:xxx:yyy:xxx:1.1\"").matches());
+    }
+
+
 }

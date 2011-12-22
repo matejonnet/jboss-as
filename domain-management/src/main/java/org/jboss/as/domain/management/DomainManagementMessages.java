@@ -22,6 +22,7 @@
 
 package org.jboss.as.domain.management;
 
+import org.jboss.as.controller.OperationFailedException;
 import org.jboss.logging.Cause;
 import org.jboss.logging.Message;
 import org.jboss.logging.MessageBundle;
@@ -33,6 +34,7 @@ import javax.naming.NamingException;
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.UnsupportedCallbackException;
 import java.io.IOException;
+import java.util.Set;
 
 /**
  * Date: 05.11.2011
@@ -353,14 +355,25 @@ public interface DomainManagementMessages {
     String unableToAddUser(String file, String error);
 
     /**
-     * Message to inform user that the new user is already in the file identified
+     * The error message if loading the known users from file fails.
      *
-     * @param username - The new username
-     * @param fileName - The file the user was supposed to be added to
+     * @param file - The name of the file the load failed for.
+     * @param error - The failure message.
+     *
      * @return a {@link String} for the message.
      */
-    @Message(value = "User %s was already added to file %s, skipping...")
-    String userAlreadyExists(String username, String fileName);
+    @Message(id = 15242, value = "Unable to add load users from %s due to error %s")
+    String unableToLoadUsers(String file, String error);
+
+    /**
+     * The error message if the user is already in at least one file.
+     *
+     * @param user - The name of the user.
+     *
+     * @return a {@link String} for the message.
+     */
+    @Message(id = 15243, value = "The user '%s' already exists in at least one properties file.")
+    String duplicateUser(String user);
 
     /**
      * The error message header.
@@ -369,4 +382,25 @@ public interface DomainManagementMessages {
      */
     @Message(value = "Error")
     String errorHeader();
+
+    /**
+     * Error message if more than one username/password authentication mechanism is defined.
+     *
+     * @param realmName the name of the security realm
+     * @param mechanisms the set of mechanisms .
+     *
+     * @return an {@link OperationFailedException} for the error.
+     */
+    @Message(id = 15244, value = "Configuration for security realm '%s' includes multiple username/password based authentication mechanisms (%s). Only one is allowed")
+    OperationFailedException multipleAuthenticationMechanismsDefined(String realmName, Set<String> mechanisms);
+
+    /**
+     * Creates an exception indicating no authentication mechanism was defined in the security realm.
+     *
+     * @param realmName the security realm name
+     *
+     * @return an {@link OperationFailedException} for the error.
+     */
+    @Message(id = 15245, value = "No authentication mechanism defined in security realm '%s'.")
+    OperationFailedException noAuthenticationDefined(String realmName);
 }

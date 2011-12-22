@@ -24,8 +24,10 @@ package org.jboss.as.server.mgmt.domain;
 
 import java.io.DataInput;
 import java.io.IOException;
+import java.security.AccessController;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 import org.jboss.as.controller.ControllerLogger;
@@ -49,6 +51,7 @@ import org.jboss.msc.value.InjectedValue;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.CloseHandler;
 import org.jboss.threads.AsyncFuture;
+import org.jboss.threads.JBossThreadFactory;
 
 /**
  * Client used to interact with the local HostController.
@@ -67,7 +70,8 @@ public class HostControllerServerClient implements Service<HostControllerServerC
 
     private final String serverName;
     private final String serverProcessName;
-    private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final ThreadFactory threadFactory = new JBossThreadFactory(new ThreadGroup("host-controller-connection-threads"), Boolean.FALSE, null, "%G - %t", null, null, AccessController.getContext());
+    private final ExecutorService executor = Executors.newCachedThreadPool(threadFactory);
 
     private volatile ManagementMessageHandler handler;
 
@@ -91,7 +95,7 @@ public class HostControllerServerClient implements Service<HostControllerServerC
         try {
             handler.executeRegistrationRequest(channel, new ServerRegisterRequest(), context);
         } catch (Exception e) {
-            throw new StartException("Failed to send registration message to host controller", e);
+            throw ServerMessages.MESSAGES.failedToConnectToHC(e);
         }
         this.handler = handler;
         channel.receiveMessage(ManagementChannelReceiver.createDelegating(handler));
@@ -103,7 +107,9 @@ public class HostControllerServerClient implements Service<HostControllerServerC
         if(handler != null) {
             handler.shutdown();
             try {
-                handler.awaitCompletion(100, TimeUnit.MILLISECONDS);
+                if(! handler.awaitCompletion(100, TimeUnit.MILLISECONDS)) {
+                    ControllerLogger.ROOT_LOGGER.debugf("HostController server client did not complete shutdown within timeout");
+                }
             } catch (Exception e) {
                 ControllerLogger.ROOT_LOGGER.warnf(e , "service shutdown did not complete");
             } finally {

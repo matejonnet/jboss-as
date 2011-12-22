@@ -32,8 +32,12 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PRO
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESULT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RUNNING_SERVER;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUCCESS;
+import static org.jboss.as.host.controller.HostControllerLogger.DOMAIN_LOGGER;
+import static org.jboss.as.host.controller.HostControllerLogger.ROOT_LOGGER;
+import static org.jboss.as.host.controller.HostControllerMessages.MESSAGES;
 
 import java.io.IOException;
+import java.security.AccessController;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -43,6 +47,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 
 import javax.security.auth.callback.CallbackHandler;
 
@@ -92,7 +97,6 @@ import org.jboss.as.server.RuntimeExpressionResolver;
 import org.jboss.as.server.deployment.repository.api.ContentRepository;
 import org.jboss.as.server.services.security.AbstractVaultReader;
 import org.jboss.dmr.ModelNode;
-import org.jboss.logging.Logger;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceTarget;
@@ -102,6 +106,7 @@ import org.jboss.msc.service.StopContext;
 import org.jboss.msc.value.InjectedValue;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.CloseHandler;
+import org.jboss.threads.JBossThreadFactory;
 
 /**
  * Creates the service that acts as the {@link org.jboss.as.controller.ModelController} for a Host Controller process.
@@ -109,8 +114,6 @@ import org.jboss.remoting3.CloseHandler;
  * @author Brian Stansberry (c) 2011 Red Hat Inc.
  */
 public class DomainModelControllerService extends AbstractControllerService implements DomainController, UnregisteredHostChannelRegistry {
-
-    private static final Logger log = Logger.getLogger("org.jboss.as.host.controller");
 
     public static final ServiceName SERVICE_NAME = HostControllerService.HC_SERVICE_NAME.append("model", "controller");
 
@@ -130,7 +133,8 @@ public class DomainModelControllerService extends AbstractControllerService impl
     private final Map<String, Channel> unregisteredHostChannels = new HashMap<String, Channel>();
     private final Map<String, ProxyCreatedCallback> proxyCreatedCallbacks = new HashMap<String, ProxyCreatedCallback>();
     // TODO look into using the controller executor
-    private final ExecutorService proxyExecutor = Executors.newCachedThreadPool();
+    final ThreadFactory threadFactory = new JBossThreadFactory(new ThreadGroup("proxy-threads"), Boolean.FALSE, null, "%G - %t", null, null, AccessController.getContext());
+    private final ExecutorService proxyExecutor = Executors.newCachedThreadPool(threadFactory);
     private final AbstractVaultReader vaultReader;
     private final ContentRepository contentRepository;
 
@@ -146,7 +150,7 @@ public class DomainModelControllerService extends AbstractControllerService impl
         final Map<String, ProxyController> serverProxies = new ConcurrentHashMap<String, ProxyController>();
         final LocalHostControllerInfoImpl hostControllerInfo = new LocalHostControllerInfoImpl(processState);
         final AbstractVaultReader vaultReader = service(AbstractVaultReader.class);
-        log.debugf("Using VaultReader %s", vaultReader);
+        ROOT_LOGGER.debugf("Using VaultReader %s", vaultReader);
         final ContentRepository contentRepository = new DomainContentRepository(environment.getDomainDeploymentDir());
         final PrepareStepHandler prepareStepHandler = new PrepareStepHandler(hostControllerInfo, contentRepository, hostProxies, serverProxies);
         DomainModelControllerService service = new DomainModelControllerService(environment, runningModeControl, processState,
@@ -207,14 +211,14 @@ public class DomainModelControllerService extends AbstractControllerService impl
         modelNodeRegistration.registerProxyController(pe, hostControllerClient);
         hostProxies.put(pe.getValue(), hostControllerClient);
 
-        Logger.getLogger("org.jboss.domain").info("Registered remote slave host " + pe.getValue());
+        DOMAIN_LOGGER.registeredRemoteSlaveHost(pe.getValue());
     }
 
     @Override
     public void unregisterRemoteHost(String id) {
         unregisteredHostChannels.remove(id);
         if (hostProxies.remove(id) != null) {
-            Logger.getLogger("org.jboss.domain").info("Unregistered remote slave host " + id);
+            DOMAIN_LOGGER.unregisteredRemoteSlaveHost(id);
         }
         modelNodeRegistration.unregisterProxyController(PathElement.pathElement(HOST, id));
     }
@@ -224,9 +228,9 @@ public class DomainModelControllerService extends AbstractControllerService impl
         PathAddress pa = serverControllerClient.getProxyNodeAddress();
         PathElement pe = pa.getElement(1);
         if (modelNodeRegistration.getProxyController(pa) != null) {
-            throw new IllegalArgumentException("There is already a registered server named '" + pe.getValue() + "'");
+            throw MESSAGES.serverNameAlreadyRegistered(pe.getValue());
         }
-        Logger.getLogger("org.jboss.host.controller").info("Registering server " + pe.getValue());
+        ROOT_LOGGER.registeringServer(pe.getValue());
         ManagementResourceRegistration hostRegistration = modelNodeRegistration.getSubModel(PathAddress.pathAddress(PathElement.pathElement(HOST)));
         hostRegistration.registerProxyController(pe, serverControllerClient);
         serverProxies.put(pe.getValue(), serverControllerClient);
@@ -236,7 +240,7 @@ public class DomainModelControllerService extends AbstractControllerService impl
     public void unregisterRunningServer(String serverName) {
         PathAddress pa = PathAddress.pathAddress(PathElement.pathElement(HOST, hostControllerInfo.getLocalHostName()));
         PathElement pe = PathElement.pathElement(RUNNING_SERVER, serverName);
-        Logger.getLogger("org.jboss.host.controller").info("Unregistering server " + serverName);
+        ROOT_LOGGER.unregisteringServer(serverName);
         ManagementResourceRegistration hostRegistration = modelNodeRegistration.getSubModel(pa);
         hostRegistration.unregisterProxyController(pe);
         serverProxies.remove(serverName);
@@ -252,7 +256,7 @@ public class DomainModelControllerService extends AbstractControllerService impl
         ModelNode rsp = getValue().execute(operation, null, null, null);
         if (!rsp.hasDefined(OUTCOME) || !SUCCESS.equals(rsp.get(OUTCOME).asString())) {
             ModelNode msgNode = rsp.get(FAILURE_DESCRIPTION);
-            String msg = msgNode.isDefined() ? msgNode.toString() : "Failed to retrieve profile operations from domain controller";
+            String msg = msgNode.isDefined() ? msgNode.toString() : MESSAGES.failedProfileOperationsRetrieval();
             throw new RuntimeException(msg);
         }
         return rsp.require(RESULT);
@@ -266,7 +270,7 @@ public class DomainModelControllerService extends AbstractControllerService impl
     @Override
     public FileRepository getRemoteFileRepository() {
         if (hostControllerInfo.isMasterDomainController()) {
-            throw new IllegalStateException("Cannot access a remote file repository from the master domain controller");
+            throw MESSAGES.cannotAccessRemoteFileRepository();
         }
         return remoteFileRepository;
     }
@@ -325,13 +329,13 @@ public class DomainModelControllerService extends AbstractControllerService impl
                         masterDomainControllerClient.register();
                     } catch (IllegalStateException e) {
                         //We could not connect to the host
-                        log.error(HostControllerMessages.MESSAGES.cannotConnectToMaster(e));
+                        ROOT_LOGGER.cannotConnectToMaster(e);
                         System.exit(ExitCodes.HOST_CONTROLLER_ABORT_EXIT_CODE);
                     }
                 } else if (currentRunningMode != RunningMode.ADMIN_ONLY) {
                         //We could not connect to the host
-                        log.error(HostControllerMessages.MESSAGES.noDomainControllerConfigurationProvided(currentRunningMode,
-                                CommandLineConstants.ADMIN_ONLY, RunningMode.ADMIN_ONLY));
+                        ROOT_LOGGER.noDomainControllerConfigurationProvided(currentRunningMode,
+                                CommandLineConstants.ADMIN_ONLY, RunningMode.ADMIN_ONLY);
                         System.exit(ExitCodes.HOST_CONTROLLER_ABORT_EXIT_CODE);
                 }
 
@@ -405,7 +409,7 @@ public class DomainModelControllerService extends AbstractControllerService impl
         try {
             client.shutdown();
         } catch (IOException e) {
-            throw new RuntimeException("Error closing down host", e);
+            throw MESSAGES.errorClosingDownHost(e);
         }
     }
 
@@ -419,7 +423,7 @@ public class DomainModelControllerService extends AbstractControllerService impl
         }
         */
         if (unregisteredHostChannels.containsKey(hostName)) {
-            throw new IllegalArgumentException("Already have a connection for host " + hostName);
+            throw MESSAGES.hostNameAlreadyConnected(hostName);
         }
         unregisteredHostChannels.put(hostName, channel);
         proxyCreatedCallbacks.put(hostName, callback);
@@ -435,7 +439,7 @@ public class DomainModelControllerService extends AbstractControllerService impl
     public synchronized ProxyController popChannelAndCreateProxy(final String hostName) {
         final Channel channel = unregisteredHostChannels.remove(hostName);
         if (channel == null) {
-            throw new IllegalArgumentException("No channel for host " + hostName);
+            throw MESSAGES.noChannelForHost(hostName);
         }
         channel.addCloseHandler(new CloseHandler<Channel>() {
             public void handleClose(final Channel closed, final IOException exception) {

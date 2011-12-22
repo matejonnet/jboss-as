@@ -22,10 +22,10 @@
 
 package org.jboss.as.xts;
 
+import java.util.Locale;
+
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.dmr.ModelNode;
-
-import java.util.Locale;
 
 /**
  * @author <a href="mailto:adinn@redhat.com">Andrew Dinn</a>
@@ -44,6 +44,13 @@ class XTSSubsystemProviders {
 
         public ModelNode getModelDescription(final Locale locale) {
             return Descriptions.getSubsystemAdd(locale);
+        }
+    };
+
+    static final DescriptionProvider SUBSYSTEM_REMOVE = new DescriptionProvider() {
+
+        public ModelNode getModelDescription(final Locale locale) {
+            return Descriptions.getSubsystemRemove(locale);
         }
     };
 
