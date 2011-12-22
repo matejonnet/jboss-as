@@ -43,10 +43,11 @@ public class JbossDmrActions extends DmrActions {
     public boolean isDomainController() {
         Resource rootResource = context.getRootResource();
         // /host=172.16.254.128:read-config-as-xml
-        //rootResource.navigate(PathAddress.pathAddress(PathElement.pathElement("host")));
-        //rootResource.getModel().get("host") //undefined
-//        System.out.println(">>>>>>> Util.isDomainController: " + rootResource.getChildTypes().contains("server-group"));
-//        return rootResource.getChildTypes().contains("server-group");
+        // rootResource.navigate(PathAddress.pathAddress(PathElement.pathElement("host")));
+        // rootResource.getModel().get("host") //undefined
+        // System.out.println(">>>>>>> Util.isDomainController: " +
+        // rootResource.getChildTypes().contains("server-group"));
+        // return rootResource.getChildTypes().contains("server-group");
 
         String localIp = SysUtil.getLocalIp();
 
@@ -58,8 +59,9 @@ public class JbossDmrActions extends DmrActions {
     }
 
     void addHostToServerGroup(InstanceSlot slot, String groupName) {
-        //addHOST to SG
-        // /host=master/server-config=server-one:add(socket-binding-group=standard-sockets, socket-binding-port-offset=<portOffset>)
+        // addHOST to SG
+        // /host=master/server-config=server-one:add(socket-binding-group=standard-sockets,
+        // socket-binding-port-offset=<portOffset>)
         ModelNode opAddHostToSg = new ModelNode();
         opAddHostToSg.get(OP).set("add");
         opAddHostToSg.get(OP_ADDR).add("host", slot.getHostIP());
@@ -73,7 +75,7 @@ public class JbossDmrActions extends DmrActions {
     }
 
     void removeHostFromServerGroup(ModelNode steps, String groupName, InstanceSlot slot) {
-        //rmeoveHOST from SG
+        // rmeoveHOST from SG
         // /host=master/server-config=server-one:remove()
         ModelNode opRemoveHostFromSg = new ModelNode();
         opRemoveHostFromSg.get(OP).set("remove");
@@ -92,11 +94,12 @@ public class JbossDmrActions extends DmrActions {
      * @param appName
      */
     public void deployToServerGroup(final File f, String appName, String serverGroup) {
-        //Deployment process extracted from org.jboss.as.cli.handlers.DeployHandler.doHandle(CommandContext)
+        // Deployment process extracted from
+        // org.jboss.as.cli.handlers.DeployHandler.doHandle(CommandContext)
 
         final ModelNode request;
 
-        //add deployment
+        // add deployment
         ModelNode opAddDeployment = new ModelNode();
         opAddDeployment.get(OP).set("add");
         opAddDeployment.get(OP_ADDR).add(DEPLOYMENT, appName);
@@ -117,7 +120,7 @@ public class JbossDmrActions extends DmrActions {
                         OperationStepHandler opStep = ctxWthStream.getResourceRegistration().getOperationHandler(PathAddress.EMPTY_ADDRESS, "add");
                         opStep.execute(ctxWthStream, opWthStream.getOperation());
                     } catch (Throwable t) {
-                        //TODO
+                        // TODO
                         t.printStackTrace();
                     } finally {
                         try {
@@ -134,21 +137,21 @@ public class JbossDmrActions extends DmrActions {
             return;
         }
 
-        //add deployment to server group
-        //prepare composite operation
+        // add deployment to server group
+        // prepare composite operation
         request = new ModelNode();
         request.get("operation").set("composite");
         request.get("address").setEmptyList();
         ModelNode steps = request.get("steps");
 
-        //deploy app - step add
+        // deploy app - step add
         ModelNode opAdd = new ModelNode();
         opAdd.get(OP).set("add");
         opAdd.get(OP_ADDR).add("server-group", serverGroup);
         opAdd.get(OP_ADDR).add(DEPLOYMENT, appName);
         steps.add(opAdd);
 
-        //deploy app - step deploy
+        // deploy app - step deploy
         ModelNode opDeploy = new ModelNode();
         opDeploy.get(OP).set("deploy");
         opDeploy.get(OP_ADDR).add("server-group", serverGroup);
@@ -156,7 +159,7 @@ public class JbossDmrActions extends DmrActions {
         steps.add(opDeploy);
 
         addStepToContext(request);
-        //TODO verify result
+        // TODO verify result
     }
 
     /**
@@ -169,27 +172,27 @@ public class JbossDmrActions extends DmrActions {
     public void undeployFromServerGroup(String appName, String serverGroup) {
         final ModelNode request;
 
-        //prepare composite operation
+        // prepare composite operation
         request = new ModelNode();
         request.get("operation").set("composite");
         request.get("address").setEmptyList();
         ModelNode steps = request.get("steps");
 
-        //undeploy app - step undeploy
+        // undeploy app - step undeploy
         ModelNode opUnDeploy = new ModelNode();
         opUnDeploy.get(OP).set("undeploy");
         opUnDeploy.get(OP_ADDR).add("server-group", serverGroup);
         opUnDeploy.get(OP_ADDR).add(DEPLOYMENT, appName);
         steps.add(opUnDeploy);
 
-        //undeploy app - step remove
+        // undeploy app - step remove
         ModelNode opRemove = new ModelNode();
         opRemove.get(OP).set("remove");
         opRemove.get(OP_ADDR).add("server-group", serverGroup);
         opRemove.get(OP_ADDR).add(DEPLOYMENT, appName);
         steps.add(opRemove);
 
-        //remove deployment
+        // remove deployment
         ModelNode opRemoveDeployment = new ModelNode();
         opRemoveDeployment.get(OP).set("remove");
         opRemoveDeployment.get(OP_ADDR).add(DEPLOYMENT, appName);
@@ -197,7 +200,7 @@ public class JbossDmrActions extends DmrActions {
 
         addStepToContext(request);
 
-        //TODO verify result
+        // TODO verify result
     }
 
     /**
@@ -220,7 +223,8 @@ public class JbossDmrActions extends DmrActions {
     public void addHostToDomain(String hostIp, ModelControllerClient client) throws IOException, OperationFormatException {
         String dcIP = SysUtil.getLocalIp();
 
-        // /host=<hostIP>:write-remote-domain-controller(host=1.2.3.4, port=9999)
+        // /host=<hostIP>:write-remote-domain-controller(host=1.2.3.4,
+        // port=9999)
         DefaultOperationRequestBuilder setDc = new DefaultOperationRequestBuilder();
         setDc.addNode("host", hostIp);
         setDc.setOperationName("write-remote-domain-controller");
@@ -236,7 +240,11 @@ public class JbossDmrActions extends DmrActions {
      * @param serverGroupName
      */
     public void createServerGroup(String serverGroupName) {
+        ModelNode request = createServerGroupRequest(serverGroupName);
+        addStepToContext(request);
+    }
 
+    public static ModelNode createServerGroupRequest(String serverGroupName) {
         DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
         builder.setOperationName("add");
         builder.addNode("server-group", serverGroupName);
@@ -244,18 +252,17 @@ public class JbossDmrActions extends DmrActions {
         builder.addProperty("socket-binding-group", "standard-sockets");
 
         try {
-            ModelNode request = builder.buildRequest();
-            addStepToContext(request);
+            return builder.buildRequest();
         } catch (OperationFormatException e) {
             // TODO Auto-generated catch block
             log.error("Cannot build request to create server group.", e);
         }
+        return null;
     }
 
     public Resource navigateToHostName(String hostName) {
-            PathAddress instancesAddr = PathAddress.pathAddress(
-                    PathElement.pathElement("host", hostName));
-            return naviagte(instancesAddr);
+        PathAddress instancesAddr = PathAddress.pathAddress(PathElement.pathElement("host", hostName));
+        return naviagte(instancesAddr);
     }
 
 }

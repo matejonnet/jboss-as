@@ -1,7 +1,6 @@
 package org.jboss.as.paas.controller;
 
 import java.util.HashSet;
-import java.util.NoSuchElementException;
 import java.util.Set;
 
 import org.jboss.as.controller.OperationContext;
@@ -135,13 +134,28 @@ public class PaasProcessor {
      * @param provider
      */
     public void addHostToServerGroup(String serverGroupName, boolean newInstance, String provider) {
+        InstanceSlot slot;
 
-        InstanceSlot slot = getSlot(newInstance, serverGroupName, provider);
+        try {
+            slot = getSlot(newInstance, serverGroupName, provider);
+        } catch (RuntimeException e) {
+            context.setRollbackOnly();
+            context.getResult().set("Cannot get free slot" + e);
+            return;
+        }
 
-        JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
-        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
-        jbossDmrActions.createServerGroup(serverGroupName);
-        compositeDmrActions.addHostToServerGroup(slot, serverGroupName);
+        JobQueue bj = new JobQueue();
+
+        bj.add(JbossDmrActions.createServerGroupRequest(serverGroupName));
+
+        bj.executeAsync(context, slot.getHostIP());
+
+        // JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
+        // CompositeDmrActions compositeDmrActions = new
+        // CompositeDmrActions(context);
+        // jbossDmrActions.createServerGroup(serverGroupName);
+        // compositeDmrActions.addHostToServerGroup(slot, serverGroupName);
+        log.trace("addHostToServerGroup return");
     }
 
     public void removeHostFromServerGroup(String serverGroupName) {
@@ -166,13 +180,19 @@ public class PaasProcessor {
      *
      */
     private InstanceSlot addNewServerInstanceToDomain(String provider) {
+
+        // System.out.println(">>>>>>> context:" +
+        // context.getClass().getCanonicalName());
+        // context.completeStep();
+
         try {
             // TODO update config instances/instance
             String instanceId = IaasController.getInstance().createNewInstance(provider);
             String hostIp = IaasController.getInstance().getInstanceIp(provider, instanceId);
 
             log.debugf("Waiting %s to register.", hostIp);
-            waitNewHostToRegisterToDC(hostIp);
+
+            // waitNewHostToRegisterToDC(hostIp);
 
             // TODO uncomment to replace external configurator
             // ControllerClient cc = new ControllerClient(username, password,
@@ -185,44 +205,6 @@ public class PaasProcessor {
             e.printStackTrace();
         }
         return null;
-    }
-
-    /**
-     * @param hostIp
-     *
-     */
-    private void waitNewHostToRegisterToDC(String hostIp) {
-        // TODO make configurable
-        int maxWaitTime = 30000; // 30sec
-        long started = System.currentTimeMillis();
-
-        // wait remote as to register
-        while (true) {
-            boolean registred = false;
-
-            try {
-                // try to navigate to host, to see if it is already registered
-                JbossDmrActions jbossDmrActions = new JbossDmrActions(context);
-                jbossDmrActions.navigateToHostName(hostIp);
-                registred = true;
-            } catch (NoSuchElementException e) {}
-
-            if (registred) {
-                break;
-            }
-
-            if (System.currentTimeMillis() - started > maxWaitTime) {
-                throw new RuntimeException("Instance hasn't registered in " + maxWaitTime / 1000 + " seconds.");
-            }
-            try {
-                log.debug("Waiting remote as to register. Going to sleep for 1000.");
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
-        }
-
     }
 
 }

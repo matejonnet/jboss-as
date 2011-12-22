@@ -86,7 +86,7 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
 
         paasProcessor.addHostToServerGroup(serverGroupName, newInstance, provider);
 
-        jbossDmrActions.deployToServerGroup(f, appName, serverGroupName);
+        // jbossDmrActions.deployToServerGroup(f, appName, serverGroupName);
 
         context.completeStep();
     }

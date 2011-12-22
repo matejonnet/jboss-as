@@ -14,7 +14,7 @@ import org.jboss.logging.Logger;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-abstract class DmrActions {
+public class DmrActions {
 
     protected OperationContext context;
 
@@ -29,10 +29,12 @@ abstract class DmrActions {
         String opName = operation.get(ModelDescriptionConstants.OP).asString();
         OperationStepHandler opStep = context.getResourceRegistration().getOperationHandler(PathAddress.EMPTY_ADDRESS, opName);
         try {
-            if (log.isTraceEnabled()) log.trace("Executing oreration:" + operation);
+            if (log.isTraceEnabled())
+                log.trace("Executing oreration:" + operation);
             opStep.execute(context, operation);
-            if (log.isTraceEnabled()) log.trace("Operation executed.");
-        //} catch (OperationFailedException e) {
+            if (log.isTraceEnabled())
+                log.trace("Operation executed.");
+            // } catch (OperationFailedException e) {
         } catch (Throwable e) {
             // TODO Auto-generated catch block
             log.error("Can not execute operation [" + opName + "]", e);
@@ -45,7 +47,7 @@ abstract class DmrActions {
      * @param context
      * @param request
      */
-    protected void addStepToContext(ModelNode request) {
+    public void addStepToContext(ModelNode request) {
         context.addStep(request, new OperationStepHandler() {
             @Override
             public void execute(OperationContext context, ModelNode operation) {
@@ -55,7 +57,8 @@ abstract class DmrActions {
     }
 
     protected Resource naviagte(PathAddress address) {
-        Resource rootResource = context.getRootResource();
+        // Resource rootResource = context.getRootResource();
+        Resource rootResource = context.getOriginalRootResource();
         return rootResource.navigate(address);
     }
 }
