@@ -43,11 +43,6 @@ public class IaasController {
         INSTANCE.providers.put(name, provier);
     }
 
-    /**
-     * @param imageId
-     * @return
-     * @throws Exception
-     */
     public String createNewInstance(String providerName) throws Exception {
         IaasProvider provider = INSTANCE.getProvider(providerName);
         return createNewInstance(provider).getId();
@@ -96,19 +91,10 @@ public class IaasController {
         return instance;
     }
 
-    /**
-     * @param remoteIp
-     */
     private void configureInstance(String remoteIp) {
         new RemoteConfigurator().reconfigureRemote(remoteIp);
     }
 
-    /**
-     * @param provider
-     * @param instanceId
-     * @throws Exception
-     * @throws DeltaCloudClientException
-     */
     public boolean terminateInstance(String providerName, String instanceId) throws Exception {
         IaasProvider provider = INSTANCE.getProvider(providerName);
 
@@ -120,19 +106,10 @@ public class IaasController {
         return provider.terminateInstance(instanceId);
     }
 
-    /**
-     * @param providerName
-     * @return
-     */
     private IaasProvider getProvider(String providerName) {
         return providers.get(providerName);
     }
 
-    /**
-     * @param instanceId
-     * @return
-     * @throws Exception
-     */
     public String getInstanceIp(String providerName, String instanceId) throws Exception {
         return INSTANCE.getProvider(providerName).getPublicAddresses(instanceId).get(0);
     }

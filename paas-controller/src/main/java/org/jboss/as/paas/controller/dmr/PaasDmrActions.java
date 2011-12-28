@@ -27,9 +27,6 @@ import org.jboss.logging.Logger;
  */
 public class PaasDmrActions extends DmrActions {
 
-    /**
-     * @param context
-     */
     public PaasDmrActions(OperationContext context) {
         super(context);
     }
@@ -57,10 +54,6 @@ public class PaasDmrActions extends DmrActions {
         return null;
     }
 
-    /**
-     * @param context
-     * @return
-     */
     public Set<ResourceEntry> getIaasProviders() {
         Resource rootResource = context.getRootResource();
 
@@ -101,11 +94,6 @@ public class PaasDmrActions extends DmrActions {
         steps.add(opRemoveSgFromInstance);
     }
 
-    /**
-     * @param context
-     * @param instance
-     * @return
-     */
     public Set<ResourceEntry> getServerGroups(ResourceEntry instance) {
         return instance.getChildren("server-group");
     }

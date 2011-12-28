@@ -87,11 +87,7 @@ public class JBossDmrActions extends DmrActions {
     }
 
     /**
-     * deploy application content and associate deployment with servr group
-     *
-     * @param context
-     * @param f
-     * @param appName
+     * deploy application content and associate deployment with server group
      */
     public void deployToServerGroup(final File f, String appName, String serverGroup) {
         // Deployment process extracted from
@@ -164,10 +160,6 @@ public class JBossDmrActions extends DmrActions {
 
     /**
      * Deployment process extracted from org.jboss.as.cli.handlers.DeployHandler.doHandle(CommandContext)
-     *
-     * @param context
-     * @param appName
-     * @param serverGroup
      */
     public void undeployFromServerGroup(String appName, String serverGroup) {
         final ModelNode request;
@@ -203,10 +195,6 @@ public class JBossDmrActions extends DmrActions {
         // TODO verify result
     }
 
-    /**
-     * @param context
-     * @param appName
-     */
     public void removeServerGroup(String serverGroupName) {
         ModelNode request = new ModelNode();
         request.get(OP).set("remove");
@@ -215,11 +203,6 @@ public class JBossDmrActions extends DmrActions {
         addStepToContext(request);
     }
 
-    /**
-     * @param hostIP
-     * @throws IOException
-     * @throws OperationFormatException
-     */
     public void addHostToDomain(String hostIp, ModelControllerClient client) throws IOException, OperationFormatException {
         String dcIP = SysUtil.getLocalIp();
 
@@ -254,7 +237,6 @@ public class JBossDmrActions extends DmrActions {
             // TODO Auto-generated catch block
             log.error("Cannot build request to create server group.", e);
         }
-
     }
 
     public Resource navigateToHostName(String hostName) {

@@ -22,9 +22,6 @@ public class PaasProcessor {
     private CompositeDmrActions compositeDmrActions;
     private PaasDmrActions paasDmrActions;
 
-    /**
-     *
-     */
     public PaasProcessor(OperationContext context) {
         this.context = context;
         compositeDmrActions = new CompositeDmrActions(context);
@@ -45,13 +42,6 @@ public class PaasProcessor {
         return slot;
     }
 
-    /**
-     * @param serverGroupName
-     * @param slot
-     * @param provider
-     * @param newInstance
-     * @param instanceId
-     */
     public void addHostToServerGroup(String serverGroupName, String provider, boolean newInstance, String instanceId) {
 
         InstanceSlot slot = getSlot(provider, newInstance, serverGroupName, instanceId);
@@ -73,14 +63,12 @@ public class PaasProcessor {
     }
 
     public void removeHostFromServerGroup(String serverGroupName) {
-
         try {
             compositeDmrActions.removeHostsFromServerGroup(serverGroupName, false);
         } catch (Exception e) {
             // TODO throw new OperationFailedException(e);
             e.printStackTrace();
         }
-
     }
 
     private InstanceSlot addNewServerInstanceToDomain(String provider, String serverGroupName) {
@@ -109,7 +97,6 @@ public class PaasProcessor {
     }
 
     /**
-     *
      * @param hostIp
      * @return true if host is registered to domain controller
      */
@@ -124,11 +111,6 @@ public class PaasProcessor {
         }
     }
 
-    /**
-     * @param hostIp
-     * @param context
-     *
-     */
     private void waitNewHostToRegisterToDC(String hostIp) {
         // TODO make configurable
         int maxWaitTime = 30000; // 30sec

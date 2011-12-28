@@ -14,9 +14,6 @@ public class Instance {
 
     private ResourceEntry instance;
 
-    /**
-     * @param instanceRe
-     */
     public Instance(ResourceEntry instance) {
         this.instance = instance;
     }
@@ -33,16 +30,10 @@ public class Instance {
         return instance.getModel().get("provider").asString();
     }
 
-    /**
-     * @return
-     */
     public String getInstanceId() {
         return instance.getName();
     }
 
-    /**
-     * @return
-     */
     public String getHostIP() {
         return instance.getModel().get(ATTRIBUTE_INSTANCE_IP).asString();
     }

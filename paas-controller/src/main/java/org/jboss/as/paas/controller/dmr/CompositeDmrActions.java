@@ -20,23 +20,13 @@ public class CompositeDmrActions extends DmrActions {
     JBossDmrActions jbossDmrActions;
     PaasDmrActions paasDmrActions;
 
-    /**
-     * @param context
-     */
     public CompositeDmrActions(OperationContext context) {
         super(context);
         jbossDmrActions = new JBossDmrActions(context);
         paasDmrActions = new PaasDmrActions(context);
     }
 
-    /**
-     * @param context
-     * @param groupName
-     * @param removeInstance
-     *
-     */
     public void removeHostFromServerGroup(String groupName, InstanceSlot slot) {
-
         ModelNode compositeRequest = new ModelNode();
         compositeRequest.get("operation").set("composite");
         compositeRequest.get("address").setEmptyList();
@@ -73,5 +63,4 @@ public class CompositeDmrActions extends DmrActions {
             }
         }
     }
-
 }
