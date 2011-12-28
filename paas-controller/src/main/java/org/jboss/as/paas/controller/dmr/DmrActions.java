@@ -57,8 +57,7 @@ public class DmrActions {
     }
 
     protected Resource naviagte(PathAddress address) {
-        // Resource rootResource = context.getRootResource();
-        Resource rootResource = context.getOriginalRootResource();
+        Resource rootResource = context.getRootResource();
         return rootResource.navigate(address);
     }
 }

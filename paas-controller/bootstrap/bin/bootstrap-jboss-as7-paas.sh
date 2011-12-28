@@ -1,19 +1,9 @@
 #!/bin/sh
-#define autostart of this script
-#//root@ubuntu:~# ln -s /opt/jboss-as/jboss-as-7/bin/bootstrap-jboss-as7-paas.sh /etc/rc3.d/S75paas
-#//root@ubuntu:~# ln -s /opt/jboss-as/jboss-as-7/bin/bootstrap-jboss-as7-paas.sh /etc/rc2.d/S75paas
-#//root@ubuntu:~# ln -s /opt/jboss-as/jboss-as-7/bin/bootstrap-jboss-as7-paas.sh /etc/rc1.d/S75paas
 #
-# add to /etc/rc.local before exit 0
+# add to /etc/rc.local
 # /opt/jboss-as/jboss-as-7/bin/bootstrap-jboss-as7-paas.sh
 
-#root@ubuntu:~# chmod +x /opt/jboss-as/jboss-as-7/bin/bootstrap-jboss-as7-paas.sh
-#root@ubuntu:~# chmod +x /opt/jboss-as/jboss-as-7/bin/bootstrap-jboss-as7-paas.sh
-#root@ubuntu:~# chmod +x /opt/jboss-as/jboss-as-7/bin/domain.sh
-#root@ubuntu:~# chmod +x /opt/jboss-as/jboss-as-7/bin/jboss-admin.sh
-#root@ubuntu:~# chmod +x /opt/jboss-as/jboss-as-7/bin/startjboss.sh
-
-
+#root@ubuntu:~# chmod +x /opt/jboss-as/jboss-as-7/bin/*.sh
 
 #//TODO move all configuration to jboss-configurator.jar ?
 

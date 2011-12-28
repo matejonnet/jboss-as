@@ -97,11 +97,6 @@
         	<version>1.2.1</version>
         </dependency>
         <dependency>
-        	<groupId>org.alterjoc</groupId>
-        	<artifactId>jboss-configurator</artifactId>
-        	<version>0.0.1-SNAPSHOT</version>
-        </dependency>
-        <dependency>
         	<groupId>org.jboss.as</groupId>
         	<artifactId>jboss-as-controller-client</artifactId>
         </dependency>

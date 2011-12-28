@@ -7,13 +7,16 @@ import java.net.MalformedURLException;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.alterjoc.jbossconfigurator.client.RemoteConfigurator;
 import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.paas.configurator.client.RemoteConfigurator;
+import org.jboss.as.paas.controller.AsClusterPassManagement;
 import org.jboss.as.paas.controller.domain.IaasProvider;
 import org.jboss.logging.Logger;
 
 /**
+ * Singlethon that holds list of IaaS providers
+ *
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
 public class IaasController {
@@ -84,12 +87,9 @@ public class IaasController {
 
         String newInstanceIp = instance.getPrivateAddresses().get(0);
 
-        // TODO pass for management interface
-        // Add password for remote server
-        // AsClusterPassManagement clusterPaasMngmt = new
-        // AsClusterPassManagement();
-        // clusterPaasMngmt.addRemoteServer(newInstanceIp);
-        // uncommetn also in terminateInstance
+        //Add password for remote server
+        AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
+        clusterPaasMngmt.addRemoteServer(newInstanceIp);
 
         configureInstance(newInstanceIp);
 
@@ -114,10 +114,8 @@ public class IaasController {
 
         String hostIp = provider.getPrivateAddresses(instanceId).get(0);
 
-        // TODO pass for management interface
-        // AsClusterPassManagement clusterPaasMngmt = new
-        // AsClusterPassManagement();
-        // clusterPaasMngmt.removeRemoteSerer(hostIp);
+        AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
+        clusterPaasMngmt.removeRemoteSerer(hostIp);
 
         return provider.terminateInstance(instanceId);
     }

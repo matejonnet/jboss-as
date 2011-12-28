@@ -11,7 +11,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 
-import org.alterjoc.jbossconfigurator.sys.SysUtil;
 import org.jboss.as.cli.operation.OperationFormatException;
 import org.jboss.as.cli.operation.impl.DefaultOperationRequestBuilder;
 import org.jboss.as.controller.OperationContext;
@@ -22,6 +21,7 @@ import org.jboss.as.controller.client.ModelControllerClient;
 import org.jboss.as.controller.client.Operation;
 import org.jboss.as.controller.client.OperationBuilder;
 import org.jboss.as.controller.registry.Resource;
+import org.jboss.as.paas.configurator.sys.SysUtil;
 import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
@@ -29,16 +29,16 @@ import org.jboss.logging.Logger;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class JbossDmrActions extends DmrActions {
+public class JBossDmrActions extends DmrActions {
 
     /**
      * @param context
      */
-    public JbossDmrActions(OperationContext context) {
+    public JBossDmrActions(OperationContext context) {
         super(context);
     }
 
-    private static final Logger log = Logger.getLogger(JbossDmrActions.class);
+    private static final Logger log = Logger.getLogger(JBossDmrActions.class);
 
     public boolean isDomainController() {
         Resource rootResource = context.getRootResource();
@@ -58,7 +58,7 @@ public class JbossDmrActions extends DmrActions {
         return "local".equals(domainController);
     }
 
-    void addHostToServerGroup(InstanceSlot slot, String groupName) {
+    public void addHostToServerGroup(InstanceSlot slot, String groupName) {
         // addHOST to SG
         // /host=master/server-config=server-one:add(socket-binding-group=standard-sockets,
         // socket-binding-port-offset=<portOffset>)
@@ -240,11 +240,6 @@ public class JbossDmrActions extends DmrActions {
      * @param serverGroupName
      */
     public void createServerGroup(String serverGroupName) {
-        ModelNode request = createServerGroupRequest(serverGroupName);
-        addStepToContext(request);
-    }
-
-    public static ModelNode createServerGroupRequest(String serverGroupName) {
         DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
         builder.setOperationName("add");
         builder.addNode("server-group", serverGroupName);
@@ -252,12 +247,14 @@ public class JbossDmrActions extends DmrActions {
         builder.addProperty("socket-binding-group", "standard-sockets");
 
         try {
-            return builder.buildRequest();
+            ModelNode request = builder.buildRequest();
+            addStepToContext(request);
+
         } catch (OperationFormatException e) {
             // TODO Auto-generated catch block
             log.error("Cannot build request to create server group.", e);
         }
-        return null;
+
     }
 
     public Resource navigateToHostName(String hostName) {

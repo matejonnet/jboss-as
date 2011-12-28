@@ -3,12 +3,11 @@
  */
 package org.jboss.as.paas.controller.dmr;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Set;
 
 import org.jboss.as.controller.OperationContext;
-import org.jboss.as.controller.registry.Resource.ResourceEntry;
+import org.jboss.as.paas.controller.domain.Instance;
+import org.jboss.as.paas.controller.domain.ServerGroup;
 import org.jboss.as.paas.controller.iaas.IaasController;
 import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
@@ -18,7 +17,7 @@ import org.jboss.dmr.ModelNode;
  */
 public class CompositeDmrActions extends DmrActions {
 
-    JbossDmrActions jbossDmrActions;
+    JBossDmrActions jbossDmrActions;
     PaasDmrActions paasDmrActions;
 
     /**
@@ -26,7 +25,7 @@ public class CompositeDmrActions extends DmrActions {
      */
     public CompositeDmrActions(OperationContext context) {
         super(context);
-        jbossDmrActions = new JbossDmrActions(context);
+        jbossDmrActions = new JBossDmrActions(context);
         paasDmrActions = new PaasDmrActions(context);
     }
 
@@ -49,44 +48,23 @@ public class CompositeDmrActions extends DmrActions {
         addStepToContext(compositeRequest);
     }
 
-    /**
-     * Add host to server group. If there is no host with free slots it creates new host.
-     * New host creation is possible only with an IaaS provider.
-     *
-     * @param newInstance do not check for free slots, create new host
-     * @param provider
-     * @param context
-     * @param groupName
-     * @param slot
-     */
-    public void addHostToServerGroup(InstanceSlot slot, String groupName) {
-        jbossDmrActions.addHostToServerGroup(slot, groupName);
-        paasDmrActions.addHostToServerGroup(slot, groupName);
-    }
-
-    /**
-     * @param context
-     * @param groupName
-     * @throws Exception
-     *
-     */
     public void removeHostsFromServerGroup(String groupName, boolean removeFromAll) throws Exception {
-        Map<InstanceSlot, Integer> slotsToRemove = new HashMap<InstanceSlot, Integer>();
 
         outer:
-        for (ResourceEntry instance : paasDmrActions.getInstances()) {
-            Set<ResourceEntry> serverGroups = paasDmrActions.getServerGroups(instance);
-            for (ResourceEntry serverGroup : serverGroups) {
+        for (Instance instance : paasDmrActions.getInstances()) {
+            Set<ServerGroup> serverGroups = instance.getServerGroups();
+            for (ServerGroup serverGroup : serverGroups) {
                 if (groupName.equals(serverGroup.getName())) {
-                    String providerName = instance.getModel().get("provider").asString();
-                    String hostIP = IaasController.getInstance().getInstanceIp(providerName, instance.getName());
-                    int slotPosition = serverGroup.getModel().get("position").asInt();
+                    String providerName = instance.getProviderName();
+                    String hostIP = IaasController.getInstance().getInstanceIp(providerName, instance.getInstanceId());
+                    int slotPosition = serverGroup.getPosition();
 
-                    InstanceSlot slot = new InstanceSlot(hostIP, slotPosition, instance.getName());
+                    InstanceSlot slot = new InstanceSlot(hostIP, slotPosition, instance.getInstanceId());
                     removeHostFromServerGroup(groupName, slot);
                     int slotsInOwningGroup = serverGroups.size();
+                    //if this is the only group on instance
                     if (slotsInOwningGroup < 2) {
-                        IaasController.getInstance().terminateInstance(providerName, slot.getInstanceId());
+                        IaasController.getInstance().terminateInstance(providerName, instance.getInstanceId());
                     }
                     if (!removeFromAll) {
                         break outer;

@@ -7,8 +7,6 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.paas.controller.PaasProcessor;
-import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
-import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 
@@ -21,6 +19,7 @@ public class ExpandHandler extends BaseHandler implements OperationStepHandler {
     private static final String ATTRIBUTE_APP_NAME = "name";
     private static final String ATTRIBUTE_PROVIDER = "provider";
     private static final String ATTRIBUTE_NEW_INSTANCE = "new-instance";
+    private static final String ATTRIBUTE_INSTANCE_ID = "instance-id";
 
     private final Logger log = Logger.getLogger(ExpandHandler.class);
 
@@ -32,11 +31,11 @@ public class ExpandHandler extends BaseHandler implements OperationStepHandler {
             return;
         }
 
-        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
-
         final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
         final String provider = operation.get(ATTRIBUTE_PROVIDER).asString();
         final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() ? operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean() : false;
+        final String instanceId = operation.get(ATTRIBUTE_INSTANCE_ID).isDefined() ? operation.get(ATTRIBUTE_INSTANCE_ID).asString() : null;
+
         // TODO validate required attributes
         // if(appName == null) {
         // throw new
@@ -45,8 +44,9 @@ public class ExpandHandler extends BaseHandler implements OperationStepHandler {
 
         PaasProcessor paasProcessor = new PaasProcessor(context);
 
-        InstanceSlot slot = paasProcessor.getSlot(newInstance, getServerGroupName(appName), provider);
-        compositeDmrActions.addHostToServerGroup(slot, getServerGroupName(appName));
+        String serverGroupName = getServerGroupName(appName);
+
+        paasProcessor.addHostToServerGroup(serverGroupName, provider, newInstance, instanceId);
 
         context.completeStep();
     }

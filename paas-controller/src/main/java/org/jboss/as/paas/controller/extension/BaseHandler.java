@@ -4,14 +4,14 @@
 package org.jboss.as.paas.controller.extension;
 
 import org.jboss.as.controller.OperationContext;
-import org.jboss.as.paas.controller.dmr.JbossDmrActions;
+import org.jboss.as.paas.controller.dmr.JBossDmrActions;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
 abstract class BaseHandler {
 
-    protected JbossDmrActions jbossDmrActions;
+    protected JBossDmrActions jbossDmrActions;
 
     /**
      * @param appName
@@ -29,7 +29,7 @@ abstract class BaseHandler {
      */
     public boolean execute(OperationContext context) {
         System.out.println(">>>>>>>>> Handle.execute ");
-        jbossDmrActions = new JbossDmrActions(context);
+        jbossDmrActions = new JBossDmrActions(context);
 
         if (!jbossDmrActions.isDomainController()) {
             context.completeStep();

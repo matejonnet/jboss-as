@@ -1,7 +1,6 @@
 <module xmlns="urn:jboss:module:1.0" name="org.jboss.as.paas.controller">
     <resources>
         <resource-root path="jboss-as-paas-controller.jar"/>
-        <resource-root path="jboss-configurator.jar"/>
         <resource-root path="deltacloud-client-0.2.0-SNAPSHOT.jar"/>
         <resource-root path="jclouds-scriptbuilder-1.2.1.jar"/>
         <resource-root path="jclouds-core-1.2.1.jar"/>

@@ -30,6 +30,7 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
     private static final String ATTRIBUTE_PATH = "path";
     private static final String ATTRIBUTE_PROVIDER = "provider";
     private static final String ATTRIBUTE_NEW_INSTANCE = "new-instance";
+    private static final String ATTRIBUTE_INSTANCE_ID = "instance-id";
 
     private final Logger log = Logger.getLogger(DeployHandler.class);
 
@@ -38,9 +39,7 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
     /**
      * (non-Javadoc)
      *
-     * @see
-     * org.jboss.as.controller.OperationStepHandler#execute(org.jboss.as.controller
-     * .OperationContext, org.jboss.dmr.ModelNode)
+     * @see org.jboss.as.controller.OperationStepHandler#execute(org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode)
      */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
@@ -48,13 +47,14 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
             return;
         }
 
-        log.debug("Executing deploy handle ...");
+        log.trace("Executing deploy handle ...");
 
         PaasProcessor paasProcessor = new PaasProcessor(context);
 
         final String filePath = operation.get(ATTRIBUTE_PATH).asString();
         final String provider = operation.get(ATTRIBUTE_PROVIDER).asString();
-        final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() ? operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean() : false;
+        final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() && operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean();
+        final String instanceId = operation.get(ATTRIBUTE_INSTANCE_ID).isDefined() ? operation.get(ATTRIBUTE_INSTANCE_ID).asString() : null;
 
         // TODO validate required attributes
 
@@ -65,16 +65,12 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
                 String message = "Path " + f.getAbsolutePath() + " doesn't exist. File must be located on localhost.";
                 context.getResult().add(message);
                 log.warn(message);
-                // TODO remove
-                System.out.println(message);
                 return;
             }
             if (f.isDirectory()) {
                 String message = f.getAbsolutePath() + " is a directory.";
                 context.getResult().add(message);
                 log.warn(message);
-                // TODO remove
-                System.out.println(message);
                 return;
             }
         } else {
@@ -84,9 +80,9 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
         String appName = f.getName();
         String serverGroupName = getServerGroupName(appName);
 
-        paasProcessor.addHostToServerGroup(serverGroupName, newInstance, provider);
+        paasProcessor.addHostToServerGroup(serverGroupName, provider, newInstance, instanceId);
 
-        // jbossDmrActions.deployToServerGroup(f, appName, serverGroupName);
+        jbossDmrActions.deployToServerGroup(f, appName, serverGroupName);
 
         context.completeStep();
     }
@@ -112,6 +108,10 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
             node.get(REQUEST_PROPERTIES, ATTRIBUTE_NEW_INSTANCE, DESCRIPTION).set("Force new instance creation. Default: false");
             node.get(REQUEST_PROPERTIES, ATTRIBUTE_NEW_INSTANCE, TYPE).set(ModelType.STRING);
             node.get(REQUEST_PROPERTIES, ATTRIBUTE_NEW_INSTANCE, REQUIRED).set(false);
+
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_INSTANCE_ID, DESCRIPTION).set("Host where to look for free slot.");
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_INSTANCE_ID, TYPE).set(ModelType.STRING);
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_INSTANCE_ID, REQUIRED).set(false);
 
             return node;
         }
