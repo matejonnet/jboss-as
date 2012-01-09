@@ -7,6 +7,7 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
+import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 
@@ -20,7 +21,6 @@ public class UnDeployHandler extends BaseHandler implements OperationStepHandler
 
     private final Logger log = Logger.getLogger(UnDeployHandler.class);
 
-
     private UnDeployHandler() {}
 
     /* (non-Javadoc)
@@ -32,7 +32,8 @@ public class UnDeployHandler extends BaseHandler implements OperationStepHandler
             return;
         }
 
-        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context);
+        PaasDmrActions paasDmrActions = new PaasDmrActions(context);
+        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(context, jbossDmrActions, paasDmrActions, stepRegistry);
 
         final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
         //TODO validate required attributes
@@ -55,14 +56,5 @@ public class UnDeployHandler extends BaseHandler implements OperationStepHandler
 
         context.completeStep();
     }
-
-
-
-
-
-
-
-
-
 
 }

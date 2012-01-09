@@ -49,7 +49,7 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
 
         log.trace("Executing deploy handle ...");
 
-        PaasProcessor paasProcessor = new PaasProcessor(context);
+        PaasProcessor paasProcessor = new PaasProcessor(context, jbossDmrActions, paasDmrActions, compositeDmrActions);
 
         final String filePath = operation.get(ATTRIBUTE_PATH).asString();
         final String provider = operation.get(ATTRIBUTE_PROVIDER).asString();
@@ -82,9 +82,15 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
 
         paasProcessor.addHostToServerGroup(serverGroupName, provider, newInstance, instanceId);
 
-        jbossDmrActions.deployToServerGroup(f, appName, serverGroupName);
+        //log.debug("deploying ...");
+        //jbossDmrActions.deployToServerGroup(f, appName, serverGroupName, new String[] { "addHostToServerGroupPaas" });
 
         context.completeStep();
+
+        //        if (!stepRegistry.areExecuted(JBossDmrActions.class.getName(), new String[] { "validateHostRegistration" })) {
+        //            context.getResult().add("Instance [" + paasProcessor.getSlot().getInstanceId() + "] is not registered in domain controller jet. Re-run deploy command with instance-id parameter.");
+        //        }
+
     }
 
     /**

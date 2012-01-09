@@ -7,7 +7,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketAddress;
 import java.net.UnknownHostException;
 
 import org.jboss.as.paas.configurator.Main;
@@ -28,7 +30,10 @@ public class RemoteConfigurator {
         BufferedReader in = null;
 
         try {
-            remoteConfigurator = new Socket(remoteIp, Main.CONFIGURATOR_PORT);
+            //remoteConfigurator = new Socket(remoteIp, Main.CONFIGURATOR_PORT);
+            remoteConfigurator = new Socket();
+            SocketAddress endpointAddress = new InetSocketAddress(remoteIp, Main.CONFIGURATOR_PORT);
+            remoteConfigurator.connect(endpointAddress, 30000);
             out = new PrintWriter(remoteConfigurator.getOutputStream(), true);
             in = new BufferedReader(new InputStreamReader(remoteConfigurator.getInputStream()));
         } catch (UnknownHostException e) {

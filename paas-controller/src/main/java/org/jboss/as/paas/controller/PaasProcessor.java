@@ -1,10 +1,10 @@
 package org.jboss.as.paas.controller;
 
-import java.util.NoSuchElementException;
-
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.paas.configurator.client.RemoteConfigurator;
 import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
 import org.jboss.as.paas.controller.dmr.JBossDmrActions;
+import org.jboss.as.paas.controller.dmr.OperationStepRegistry;
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 import org.jboss.as.paas.controller.iaas.IaasController;
 import org.jboss.as.paas.controller.iaas.InstanceSlot;
@@ -19,47 +19,66 @@ public class PaasProcessor {
 
     OperationContext context;
 
-    private CompositeDmrActions compositeDmrActions;
     private PaasDmrActions paasDmrActions;
+    private JBossDmrActions jbossDmrActions;
+    private CompositeDmrActions compositeDmrActions;
 
-    public PaasProcessor(OperationContext context) {
+    private InstanceSlot slot;
+
+    @Deprecated
+    public PaasProcessor(OperationContext context, OperationStepRegistry stepRegistry) {
         this.context = context;
-        compositeDmrActions = new CompositeDmrActions(context);
-        paasDmrActions = new PaasDmrActions(context);
+        paasDmrActions = new PaasDmrActions(context, stepRegistry);
+        jbossDmrActions = new JBossDmrActions(context);
+        compositeDmrActions = new CompositeDmrActions(context, jbossDmrActions, paasDmrActions, stepRegistry);
     }
 
-    public InstanceSlot getSlot(final String provider, final boolean newInstance, String serverGroupName, String instanceId) {
-        InstanceSlot slot = null;
+    public PaasProcessor(OperationContext context, JBossDmrActions jbossDmrActions, PaasDmrActions paasDmrActions, CompositeDmrActions compositeDmrActions) {
+        this.context = context;
+        this.jbossDmrActions = jbossDmrActions;
+        this.paasDmrActions = paasDmrActions;
+        this.compositeDmrActions = compositeDmrActions;
+    }
+
+    public void findSlot(final String provider, final boolean newInstance, String serverGroupName, String instanceId) {
+        slot = null;
         if (!newInstance) {
-            InstanceSearch instanceSearch = new InstanceSearch(context);
+            if (log.isTraceEnabled())
+                log.tracef("Searching for existing instance on provider [%s]: instanceId: [%s].", provider, instanceId);
+            InstanceSearch instanceSearch = new InstanceSearch(paasDmrActions);
             slot = instanceSearch.getFreeSlot(serverGroupName, provider, instanceId);
         }
 
         if (slot == null) {
-            slot = addNewServerInstanceToDomain(provider, serverGroupName);
+            addNewServerInstanceToDomain(provider, serverGroupName);
         }
-
-        return slot;
     }
 
     public void addHostToServerGroup(String serverGroupName, String provider, boolean newInstance, String instanceId) {
 
-        InstanceSlot slot = getSlot(provider, newInstance, serverGroupName, instanceId);
+        findSlot(provider, newInstance, serverGroupName, instanceId);
         if (slot == null) {
             context.getResult().set("Cannot get free slot.");
-        }
-
-        if (!isHostRegistredToDc(slot.getHostIP())) {
-            context.getResult().add("Instance [" + slot.getInstanceId() + "] is not registered in domain controller jet. Re-run deploy command with instance-id parameter.");
-            context.completeStep();
             return;
         }
+        log.debugf("Using free slot instanceId: [%s] host [%s] slot position [%s].", slot.getInstanceId(), slot.getHostIP(), slot.getSlotPosition());
+        jbossDmrActions.validateHostRegistration(slot.getHostIP());
 
-        JBossDmrActions jbossDmrActions = new JBossDmrActions(context);
-        jbossDmrActions.createServerGroup(serverGroupName);
-        jbossDmrActions.addHostToServerGroup(slot, serverGroupName);
+        jbossDmrActions.createServerGroup(serverGroupName, new String[] { "validateHostRegistration" });
+        //        jbossDmrActions.createServerGroup(serverGroupName, new String[] {});
+        //        jbossDmrActions.addHostToServerGroup(slot, serverGroupName, new String[] { "createServerGroup" });
+
+        //        if (true)
+        //            return;
+
+        //jbossDmrActions.startServer(slot);
+        //jbossDmrActions.reloadHost(slot.getHostIP());
+
+        paasDmrActions.addHostToServerGroupPaas(instanceId, slot.getSlotPosition(), serverGroupName, new String[] { "addHostToServerGroup" });
+
         if (log.isTraceEnabled())
-            log.trace("addHostToServerGroup return");
+            log.trace("Completed adding steps for addHostToServerGroup.");
+
     }
 
     public void removeHostFromServerGroup(String serverGroupName) {
@@ -71,66 +90,39 @@ public class PaasProcessor {
         }
     }
 
-    private InstanceSlot addNewServerInstanceToDomain(String provider, String serverGroupName) {
+    private void addNewServerInstanceToDomain(String provider, String serverGroupName) {
 
         try {
             // TODO update config instances/instance
             String instanceId = IaasController.getInstance().createNewInstance(provider);
             String hostIp = IaasController.getInstance().getInstanceIp(provider, instanceId);
 
-            log.debugf("Waiting %s to register.", hostIp);
+            paasDmrActions.addInstance(instanceId, provider, hostIp);
 
-            // waitNewHostToRegisterToDC(hostIp);
+            //Add password for remote server
+            AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
+            clusterPaasMngmt.addRemoteServer(hostIp);
+
+            configureInstance(hostIp);
 
             // TODO uncomment to replace external configurator
             // ControllerClient cc = new ControllerClient(username, password,
             // hostIp);
             // ModelControllerClient client = cc.getClient();
             // addHostToDomain(hostIp, client);
-            paasDmrActions.addHostToServerGroup(instanceId, 0, serverGroupName);
-            return new InstanceSlot(hostIp, 0, instanceId);
+            log.debugf("New host [%s] added and configured.", hostIp);
+            slot = new InstanceSlot(hostIp, 0, instanceId);
         } catch (Exception e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
         }
-        return null;
     }
 
-    /**
-     * @param hostIp
-     * @return true if host is registered to domain controller
-     */
-    public boolean isHostRegistredToDc(String hostIp) {
-        try {
-            // try to navigate to host, to see if it is already registered
-            JBossDmrActions jbossDmrActions = new JBossDmrActions(context);
-            jbossDmrActions.navigateToHostName(hostIp);
-            return true;
-        } catch (NoSuchElementException e) {
-            return false;
-        }
+    private void configureInstance(String remoteIp) {
+        new RemoteConfigurator().reconfigureRemote(remoteIp);
     }
 
-    private void waitNewHostToRegisterToDC(String hostIp) {
-        // TODO make configurable
-        int maxWaitTime = 30000; // 30sec
-        long started = System.currentTimeMillis();
-
-        // wait remote as to register
-        while (true) {
-            if (isHostRegistredToDc(hostIp)) {
-                break;
-            }
-            if (System.currentTimeMillis() - started > maxWaitTime) {
-                throw new RuntimeException("Instance hasn't registered in " + maxWaitTime / 1000 + " seconds.");
-            }
-            try {
-                log.debug("Waiting remote as to register. Going to sleep for 1000.");
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
-        }
+    public InstanceSlot getSlot() {
+        return slot;
     }
 }

@@ -31,11 +31,15 @@ public class PaasDmrActions extends DmrActions {
         super(context);
     }
 
+    public PaasDmrActions(OperationContext context, OperationStepRegistry stepRegistry) {
+        super(context, stepRegistry);
+    }
+
     private static final Logger log = Logger.getLogger(DmrActions.class);
 
     public Set<Instance> getInstances() {
         PathAddress instancesAddr = PathAddress.pathAddress(PathElement.pathElement("profile", "paas-controller"), PathElement.pathElement("subsystem", "paas-controller"));
-        Resource instancesResource = naviagte(instancesAddr);
+        Resource instancesResource = navigate(instancesAddr);
 
         Set<Instance> instances = new HashSet<Instance>();
         for (ResourceEntry instanceRe : instancesResource.getChildren("instance")) {
@@ -73,15 +77,26 @@ public class PaasDmrActions extends DmrActions {
         return null;
     }
 
-    public void addHostToServerGroup(String instanceId, int slotPosition, String groupName) {
-        ModelNode opAddSgToInstance = new ModelNode();
-        opAddSgToInstance.get(OP).set("add");
-        opAddSgToInstance.get(OP_ADDR).add("profile", "paas-controller");
-        opAddSgToInstance.get(OP_ADDR).add("subsystem", "paas-controller");
-        opAddSgToInstance.get(OP_ADDR).add("instance", instanceId);
-        opAddSgToInstance.get(OP_ADDR).add("server-group", groupName);
-        opAddSgToInstance.get("position").set(slotPosition);
-        addStepToContext(opAddSgToInstance);
+    public void addHostToServerGroupPaas(String instanceId, int slotPosition, String groupName, String[] requiredSteps) {
+        ModelNode op = new ModelNode();
+        op.get(OP).set("add");
+        op.get(OP_ADDR).add("profile", "paas-controller");
+        op.get(OP_ADDR).add("subsystem", "paas-controller");
+        op.get(OP_ADDR).add("instance", instanceId);
+        op.get(OP_ADDR).add("server-group", groupName);
+        op.get("position").set(slotPosition);
+        addStepToContext(op, "addHostToServerGroupPaas", requiredSteps);
+    }
+
+    public void addInstance(String instanceId, String provider, String ip) {
+        ModelNode opAddInstance = new ModelNode();
+        opAddInstance.get(OP).set("add");
+        opAddInstance.get(OP_ADDR).add("profile", "paas-controller");
+        opAddInstance.get(OP_ADDR).add("subsystem", "paas-controller");
+        opAddInstance.get(OP_ADDR).add("instance", instanceId);
+        opAddInstance.get("provider").set(provider);
+        opAddInstance.get("ip").set(ip);
+        addStepToContext(opAddInstance);
     }
 
     public void removeHostFromServerGroup(ModelNode steps, String groupName, InstanceSlot slot) {

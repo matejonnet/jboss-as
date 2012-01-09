@@ -9,7 +9,6 @@ import java.util.Map;
 
 import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.jboss.as.controller.OperationContext;
-import org.jboss.as.paas.configurator.client.RemoteConfigurator;
 import org.jboss.as.paas.controller.AsClusterPassManagement;
 import org.jboss.as.paas.controller.domain.IaasProvider;
 import org.jboss.logging.Logger;
@@ -80,19 +79,7 @@ public class IaasController {
             }
         }
 
-        String newInstanceIp = instance.getPrivateAddresses().get(0);
-
-        //Add password for remote server
-        AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
-        clusterPaasMngmt.addRemoteServer(newInstanceIp);
-
-        configureInstance(newInstanceIp);
-
         return instance;
-    }
-
-    private void configureInstance(String remoteIp) {
-        new RemoteConfigurator().reconfigureRemote(remoteIp);
     }
 
     public boolean terminateInstance(String providerName, String instanceId) throws Exception {

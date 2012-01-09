@@ -20,10 +20,17 @@ public class CompositeDmrActions extends DmrActions {
     JBossDmrActions jbossDmrActions;
     PaasDmrActions paasDmrActions;
 
-    public CompositeDmrActions(OperationContext context) {
-        super(context);
-        jbossDmrActions = new JBossDmrActions(context);
-        paasDmrActions = new PaasDmrActions(context);
+    //    public CompositeDmrActions(OperationContext context) {
+    //        super(context);
+    //        jbossDmrActions = new JBossDmrActions(context);
+    //        paasDmrActions = new PaasDmrActions(context);
+    //    }
+
+    public CompositeDmrActions(OperationContext context, JBossDmrActions jbossDmrActions, PaasDmrActions paasDmrActions, OperationStepRegistry stepRegistry) {
+        super(context, stepRegistry);
+        this.jbossDmrActions = jbossDmrActions;
+        this.paasDmrActions = paasDmrActions;
+        this.stepRegistry = stepRegistry;
     }
 
     public void removeHostFromServerGroup(String groupName, InstanceSlot slot) {

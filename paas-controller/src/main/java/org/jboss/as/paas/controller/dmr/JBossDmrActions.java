@@ -5,11 +5,13 @@ package org.jboss.as.paas.controller.dmr;
 
 import static org.jboss.as.controller.client.helpers.ClientConstants.DEPLOYMENT;
 import static org.jboss.as.controller.client.helpers.ClientConstants.OP;
+import static org.jboss.as.controller.client.helpers.ClientConstants.OPERATION_HEADERS;
 import static org.jboss.as.controller.client.helpers.ClientConstants.OP_ADDR;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.List;
 
 import org.jboss.as.cli.operation.OperationFormatException;
 import org.jboss.as.cli.operation.impl.DefaultOperationRequestBuilder;
@@ -38,6 +40,10 @@ public class JBossDmrActions extends DmrActions {
         super(context);
     }
 
+    public JBossDmrActions(OperationContext context, OperationStepRegistry stepRegistry) {
+        super(context, stepRegistry);
+    }
+
     private static final Logger log = Logger.getLogger(JBossDmrActions.class);
 
     public boolean isDomainController() {
@@ -58,20 +64,28 @@ public class JBossDmrActions extends DmrActions {
         return "local".equals(domainController);
     }
 
-    public void addHostToServerGroup(InstanceSlot slot, String groupName) {
+    /**
+     * configure remote host to connect to domain controller
+     * @param required
+     */
+    public void addHostToServerGroup(InstanceSlot slot, String groupName, String[] requiredSteps) {
+        log.debugf("Adding step addHostToServerGroup. Instance [%s] with ip [%s] to server group [%s].", slot.getInstanceId(), slot.getHostIP(), groupName);
+
         // addHOST to SG
         // /host=master/server-config=server-one:add(socket-binding-group=standard-sockets,
         // socket-binding-port-offset=<portOffset>)
-        ModelNode opAddHostToSg = new ModelNode();
-        opAddHostToSg.get(OP).set("add");
-        opAddHostToSg.get(OP_ADDR).add("host", slot.getHostIP());
-        opAddHostToSg.get(OP_ADDR).add("server-config", "server" + slot.getSlotPosition());
-        opAddHostToSg.get("group").set(groupName);
-        opAddHostToSg.get("auto-start").set(true);
-        opAddHostToSg.get("socket-binding-group").set("standard-sockets");
-        opAddHostToSg.get("socket-binding-port-offset").set(slot.getPortOffset());
+        ModelNode op = new ModelNode();
+        op.get(OP).set("add");
+        op.get(OP_ADDR).add("host", slot.getHostIP());
+        op.get(OP_ADDR).add("server-config", "server" + slot.getSlotPosition());
+        op.get("group").set(groupName);
+        op.get("auto-start").set(true);
+        //TODO validate if it is a bug, that server throws an exception on boot if ref attribute is included
+        //opAddHostToSg.get("socket-binding-group").set("standard-sockets");
+        op.get("socket-binding-port-offset").set(slot.getPortOffset());
 
-        addStepToContext(opAddHostToSg);
+        //addStepToContext(op, OperationContext.Stage.DOMAIN, "addHostToServerGroup", requiredSteps); //same problem, execution out of order
+        addStepToContext(op, OperationContext.Stage.MODEL, "addHostToServerGroup", requiredSteps);
     }
 
     void removeHostFromServerGroup(ModelNode steps, String groupName, InstanceSlot slot) {
@@ -88,12 +102,19 @@ public class JBossDmrActions extends DmrActions {
 
     /**
      * deploy application content and associate deployment with server group
+     * @param requiredSteps
      */
-    public void deployToServerGroup(final File f, String appName, String serverGroup) {
+    public void deployToServerGroup(final File f, String appName, String serverGroup, String[] requiredSteps) {
+        if (!stepRegistry.areExecuted(requiredSteps)) {
+            log.debug("Skipping execution of step deployToServerGroup.");
+            return;
+        }
         // Deployment process extracted from
         // org.jboss.as.cli.handlers.DeployHandler.doHandle(CommandContext)
 
         final ModelNode request;
+
+        //TODO replace deployment
 
         // add deployment
         ModelNode opAddDeployment = new ModelNode();
@@ -117,7 +138,7 @@ public class JBossDmrActions extends DmrActions {
                         opStep.execute(ctxWthStream, opWthStream.getOperation());
                     } catch (Throwable t) {
                         // TODO
-                        t.printStackTrace();
+                        log.error("Deployment failed.", t);
                     } finally {
                         try {
                             is.close();
@@ -130,6 +151,7 @@ public class JBossDmrActions extends DmrActions {
             }, OperationContext.Stage.MODEL);
         } catch (Exception e) {
             context.getResult().add("Failed to add the deployment content to the repository: " + e.getLocalizedMessage());
+            log.error("Deployment failed while adding step.", e);
             return;
         }
 
@@ -221,27 +243,82 @@ public class JBossDmrActions extends DmrActions {
      *
      * @param context
      * @param serverGroupName
+     * @param requiredSteps
      */
-    public void createServerGroup(String serverGroupName) {
-        DefaultOperationRequestBuilder builder = new DefaultOperationRequestBuilder();
-        builder.setOperationName("add");
-        builder.addNode("server-group", serverGroupName);
-        builder.addProperty("profile", "default");
-        builder.addProperty("socket-binding-group", "standard-sockets");
+    public void createServerGroup(String serverGroupName, String[] requiredSteps) {
+        log.tracef("Adding step createServerGroup [%s].", serverGroupName);
 
-        try {
-            ModelNode request = builder.buildRequest();
-            addStepToContext(request);
+        ModelNode opHeaders = new ModelNode();
+        opHeaders.get("execute-for-coordinator").set(true);
 
-        } catch (OperationFormatException e) {
-            // TODO Auto-generated catch block
-            log.error("Cannot build request to create server group.", e);
+        ModelNode op = new ModelNode();
+        if (false)
+            op.get(OPERATION_HEADERS).set(opHeaders);
+        op.get(OP).set("add");
+        op.get(OP_ADDR).add("server-group", serverGroupName);
+        op.get("profile").set("default");
+        op.get("socket-binding-group").set("standard-sockets");
+
+        addStepToContext(op, "createServerGroup", requiredSteps);
+    }
+
+    public void validateHostRegistration(final String hostName) {
+        // :read-children-names(child-type=host)
+
+        ModelNode op = new ModelNode();
+        op.get(OP).set("read-children-names");
+        op.get(OP_ADDR).set(PathAddress.EMPTY_ADDRESS.toModelNode());
+        op.get("child-type").set("host");
+
+        context.addStep(op, new OperationStepHandler() {
+            @Override
+            public void execute(OperationContext context, ModelNode operation) {
+                executeStepValidateHostReg(context, operation, "validateHostRegistration", hostName);
+            }
+        }, OperationContext.Stage.MODEL);
+    }
+
+    private void executeStepValidateHostReg(OperationContext context, ModelNode operation, String stepName, String hostName) {
+        log.tracef("Executing step %s ...", stepName);
+
+        doExecuteStep(context, operation);
+
+        ModelNode result = context.getResult();
+        List<ModelNode> resultList = result.asList();
+        boolean success = false;
+        for (ModelNode modelNode : resultList) {
+            if (modelNode.asString().equals(hostName)) {
+                log.tracef("Step %s executed successfully.", stepName);
+                stepRegistry.addExecuted(stepName);
+                success = true;
+                break;
+            }
         }
+
+        if (!success) {
+            log.tracef("Step %s did not execute success. Result [%s].", stepName, result);
+            stepRegistry.addFailed(stepName);
+        }
+        //context.getResult().setEmptyObject();
+        //XXX        context.completeStep();
     }
 
-    public Resource navigateToHostName(String hostName) {
-        PathAddress instancesAddr = PathAddress.pathAddress(PathElement.pathElement("host", hostName));
-        return naviagte(instancesAddr);
+    public void reloadHost(String hostIP) {
+        // /host=172.16.254.233:reload
+        ModelNode request = new ModelNode();
+        request.get(OP).set("reload");
+        request.get(OP_ADDR).add("host", hostIP);
+
+        addStepToContext(request);
     }
 
+    public void startServer(InstanceSlot slot) {
+        // /host=172.16.254.233/server-config=server0:start
+        ModelNode request = new ModelNode();
+        request.get(OP).set("start");
+        request.get(OP_ADDR).add("host", slot.getHostIP());
+        request.get(OP_ADDR).add("server-config", "server" + slot.getSlotPosition());
+        addStepToContext(request);
+
+    }
 }

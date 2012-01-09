@@ -41,10 +41,8 @@ public class ServerInstanceAddHandler extends AbstractAddStepHandler implements 
 
     /*
      * (non-Javadoc)
-     * 
-     * @see
-     * org.jboss.as.controller.descriptions.DescriptionProvider#getModelDescription
-     * (java.util.Locale)
+     *
+     * @see org.jboss.as.controller.descriptions.DescriptionProvider#getModelDescription(java.util.Locale)
      */
     @Override
     public ModelNode getModelDescription(Locale locale) {
@@ -60,10 +58,8 @@ public class ServerInstanceAddHandler extends AbstractAddStepHandler implements 
 
     /*
      * (non-Javadoc)
-     * 
-     * @see
-     * org.jboss.as.controller.AbstractAddStepHandler#populateModel(org.jboss
-     * .dmr.ModelNode, org.jboss.dmr.ModelNode)
+     *
+     * @see org.jboss.as.controller.AbstractAddStepHandler#populateModel(org.jboss.dmr.ModelNode, org.jboss.dmr.ModelNode)
      */
     @Override
     protected void populateModel(ModelNode operation, ModelNode model) throws OperationFailedException {
@@ -96,10 +92,9 @@ public class ServerInstanceAddHandler extends AbstractAddStepHandler implements 
 
     /*
      * (non-Javadoc)
-     * 
-     * @see
-     * org.jboss.as.controller.AbstractAddStepHandler#performRuntime(org.jboss
-     * .as.controller.OperationContext, org.jboss.dmr.ModelNode,
+     *
+     * @see org.jboss.as.controller.AbstractAddStepHandler#performRuntime(
+     * org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode,
      * org.jboss.dmr.ModelNode,
      * org.jboss.as.controller.ServiceVerificationHandler, java.util.List)
      */

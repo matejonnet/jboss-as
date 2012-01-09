@@ -4,7 +4,10 @@
 package org.jboss.as.paas.controller.extension;
 
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
 import org.jboss.as.paas.controller.dmr.JBossDmrActions;
+import org.jboss.as.paas.controller.dmr.OperationStepRegistry;
+import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -12,6 +15,9 @@ import org.jboss.as.paas.controller.dmr.JBossDmrActions;
 abstract class BaseHandler {
 
     protected JBossDmrActions jbossDmrActions;
+    protected PaasDmrActions paasDmrActions;
+    protected CompositeDmrActions compositeDmrActions;
+    protected OperationStepRegistry stepRegistry;
 
     /**
      * @param appName
@@ -29,12 +35,15 @@ abstract class BaseHandler {
      */
     public boolean execute(OperationContext context) {
         System.out.println(">>>>>>>>> Handle.execute ");
-        jbossDmrActions = new JBossDmrActions(context);
+        stepRegistry = new OperationStepRegistry();
+        jbossDmrActions = new JBossDmrActions(context, stepRegistry);
 
         if (!jbossDmrActions.isDomainController()) {
             context.completeStep();
             return false;
         }
+        paasDmrActions = new PaasDmrActions(context, stepRegistry);
+        //compositeDmrActions = new CompositeDmrActions(context, jbossDmrActions, paasDmrActions, stepRegistry);
         return true;
     }
 

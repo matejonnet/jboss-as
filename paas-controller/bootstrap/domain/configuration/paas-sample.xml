@@ -36,6 +36,9 @@
                     <iaas-provider provider="local-domain-controller" driver="local" url="" username="" password="" image-id=""/>
                 </iaas-providers>
                 <instances>
+                    <instance id="in-1" provider="local-domain-controller" ip=""/>
+                    <instance id="in-2" provider="myvm" ip="172.16.254.128"/>
+                    <instance id="in-3" provider="myvm" ip="172.16.254.129"/>
                 </instances>
             </subsystem>
         </profile>

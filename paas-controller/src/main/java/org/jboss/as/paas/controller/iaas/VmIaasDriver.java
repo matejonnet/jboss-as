@@ -28,10 +28,8 @@ public class VmIaasDriver implements IaasDriver {
 
     /*
      * (non-Javadoc)
-     * 
-     * @see
-     * org.jboss.as.paas.controller.iaas.IaasDriver#getInstance(java.lang.String
-     * )
+     *
+     * @see org.jboss.as.paas.controller.iaas.IaasDriver#getInstance(java.lang.String)
      */
     @Override
     public IaasInstance getInstance(String instanceId) {
@@ -44,10 +42,8 @@ public class VmIaasDriver implements IaasDriver {
 
     /*
      * (non-Javadoc)
-     * 
-     * @see
-     * org.jboss.as.paas.controller.iaas.IaasDriver#createInstance(java.lang
-     * .String)
+     *
+     * @see org.jboss.as.paas.controller.iaas.IaasDriver#createInstance(java.lang.String)
      */
     @Override
     public IaasInstance createInstance(String imageId) {
@@ -56,10 +52,8 @@ public class VmIaasDriver implements IaasDriver {
 
     /*
      * (non-Javadoc)
-     * 
-     * @see
-     * org.jboss.as.paas.controller.iaas.IaasDriver#terminateInstance(java.lang
-     * .String)
+     *
+     * @see org.jboss.as.paas.controller.iaas.IaasDriver#terminateInstance(java.lang.String)
      */
     @Override
     public boolean terminateInstance(String instanceId) {
@@ -69,7 +63,7 @@ public class VmIaasDriver implements IaasDriver {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see org.jboss.as.paas.controller.iaas.IaasDriver#close()
      */
     @Override

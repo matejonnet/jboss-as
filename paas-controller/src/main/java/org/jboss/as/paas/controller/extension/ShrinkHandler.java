@@ -35,7 +35,7 @@ public class ShrinkHandler extends BaseHandler implements OperationStepHandler {
         // OperationFormatException("Required argument name are missing.");
         // }
 
-        PaasProcessor paasProcessor = new PaasProcessor(context);
+        PaasProcessor paasProcessor = new PaasProcessor(context, stepRegistry);
 
         String serverGroupName = getServerGroupName(appName);
         paasProcessor.removeHostFromServerGroup(serverGroupName);

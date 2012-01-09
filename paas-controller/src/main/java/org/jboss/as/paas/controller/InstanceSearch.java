@@ -3,7 +3,6 @@ package org.jboss.as.paas.controller;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.jboss.as.controller.OperationContext;
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 import org.jboss.as.paas.controller.domain.Instance;
 import org.jboss.as.paas.controller.domain.ServerGroup;
@@ -22,17 +21,19 @@ public class InstanceSearch {
 
     private Set<Integer> usedPositions = new HashSet<Integer>();
 
-    private OperationContext context;
+    //private OperationContext context;
 
     private PaasDmrActions paasDmrActions;
 
     /**
      * @param context
+     * @param paasDmrActions
      */
-    InstanceSearch(OperationContext context) {
+    InstanceSearch(PaasDmrActions paasDmrActions) {
         super();
-        this.context = context;
-        paasDmrActions = new PaasDmrActions(context);
+        //this.context = context;
+        this.paasDmrActions = paasDmrActions;
+        //paasDmrActions = new PaasDmrActions(context);
     }
 
     /**
@@ -66,6 +67,7 @@ public class InstanceSearch {
         if (instance != null) {
             return findFreeSlot(instance, usedPositions);
         }
+        log.debug("No free slot found.");
         return null;
     }
 

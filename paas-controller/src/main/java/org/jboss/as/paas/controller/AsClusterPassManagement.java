@@ -25,7 +25,7 @@ public class AsClusterPassManagement {
 
     private static final String MANAGEMENT_REALM = "ManagementRealm";
     //TODO do not use hard coded pass, use system specific string
-    private char[] SECRET_PASS = "test22test".toCharArray();
+    private char[] SECRET_PASS = "test".toCharArray();
 
     public void addRemoteServer(String remoteHostIp) {
         String entry;
@@ -56,7 +56,6 @@ public class AsClusterPassManagement {
         }
     }
 
-
     /**
      * @return
      */
@@ -82,10 +81,10 @@ public class AsClusterPassManagement {
 
             String currentLine;
 
-            while((currentLine = reader.readLine()) != null) {
+            while ((currentLine = reader.readLine()) != null) {
                 // trim newline when comparing with lineToRemove
                 String trimmedLine = currentLine.trim();
-                if(trimmedLine.startsWith(user))
+                if (trimmedLine.startsWith(user))
                     continue;
                 writer.write(currentLine);
             }
@@ -98,7 +97,6 @@ public class AsClusterPassManagement {
 
         return tempFile.renameTo(file);
     }
-
 
     private void append(final String entry, final File toFile) throws IOException {
         FileWriter fw = null;
@@ -121,8 +119,7 @@ public class AsClusterPassManagement {
         if (c != null) {
             try {
                 c.close();
-            } catch (IOException e) {
-            }
+            } catch (IOException e) {}
         }
     }
 

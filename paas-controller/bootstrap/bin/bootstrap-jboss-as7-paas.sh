@@ -50,5 +50,5 @@ sed -i "s/name=\"master\"/name=\"${LISTEN_ADDRESS}\"/g" $jboss_path/domain/confi
 
 jboss_configurator_args="server $jboss_path/domain/configuration/host.xml $jboss_path/bin/startjboss.sh"
 #/opt/java/jre1.6/bin/java -Daddress.local.ip=$LISTEN_ADDRESS -classpath $jboss_path/modules/org/jboss/as/paas/controller/main/jboss-configurator.jar org.alterjoc.jbossconfigurator.Main $jboss_configurator_args 2>&1 1>/var/log/jboss-paas-config.log &
-/opt/java/jre1.6/bin/java -classpath $jboss_path/modules/org/jboss/as/paas/controller/main/jboss-configurator.jar org.alterjoc.jbossconfigurator.Main $jboss_configurator_args 2>&1 1>/var/log/jboss-paas-config.log &
+/opt/java/jre1.6/bin/java -classpath $jboss_path/modules/org/jboss/as/paas/controller/main/jboss-as-paas-controller.jar org.jboss.as.paas.configurator.Main $jboss_configurator_args 2>&1 1>/var/log/jboss-paas-config.log &
 

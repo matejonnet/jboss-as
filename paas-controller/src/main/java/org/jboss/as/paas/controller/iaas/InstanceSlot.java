@@ -24,7 +24,6 @@ public class InstanceSlot {
         //TODO add instance instead of hostIP and instanceId
         super();
         this.instance = instance;
-        this.dirty = null;
         this.slotPosition = slotPosition;
     }
 
@@ -34,6 +33,7 @@ public class InstanceSlot {
      * @param instanceId
      */
     public InstanceSlot(String hostIp, int slotPosition, String instanceId) {
+        this.dirty = new Dirty();
         this.dirty.hostIp = hostIp;
         this.dirty.instanceId = instanceId;
         this.slotPosition = slotPosition;
