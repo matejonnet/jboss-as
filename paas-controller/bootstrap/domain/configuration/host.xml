@@ -8,13 +8,16 @@
                 <authentication>
                     <properties path="mgmt-users.properties" relative-to="jboss.domain.config.dir"/>
                 </authentication>
+                <server-identities>
+                    <secret value="dGVzdA==" />
+                </server-identities>
             </security-realm>
         </security-realms>
         <management-interfaces>
-            <native-interface>
+            <native-interface security-realm="ManagementRealm">
                 <socket interface="management" port="9999"/>
             </native-interface>
-            <http-interface>
+            <http-interface security-realm="ManagementRealm">
                 <socket interface="management" port="9990"/>
             </http-interface>
         </management-interfaces>

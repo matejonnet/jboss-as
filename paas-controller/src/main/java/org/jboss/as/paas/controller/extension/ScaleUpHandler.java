@@ -8,7 +8,6 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQ
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUIRED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
 
-import java.io.File;
 import java.util.Locale;
 
 import org.jboss.as.controller.OperationContext;
@@ -16,7 +15,6 @@ import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.paas.controller.PaasProcessor;
-import org.jboss.as.paas.controller.dmr.Message;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 import org.jboss.logging.Logger;
@@ -24,76 +22,34 @@ import org.jboss.logging.Logger;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class DeployHandler extends BaseHandler implements OperationStepHandler {
-    public static final DeployHandler INSTANCE = new DeployHandler();
-    public static final String OPERATION_NAME = "deploy";
-    // TODO rename attribute to PROPERTY
-    private static final String ATTRIBUTE_PATH = "path";
+public class ScaleUpHandler extends BaseHandler implements OperationStepHandler {
+    public static final ScaleUpHandler INSTANCE = new ScaleUpHandler();
+    public static final String OPERATION_NAME = "scale-up";
+    private static final String ATTRIBUTE_APP_NAME = "name";
     private static final String ATTRIBUTE_PROVIDER = "provider";
     private static final String ATTRIBUTE_NEW_INSTANCE = "new-instance";
     private static final String ATTRIBUTE_INSTANCE_ID = "instance-id";
 
-    private final Logger log = Logger.getLogger(DeployHandler.class);
+    private final Logger log = Logger.getLogger(ScaleUpHandler.class);
 
-    private DeployHandler() {}
+    private ScaleUpHandler() {}
 
-    /**
-     * (non-Javadoc)
-     *
-     * @see org.jboss.as.controller.OperationStepHandler#execute(org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode)
-     */
     @Override
     public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
         if (!super.execute(context)) {
             return;
         }
 
-        log.trace("Executing deploy handle ...");
+        final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
+        final String provider = operation.get(ATTRIBUTE_PROVIDER).isDefined() ? operation.get(ATTRIBUTE_PROVIDER).asString() : null;
+        final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() ? operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean() : false;
+        final String instanceId = operation.get(ATTRIBUTE_INSTANCE_ID).isDefined() ? operation.get(ATTRIBUTE_INSTANCE_ID).asString() : null;
 
         PaasProcessor paasProcessor = new PaasProcessor(context, jbossDmrActions, paasDmrActions, compositeDmrActions);
 
-        final String filePath = operation.get(ATTRIBUTE_PATH).asString();
-        final String provider = operation.get(ATTRIBUTE_PROVIDER).isDefined() ? operation.get(ATTRIBUTE_PROVIDER).asString() : null;
-        final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() && operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean();
-        final String instanceId = operation.get(ATTRIBUTE_INSTANCE_ID).isDefined() ? operation.get(ATTRIBUTE_INSTANCE_ID).asString() : null;
-
-        // TODO validate required attributes
-
-        final File f;
-        if (filePath != null) {
-            f = new File(filePath);
-            if (!f.exists()) {
-                String message = "Path " + f.getAbsolutePath() + " doesn't exist. File must be located on localhost.";
-                context.getResult().add(message);
-                log.warn(message);
-                return;
-            }
-            if (f.isDirectory()) {
-                String message = f.getAbsolutePath() + " is a directory.";
-                context.getResult().add(message);
-                log.warn(message);
-                return;
-            }
-        } else {
-            f = null;
-        }
-
-        String appName = f.getName();
         String serverGroupName = getServerGroupName(appName);
 
-        paasProcessor.addHostToNewServerGroup(serverGroupName, provider, newInstance, instanceId);
-
-        jbossDmrActions.deployToServerGroup(f, appName, serverGroupName, new String[] { "validateHostRegistration" });
-
-        if (paasProcessor.getSlot() == null) {
-            context.getResult().add("No free slot.");
-            context.completeStep();
-            return;
-        }
-
-        String msg = "Instance [" + paasProcessor.getSlot().getInstanceId() + "] is not registered in domain controller jet. Re-run deploy command with instance-id parameter.";
-        Message message = new Message(msg, Message.FireOn.FAILED, new String[] { "validateHostRegistration" });
-        messagesDmrActions.addMessage(message);
+        paasProcessor.addHostToExisingServerGroup(serverGroupName, provider, newInstance, instanceId);
 
         completeStep(context);
 
@@ -104,9 +60,6 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
         onReturn();
     }
 
-    /**
-     * DescriptionProvider.
-     */
     public static DescriptionProvider DESC = new DescriptionProvider() {
         @Override
         public ModelNode getModelDescription(Locale locale) {
@@ -114,9 +67,9 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
             final ModelNode node = new ModelNode();
             node.get(DESCRIPTION).set("Deploy application.");
 
-            node.get(REQUEST_PROPERTIES, ATTRIBUTE_PATH, DESCRIPTION).set("Path to file.");
-            node.get(REQUEST_PROPERTIES, ATTRIBUTE_PATH, TYPE).set(ModelType.STRING);
-            node.get(REQUEST_PROPERTIES, ATTRIBUTE_PATH, REQUIRED).set(true);
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_APP_NAME, DESCRIPTION).set("Application name.");
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_APP_NAME, TYPE).set(ModelType.STRING);
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_APP_NAME, REQUIRED).set(true);
 
             node.get(REQUEST_PROPERTIES, ATTRIBUTE_PROVIDER, DESCRIPTION).set("Provider name.");
             node.get(REQUEST_PROPERTIES, ATTRIBUTE_PROVIDER, TYPE).set(ModelType.STRING);
@@ -133,5 +86,4 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
             return node;
         }
     };
-
 }

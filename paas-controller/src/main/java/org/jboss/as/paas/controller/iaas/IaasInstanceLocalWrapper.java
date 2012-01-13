@@ -6,26 +6,19 @@ package org.jboss.as.paas.controller.iaas;
 import java.util.Arrays;
 import java.util.List;
 
+import org.jboss.as.paas.configurator.sys.SysUtil;
+
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
 public class IaasInstanceLocalWrapper implements IaasInstance {
-
 
     /* (non-Javadoc)
      * @see org.jboss.as.paas.controller.iaas.IaasInstance#getPublicAddresses()
      */
     @Override
     public List<String> getPublicAddresses() {
-//        try {
-            //TODO problem with multiple eth interfaces
-            //return Arrays.asList(new String[]{InetAddress.getLocalHost().getHostAddress()});
-            return Arrays.asList(new String[]{"127.0.0.1"});
-//        } catch (UnknownHostException e) {
-//            // TODO Auto-generated catch block
-//            e.printStackTrace();
-//            return null;
-//        }
+        return Arrays.asList(new String[] { SysUtil.getLocalIp() });
     }
 
     /* (non-Javadoc)
@@ -49,8 +42,7 @@ public class IaasInstanceLocalWrapper implements IaasInstance {
      */
     @Override
     public List<String> getPrivateAddresses() {
-        // TODO Auto-generated method stub
-        return Arrays.asList(new String[]{"127.0.0.1"});
+        return Arrays.asList(new String[] { SysUtil.getLocalIp() });
     }
 
 }

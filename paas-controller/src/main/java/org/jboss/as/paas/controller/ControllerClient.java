@@ -24,22 +24,15 @@ public class ControllerClient {
 
     private ModelControllerClient client;
 
-    /**
-     * @param username
-     * @param password
-     * @param hostIp
-     * @throws UnknownHostException
-     */
-    public ControllerClient(String username, String password, String hostIp) throws UnknownHostException {
-        super();
-        CallbackHandler cbh = new UsernamePasswordHandler(username, password.toCharArray());
-        client = ModelControllerClient.Factory.create(hostIp, 9999, cbh);
+    public ControllerClient() throws UnknownHostException {
+        client = ModelControllerClient.Factory.create("127.0.0.1", 9999);
     }
 
-    /**
-     * @return
-     * @throws UnknownHostException
-     */
+    public ControllerClient(String hostIp, int port, String username, String password) throws UnknownHostException {
+        CallbackHandler cbh = new UsernamePasswordHandler(username, password.toCharArray());
+        client = ModelControllerClient.Factory.create(hostIp, port, cbh);
+    }
+
     public ModelControllerClient getClient() throws UnknownHostException {
         if (!isRemoteHostUp(client))
             waitRemoteHostBoot(client);
@@ -47,10 +40,6 @@ public class ControllerClient {
         return client;
     }
 
-    /**
-     * @param client
-     *
-     */
     private void waitRemoteHostBoot(ModelControllerClient client) {
         boolean serverUp = false;
 
@@ -60,10 +49,11 @@ public class ControllerClient {
 
         while (!serverUp) {
             if (System.currentTimeMillis() - started > maxWaitTime) {
-                throw new RuntimeException("Jboss AS hasn't boot in " + maxWaitTime / 1000 + " seconds.");
+                throw new RuntimeException("Could not connect in " + maxWaitTime / 1000 + " seconds.");
             }
             try {
-                Thread.sleep(200);
+                log.debug("Waiting to connect to remote client. Going to sleep for 500ms.");
+                Thread.sleep(500);
             } catch (InterruptedException e) {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
@@ -88,7 +78,8 @@ public class ControllerClient {
             log.info("Server UP.");
             return true;
         } catch (IOException e) {
-            if (log.isTraceEnabled()) log.trace("Server down.");
+            if (log.isTraceEnabled())
+                log.trace("Server down.");
             return false;
         }
     }

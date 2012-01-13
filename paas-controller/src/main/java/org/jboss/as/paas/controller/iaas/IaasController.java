@@ -7,13 +7,15 @@ import java.net.MalformedURLException;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.alterjoc.jbossconfigurator.client.RemoteConfigurator;
 import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.paas.controller.AsClusterPassManagement;
 import org.jboss.as.paas.controller.domain.IaasProvider;
 import org.jboss.logging.Logger;
 
 /**
+ * Singlethon that holds list of IaaS providers
+ *
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
 public class IaasController {
@@ -40,11 +42,6 @@ public class IaasController {
         INSTANCE.providers.put(name, provier);
     }
 
-    /**
-     * @param imageId
-     * @return
-     * @throws Exception
-     */
     public String createNewInstance(String providerName) throws Exception {
         IaasProvider provider = INSTANCE.getProvider(providerName);
         return createNewInstance(provider).getId();
@@ -82,61 +79,26 @@ public class IaasController {
             }
         }
 
-        String newInstanceIp = instance.getPrivateAddresses().get(0);
-
-        // TODO pass for management interface
-        // Add password for remote server
-        // AsClusterPassManagement clusterPaasMngmt = new
-        // AsClusterPassManagement();
-        // clusterPaasMngmt.addRemoteServer(newInstanceIp);
-        // uncommetn also in terminateInstance
-
-        configureInstance(newInstanceIp);
-
         return instance;
     }
 
-    /**
-     * @param remoteIp
-     */
-    private void configureInstance(String remoteIp) {
-        new RemoteConfigurator().reconfigureRemote(remoteIp);
-    }
-
-    /**
-     * @param provider
-     * @param instanceId
-     * @throws Exception
-     * @throws DeltaCloudClientException
-     */
     public boolean terminateInstance(String providerName, String instanceId) throws Exception {
         IaasProvider provider = INSTANCE.getProvider(providerName);
 
         String hostIp = provider.getPrivateAddresses(instanceId).get(0);
 
-        // TODO pass for management interface
-        // AsClusterPassManagement clusterPaasMngmt = new
-        // AsClusterPassManagement();
-        // clusterPaasMngmt.removeRemoteSerer(hostIp);
+        AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
+        clusterPaasMngmt.removeRemoteSerer(hostIp);
 
         return provider.terminateInstance(instanceId);
     }
 
-    /**
-     * @param providerName
-     * @return
-     */
     private IaasProvider getProvider(String providerName) {
         return providers.get(providerName);
     }
 
-    /**
-     * @param instanceId
-     * @return
-     * @throws Exception
-     */
     public String getInstanceIp(String providerName, String instanceId) throws Exception {
-        return INSTANCE.getProvider(providerName).getPublicAddresses(instanceId).get(0);
+        return INSTANCE.getProvider(providerName).getPrivateAddresses(instanceId).get(0);
     }
 
 }

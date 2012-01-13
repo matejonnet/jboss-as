@@ -20,7 +20,7 @@ public class PaasTest {
     //@Test
     public void waitAsToBoot() throws OperationFormatException, IOException {
 
-        ControllerClient cc = new ControllerClient("admin", "adminadmin", remoteHostIp);
+        ControllerClient cc = new ControllerClient("admin", 9999, "adminadmin", remoteHostIp);
         ModelControllerClient client = cc.getClient();
         Assert.assertNotNull(client);
     }
