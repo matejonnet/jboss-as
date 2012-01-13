@@ -6,6 +6,7 @@
         <extension module="org.jboss.as.clustering.infinispan"/>
         <extension module="org.jboss.as.clustering.jgroups"/>
         <extension module="org.jboss.as.cmp"/>
+        <extension module="org.jboss.as.configadmin"/>
         <extension module="org.jboss.as.connector"/>
         <extension module="org.jboss.as.ee"/>
         <extension module="org.jboss.as.ejb3"/>
@@ -75,6 +76,7 @@
                 </root-logger>
             </subsystem>
             <subsystem xmlns="urn:jboss:domain:cmp:1.0"/>
+            <subsystem xmlns="urn:jboss:domain:configadmin:1.0"/>
             <subsystem xmlns="urn:jboss:domain:datasources:1.0">
                 <datasources>
                     <datasource jndi-name="java:jboss/datasources/ExampleDS" enabled="true" use-java-context="true" pool-name="ExampleDS">
@@ -132,14 +134,17 @@
             <subsystem xmlns="urn:jboss:domain:infinispan:1.1" default-cache-container="hibernate">
                 <cache-container name="hibernate" default-cache="local-query">
                     <local-cache name="entity">
+                        <transaction mode="NON_XA"/>
                         <eviction strategy="LRU" max-entries="10000"/>
                         <expiration max-idle="100000"/>
                     </local-cache>
                     <local-cache name="local-query">
+                        <transaction mode="NON_XA"/>
                         <eviction strategy="LRU" max-entries="10000"/>
                         <expiration max-idle="100000"/>
                     </local-cache>
                     <local-cache name="timestamps">
+                        <transaction mode="NON_XA"/>
                         <eviction strategy="NONE"/>
                     </local-cache>
                 </cache-container>
@@ -265,10 +270,7 @@
                 </hornetq-server>
             </subsystem>
             <subsystem xmlns="urn:jboss:domain:naming:1.1"/>
-            <subsystem xmlns="urn:jboss:domain:osgi:1.1" activation="lazy">
-                <configuration pid="org.apache.felix.webconsole.internal.servlet.OsgiManager">
-                    <property name="manager.root" value="jboss-osgi"/>
-                </configuration>
+            <subsystem xmlns="urn:jboss:domain:osgi:1.2" activation="lazy">
                 <properties>
                     <!-- Specifies the beginning start level of the framework -->
                     <property name="org.osgi.framework.startlevel.beginning">1</property>
@@ -279,28 +281,13 @@
                     <capability name="javax.servlet.api"/>
                     <capability name="javax.transaction.api"/>
                     <!-- bundles installed on startup -->
-                    <capability name="org.apache.aries.util"/>
-                    <capability name="org.jboss.osgi.webconsole"/>
                     <capability name="org.osgi.compendium"/>
                     <!-- bundles started in startlevel 1 -->
-                    <capability name="org.apache.felix.log" startlevel="1"/>
-                    <capability name="org.jboss.osgi.logging" startlevel="1"/>
                     <capability name="org.apache.felix.configadmin" startlevel="1"/>
                     <capability name="org.jboss.as.osgi.configadmin" startlevel="1"/>
                     <!-- bundles started in startlevel 2 -->
-                    <capability name="org.apache.aries.jmx" startlevel="2"/>
-                    <capability name="org.apache.felix.eventadmin" startlevel="2"/>
-                    <capability name="org.apache.felix.metatype" startlevel="2"/>
-                    <capability name="org.apache.felix.scr" startlevel="2"/>
-                    <capability name="org.apache.felix.webconsole" startlevel="2"/>
                     <capability name="org.jboss.netty" startlevel="2"/>
-                    <capability name="org.jboss.osgi.jmx" startlevel="2"/>
-                    <capability name="org.jboss.osgi.http" startlevel="2"/>
                     <capability name="org.projectodd.stilts" startlevel="2"/>
-                    <!-- bundles started in startlevel 3 -->
-                    <capability name="org.jboss.osgi.blueprint" startlevel="3"/>
-                    <capability name="org.jboss.osgi.webapp" startlevel="3"/>
-                    <capability name="org.jboss.osgi.xerces" startlevel="3"/>
                 </capabilities>
             </subsystem>
             <subsystem xmlns="urn:jboss:domain:remoting:1.1">
@@ -400,6 +387,7 @@
                     </handlers>
                 </root-logger>
             </subsystem>
+            <subsystem xmlns="urn:jboss:domain:configadmin:1.0"/>
             <subsystem xmlns="urn:jboss:domain:datasources:1.0">
                 <datasources>
                     <datasource jndi-name="java:jboss/datasources/ExampleDS" enabled="true" use-java-context="true" pool-name="java:jboss/datasources/ExampleDS">
@@ -652,10 +640,7 @@
                 <mod-cluster-config advertise-socket="modcluster"/>
             </subsystem>
             <subsystem xmlns="urn:jboss:domain:naming:1.1"/>
-            <subsystem xmlns="urn:jboss:domain:osgi:1.1" activation="lazy">
-                <configuration pid="org.apache.felix.webconsole.internal.servlet.OsgiManager">
-                    <property name="manager.root" value="jboss-osgi"/>
-                </configuration>
+            <subsystem xmlns="urn:jboss:domain:osgi:1.2" activation="lazy">
                 <properties>
                     <!-- Specifies the beginning start level of the framework -->
                     <property name="org.osgi.framework.startlevel.beginning">1</property>
@@ -666,28 +651,13 @@
                     <capability name="javax.servlet.api"/>
                     <capability name="javax.transaction.api"/>
                     <!-- bundles installed on startup -->
-                    <capability name="org.apache.aries.util"/>
-                    <capability name="org.jboss.osgi.webconsole"/>
                     <capability name="org.osgi.compendium"/>
                     <!-- bundles started in startlevel 1 -->
-                    <capability name="org.apache.felix.log" startlevel="1"/>
-                    <capability name="org.jboss.osgi.logging" startlevel="1"/>
                     <capability name="org.apache.felix.configadmin" startlevel="1"/>
                     <capability name="org.jboss.as.osgi.configadmin" startlevel="1"/>
                     <!-- bundles started in startlevel 2 -->
-                    <capability name="org.apache.aries.jmx" startlevel="2"/>
-                    <capability name="org.apache.felix.eventadmin" startlevel="2"/>
-                    <capability name="org.apache.felix.metatype" startlevel="2"/>
-                    <capability name="org.apache.felix.scr" startlevel="2"/>
-                    <capability name="org.apache.felix.webconsole" startlevel="2"/>
                     <capability name="org.jboss.netty" startlevel="2"/>
-                    <capability name="org.jboss.osgi.jmx" startlevel="2"/>
-                    <capability name="org.jboss.osgi.http" startlevel="2"/>
                     <capability name="org.projectodd.stilts" startlevel="2"/>
-                    <!-- bundles started in startlevel 3 -->
-                    <capability name="org.jboss.osgi.blueprint" startlevel="3"/>
-                    <capability name="org.jboss.osgi.webapp" startlevel="3"/>
-                    <capability name="org.jboss.osgi.xerces" startlevel="3"/>
                 </capabilities>
             </subsystem>
             <subsystem xmlns="urn:jboss:domain:remoting:1.1">

@@ -57,12 +57,12 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-parent</artifactId>
-        <version>7.1.0.CR1-SNAPSHOT</version>
+        <version>7.1.0.Final-SNAPSHOT</version>
     </parent>
 
     <groupId>org.jboss.as</groupId>
     <artifactId>jboss-as-testsuite</artifactId>
-    <version>7.1.0.CR1-SNAPSHOT</version>
+    <version>7.1.0.Final-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>JBoss Application Server Test Suite: Aggregator</name>
@@ -254,17 +254,17 @@
             </plugin>
 
             <!--
-                Big complex hack just to get @Resource(lookup="foo").
+                Provide jboss-annotations-api_1.1_spec to compiler as endorsed.
+                Big complex hack just to get @Resource(lookup="foo").  AS7-3123
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
+                <inherited>true</inherited>  <!-- Needed for compilation of all submodules. -->
                 <executions combine.children="append">
                     <execution>
                         <id>copy-annotations-endorsed</id>
-                        <goals>
-                            <goal>copy</goal>
-                        </goals>
+                        <goals><goal>copy</goal></goals>
                         <configuration>
                             <artifactItems>
                                 <artifactItem>
@@ -285,8 +285,10 @@
                 </configuration>
             </plugin>
 
-            <!-- A build of target/jbossas which is shared by all modules. -->
-            <!-- Modules and bundles are not copied as they are read-only (see surefire props). -->
+            <!-- 
+                A build of target/jbossas which is shared by all modules.
+                Modules and bundles are not copied as they are read-only (see surefire props).
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
@@ -294,9 +296,7 @@
                     <execution>
                         <id>build-jbossas.server</id>
                         <phase>generate-test-resources</phase>
-                        <goals>
-                            <goal>copy-resources</goal>
-                        </goals>
+                        <goals><goal>copy-resources</goal></goals>
                         <configuration>
                             <outputDirectory>${basedir}/target/jbossas</outputDirectory>
                             <overwrite>true</overwrite>
@@ -324,21 +324,16 @@
                     <execution>
                         <id>update-ip-addresses-jbossas.server</id>
                         <phase>process-test-resources</phase>
-                        <goals>
-                            <goal>transform</goal>
-                        </goals>
+                        <goals><goal>transform</goal></goals>
+                        <inherited>false</inherited>
                         <configuration>
                             <transformationSets>
                                 <transformationSet>
-                                    <dir>${basedir}/target/jbossas/standalone/configuration</dir>
+                                    <dir      >${basedir}/target/jbossas/standalone/configuration</dir>
                                     <outputDir>${basedir}/target/jbossas/standalone/configuration</outputDir>
-                                    <stylesheet>${xslt.scripts.dir}/changeIPAddresses.xsl
-                                    </stylesheet>
+                                    <stylesheet>${xslt.scripts.dir}/changeIPAddresses.xsl</stylesheet>
                                     <includes>
-                                        <include>standalone.xml</include>
-                                        <include>standalone-full.xml</include>
-                                        <include>standalone-preview.xml</include>
-                                        <include>standalone-xts.xml</include>
+                                        <include>standalone*.xml</include>
                                     </includes>
                                     <parameters>
                                         <parameter>
@@ -390,8 +385,6 @@
                 </configuration>
             </plugin>
             
-            <!-- ***  Reporting  *** -->
-            
             <!-- Disable default site run. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -400,11 +393,12 @@
                 <executions><execution><id>default-site</id><phase>none</phase></execution></executions>
             </plugin>
                 
-            <!-- Run the reporting tool. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <executions combine.self="override">
+                    
+                    <!-- Run the reporting tool. -->
                     <execution>
                         <id>reporting</id>
                         <phase>site</phase>
@@ -423,6 +417,21 @@
                             </target>
                         </configuration>
                     </execution>
+                    
+                    <!-- Help banner. -->
+                    <execution>
+                        <id>banner</id>
+                        <phase>initialize</phase>
+                        <goals><goal>run</goal></goals>
+                        <inherited>false</inherited>
+                        <configuration>
+                            <target>
+                                <loadfile property="help.banner" srcFile="${basedir}/tools/help-banner.txt"/>
+                                <echo>${help.banner}</echo>
+                            </target>
+                        </configuration>
+                    </execution>
+                    
                 </executions>
                 <dependencies>
                     <!-- Todo: Move to <pluginManagement>. -->
@@ -432,6 +441,20 @@
                         <version>1.6.5</version>
                     </dependency>
                 </dependencies>
+            </plugin>
+            
+            <!-- Don't create source jars - nothing to do. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <executions><execution><id>attach-sources</id><phase>none</phase></execution></executions>
+            </plugin>
+
+            <!-- Don't run checkstyle - nothing in src/java. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <executions><execution><id>check-style</id><phase>none</phase></execution></executions>
             </plugin>
 
         </plugins>
@@ -444,7 +467,6 @@
            - used to activate modules alone or in combination
            - naming convention: X.module.profile activated by -DX.module
            - this requires that a default profile be set for each module
-
         -->
         <profile>
             <id>all-modules.module.profile</id>
@@ -508,7 +530,7 @@
         </profile>
 
 
-        <!-- IPv6. -->
+        <!-- IPv6. AS7-2228. -->
         <profile>
             <id>ts.ipv6</id>
             <activation><property><name>ipv6</name></property></activation>
@@ -518,7 +540,7 @@
         </profile>
 
 
-        <!-- Security policy. -->
+        <!-- Security policy.  ARQ-690, AS7-2823, AS7-2826. -->
         <profile>
             <id>ts.security.policy</id>
             <activation><property><name>security.policy</name></property></activation>
@@ -606,23 +628,19 @@
                         <groupId>org.codehaus.mojo</groupId>
                         <artifactId>xml-maven-plugin</artifactId>
                         <executions combine.children="append">
-                            <execution >
+                            <execution>
                                 <id>update-datasource.server</id>
                                 <phase>process-test-resources</phase>
-                                <goals>
-                                    <goal>transform</goal>
-                                </goals>
+                                <goals><goal>transform</goal></goals>
+                                <inherited>false</inherited>
                                 <configuration>
                                     <transformationSets>
                                         <transformationSet>
-                                            <dir>${basedir}/target/jbossas/standalone/configuration</dir>
+                                            <dir      >${basedir}/target/jbossas/standalone/configuration</dir>
                                             <outputDir>${basedir}/target/jbossas/standalone/configuration</outputDir>
                                             <stylesheet>${xslt.scripts.dir}/changeDatabase.xsl</stylesheet>
                                             <includes>
-                                                <include>standalone.xml</include>
-                                                <include>standalone-full.xml</include>
-                                                <include>standalone-preview.xml</include>
-                                                <include>standalone-xts.xml</include>
+                                                <include>standalone*.xml</include>
                                             </includes>
                                             <parameters>
                                                 <parameter>
@@ -657,7 +675,7 @@
                     </plugin>
 
                     <!--
-                    deploy the jdbc driver by copying to the deployments directory
+                        Deploy the jdbc driver by copying to the deployments directory.
                     -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
@@ -666,9 +684,7 @@
                             <execution>
                                 <id>deploy-database-driver.server</id>
                                 <phase>generate-test-resources</phase>
-                                <goals>
-                                    <goal>copy-resources</goal>
-                                </goals>
+                                <goals><goal>copy-resources</goal></goals>
                                 <configuration>
                                     <outputDirectory>${basedir}/target/jbossas/standalone/deployments</outputDirectory>
                                     <overwrite>true</overwrite>

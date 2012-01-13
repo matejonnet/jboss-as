@@ -33,6 +33,8 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HOS
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INTERFACE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.JVM;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.LOCAL;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MANAGEMENT_MAJOR_VERSION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MANAGEMENT_MINOR_VERSION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MASTER;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MAX;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MAX_OCCURS;
@@ -47,6 +49,8 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPE
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATION_NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PORT;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PRODUCT_NAME;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PRODUCT_VERSION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELEASE_CODENAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELEASE_VERSION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOTE;
@@ -62,6 +66,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SYS
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TAIL_COMMENT_ALLOWED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE_TYPE;
+import static org.jboss.as.server.controller.descriptions.ServerDescriptionConstants.PROCESS_STATE;
 
 import java.util.Locale;
 import java.util.ResourceBundle;
@@ -114,6 +119,36 @@ public class HostRootDescription {
         root.get(ATTRIBUTES, RELEASE_CODENAME, REQUIRED).set(true);
         root.get(ATTRIBUTES, RELEASE_CODENAME, NILLABLE).set(false);
         root.get(ATTRIBUTES, RELEASE_CODENAME, MIN_LENGTH).set(1);
+
+        root.get(ATTRIBUTES, PRODUCT_NAME, DESCRIPTION).set(bundle.getString("host.product-name"));
+        root.get(ATTRIBUTES, PRODUCT_NAME, TYPE).set(ModelType.STRING);
+        root.get(ATTRIBUTES, PRODUCT_NAME, REQUIRED).set(true);
+        root.get(ATTRIBUTES, PRODUCT_NAME, NILLABLE).set(true);
+        root.get(ATTRIBUTES, PRODUCT_NAME, MIN_LENGTH).set(1);
+
+        root.get(ATTRIBUTES, PRODUCT_VERSION, DESCRIPTION).set(bundle.getString("host.product-version"));
+        root.get(ATTRIBUTES, PRODUCT_VERSION, TYPE).set(ModelType.STRING);
+        root.get(ATTRIBUTES, PRODUCT_VERSION, REQUIRED).set(true);
+        root.get(ATTRIBUTES, PRODUCT_VERSION, NILLABLE).set(true);
+        root.get(ATTRIBUTES, PRODUCT_VERSION, MIN_LENGTH).set(1);
+
+        root.get(ATTRIBUTES, MANAGEMENT_MAJOR_VERSION, DESCRIPTION).set(bundle.getString("host.management-major-version"));
+        root.get(ATTRIBUTES, MANAGEMENT_MAJOR_VERSION, TYPE).set(ModelType.INT);
+        root.get(ATTRIBUTES, MANAGEMENT_MAJOR_VERSION, REQUIRED).set(true);
+        root.get(ATTRIBUTES, MANAGEMENT_MAJOR_VERSION, NILLABLE).set(false);
+        root.get(ATTRIBUTES, MANAGEMENT_MAJOR_VERSION, MIN).set(1);
+
+        root.get(ATTRIBUTES, MANAGEMENT_MINOR_VERSION, DESCRIPTION).set(bundle.getString("host.management-minor-version"));
+        root.get(ATTRIBUTES, MANAGEMENT_MINOR_VERSION, TYPE).set(ModelType.INT);
+        root.get(ATTRIBUTES, MANAGEMENT_MINOR_VERSION, REQUIRED).set(true);
+        root.get(ATTRIBUTES, MANAGEMENT_MINOR_VERSION, NILLABLE).set(false);
+        root.get(ATTRIBUTES, MANAGEMENT_MINOR_VERSION, MIN).set(1);
+
+        root.get(ATTRIBUTES, PROCESS_STATE, DESCRIPTION).set(bundle.getString("host.state"));
+        root.get(ATTRIBUTES, PROCESS_STATE, TYPE).set(ModelType.STRING);
+        root.get(ATTRIBUTES, PROCESS_STATE, REQUIRED).set(true);
+        root.get(ATTRIBUTES, PROCESS_STATE, NILLABLE).set(false);
+        root.get(ATTRIBUTES, PROCESS_STATE, MIN_LENGTH).set(1);
 
         root.get(ATTRIBUTES, DOMAIN_CONTROLLER, DESCRIPTION).set(bundle.getString("host.domain-controller"));
         root.get(ATTRIBUTES, DOMAIN_CONTROLLER, TYPE).set(ModelType.OBJECT);

@@ -38,6 +38,8 @@ import org.jboss.staxmapper.XMLExtendedStreamWriter;
  */
 public class DependencySubsystemExtension implements Extension {
 
+    public static final String EXTENSION_NAME = "org.jboss.as.dependency.extension";
+
     /** The name space used for the {@code substystem} element */
     public static final String NAMESPACE = "urn:mycompany:dependency:1.0";
 
@@ -49,13 +51,13 @@ public class DependencySubsystemExtension implements Extension {
 
     @Override
     public void initializeParsers(ExtensionParsingContext context) {
-        context.setSubsystemXmlMapping(NAMESPACE, parser);
+        context.setSubsystemXmlMapping(SUBSYSTEM_NAME, NAMESPACE, parser);
     }
 
 
     @Override
     public void initialize(ExtensionContext context) {
-        final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME);
+        final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME, 1, 0);
         final ManagementResourceRegistration registration = subsystem.registerSubsystemModel(DependencySubsystemProviders.SUBSYSTEM);
         //We always need to add an 'add' operation
         registration.registerOperationHandler(ADD, DependencySubsystemAdd.INSTANCE, DependencySubsystemProviders.SUBSYSTEM_ADD, false);

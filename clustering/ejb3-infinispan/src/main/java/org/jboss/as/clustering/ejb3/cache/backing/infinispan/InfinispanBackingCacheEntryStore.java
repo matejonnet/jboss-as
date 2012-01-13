@@ -47,7 +47,7 @@ public class InfinispanBackingCacheEntryStore<K extends Serializable, V extends 
         this.invoker = invoker;
         this.passivationManager = passivationManager;
         this.controlCacheLifecycle = controlCacheLifecycle;
-        this.clustered = cache.getConfiguration().getCacheMode().isClustered();
+        this.clustered = cache.getCacheConfiguration().clustering().cacheMode().isClustered();
         this.keyFactory = keyFactory;
         this.valueFactory = valueFactory;
         this.context = context;
@@ -74,23 +74,28 @@ public class InfinispanBackingCacheEntryStore<K extends Serializable, V extends 
         final MarshalledValue<K, C> key = this.marshalKey(entry.getId());
 
         this.acquireSessionOwnership(key, true);
-
-        final MarshalledValue<E, C> value = this.marshalEntry(entry);
-        Operation<Void> operation = new Operation<Void>() {
-            @Override
-            public Void invoke(Cache<MarshalledValue<K, C>, MarshalledValue<E, C>> cache) {
-                cache.getAdvancedCache().withFlags(Flag.SKIP_REMOTE_LOOKUP).put(key, value);
-                return null;
-            }
-        };
-        this.invoke(operation);
+        try {
+            final MarshalledValue<E, C> value = this.marshalEntry(entry);
+            Operation<Void> operation = new Operation<Void>() {
+                @Override
+                public Void invoke(Cache<MarshalledValue<K, C>, MarshalledValue<E, C>> cache) {
+                    cache.getAdvancedCache().withFlags(Flag.SKIP_REMOTE_LOOKUP).put(key, value);
+                    return null;
+                }
+            };
+            this.invoke(operation);
+        } finally {
+            this.releaseSessionOwnership(key, false);
+        }
     }
 
     @Override
-    public E get(K id) {
+    public E get(K id, boolean lock) {
         final MarshalledValue<K, C> key = this.marshalKey(id);
 
-        this.acquireSessionOwnership(key, false);
+        if (lock) {
+            this.acquireSessionOwnership(key, false);
+        }
 
         Operation<MarshalledValue<E, C>> operation = new Operation<MarshalledValue<E, C>>() {
             @Override
@@ -182,7 +187,7 @@ public class InfinispanBackingCacheEntryStore<K extends Serializable, V extends 
         this.trace("Acquiring %slock on %s", newLock ? "new " : "", lockKey);
 
         try {
-            LockResult result = this.lockManager.lock(lockKey, this.cache.getConfiguration().getLockAcquisitionTimeout(), newLock);
+            LockResult result = this.lockManager.lock(lockKey, this.cache.getCacheConfiguration().locking().lockAcquisitionTimeout(), newLock);
             this.trace("Lock acquired (%s) on %s", result, lockKey);
             return result;
         } catch (TimeoutException e) {

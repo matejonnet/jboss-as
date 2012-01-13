@@ -28,6 +28,7 @@ import org.jboss.logging.LogMessage;
 import org.jboss.logging.Logger;
 import org.jboss.logging.Message;
 import org.jboss.logging.MessageLogger;
+import org.jboss.modules.ModuleIdentifier;
 
 import static org.jboss.logging.Logger.Level.ERROR;
 import static org.jboss.logging.Logger.Level.INFO;
@@ -77,23 +78,21 @@ public interface ServerLogger extends BasicLogger {
     /**
      * Logs an informational message indicating the server is starting.
      *
-     * @param version  the server version.
-     * @param codeName the code name.
+     * @param prettyVersion  the server version.
      */
     @LogMessage(level = INFO)
-    @Message("JBoss AS %s \"%s\" starting")
-    void serverStarting(String version, String codeName);
+    @Message("%s starting")
+    void serverStarting(String prettyVersion);
 
     /**
      * Logs an informational message indicating the server is stopped.
      *
-     * @param version  the server version.
-     * @param codeName the code name.
+     * @param prettyVersion  the server version.
      * @param time     the time it took to stop.
      */
     @LogMessage(level = INFO)
-    @Message("JBoss AS %s \"%s\" stopped in %dms")
-    void serverStopped(String version, String codeName, int time);
+    @Message("%s stopped in %dms")
+    void serverStopped(String prettyVersion, int time);
 
     /**
      * Log message for when a jboss-deployment-structure.xml file is ignored
@@ -164,4 +163,9 @@ public interface ServerLogger extends BasicLogger {
     @LogMessage(level = INFO)
     @Message(id = 18565, value = "Replaced deployment \"%s\" with deployment \"%s\"")
     void deploymentReplaced(String replaced, String deployment);
+
+    @LogMessage(level = WARN)
+    @Message(id = 18566, value = "Annotations import option %s specified in jboss-deployment-structure.xml for additional module %s has been ignored. Additional modules cannot import annotations.")
+    void annotationImportIgnored(ModuleIdentifier annotationModuleId, ModuleIdentifier additionalModuleId);
+
 }

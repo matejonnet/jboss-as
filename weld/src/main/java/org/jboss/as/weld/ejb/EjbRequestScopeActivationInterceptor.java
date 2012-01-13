@@ -18,19 +18,24 @@
 package org.jboss.as.weld.ejb;
 
 import java.io.Serializable;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
 import javax.enterprise.context.spi.CreationalContext;
 import javax.enterprise.inject.spi.Bean;
-import javax.enterprise.inject.spi.BeanManager;
 
+import org.jboss.as.ee.component.interceptors.InvocationType;
+import org.jboss.as.server.CurrentServiceContainer;
 import org.jboss.as.weld.WeldContainer;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
-import org.jboss.msc.value.InjectedValue;
+import org.jboss.msc.service.ServiceName;
 import org.jboss.weld.context.ejb.EjbLiteral;
 import org.jboss.weld.context.ejb.EjbRequestContext;
+import org.jboss.weld.manager.BeanManagerImpl;
 
 /**
  * Interceptor for activating the CDI request scope on some EJB invocations.
@@ -48,33 +53,50 @@ public class EjbRequestScopeActivationInterceptor implements Serializable, org.j
 
     private volatile EjbRequestContext requestContext;
     private final ClassLoader classLoader;
-    private final InjectedValue<WeldContainer> weldContainer;
+    private final ServiceName weldContainerServiceName;
+    private final boolean alwaysActivate;
 
-    public EjbRequestScopeActivationInterceptor(final ClassLoader classLoader, final InjectedValue<WeldContainer> weldContainer) {
+
+    /**
+     * The types of invocation that we activate the request scope for
+     */
+    private static final Set<InvocationType> INVOCATION_TYPES;
+
+    static {
+        Set<InvocationType> set = new HashSet<InvocationType>();
+        set.add(InvocationType.ASYNC);
+        set.add(InvocationType.REMOTE);
+        set.add(InvocationType.TIMER);
+        INVOCATION_TYPES = Collections.unmodifiableSet(set);
+    }
+
+    public EjbRequestScopeActivationInterceptor(final ClassLoader classLoader, final ServiceName weldContainerServiceName, final boolean alwaysActivate) {
         this.classLoader = classLoader;
-        this.weldContainer = weldContainer;
+        this.weldContainerServiceName = weldContainerServiceName;
+        this.alwaysActivate = alwaysActivate;
     }
 
     @Override
     public Object processInvocation(final InterceptorContext context) throws Exception {
+
+        final InvocationType marker = context.getPrivateData(InvocationType.class);
+        if (!alwaysActivate && (marker == null || !INVOCATION_TYPES.contains(marker))) {
+            return context.proceed();
+        }
+
         //create the context lazily, on the first invocation
         //we can't do this on interceptor creation, as the timed object invoker make create the interceptor
         //before we have been injected
         if (requestContext == null) {
-            final ClassLoader tccl = SecurityActions.getContextClassLoader();
-            try {
-                SecurityActions.setContextClassLoader(classLoader);
-                //it does not matter if this happens twice
-                final BeanManager beanManager = weldContainer.getValue().getBeanManager();
-                final Bean<?> bean = beanManager.resolve(beanManager.getBeans(EjbRequestContext.class, EjbLiteral.INSTANCE));
-                final CreationalContext<?> ctx = beanManager.createCreationalContext(bean);
-                requestContext = (EjbRequestContext) beanManager.getReference(bean, EjbRequestContext.class, ctx);
-            } finally {
-                SecurityActions.setContextClassLoader(tccl);
-            }
+            //it does not matter if this happens twice
+            //we just look up the service rather than using a dependency
+            //the component itself has a dependency on this service, which means that it has to be up
+            final WeldContainer weldContainer = (WeldContainer) CurrentServiceContainer.getServiceContainer().getRequiredService(weldContainerServiceName).getValue();
+            final BeanManagerImpl beanManager = (BeanManagerImpl) weldContainer.getBeanManager();
+            final Bean<?> bean = beanManager.resolve(beanManager.getBeans(EjbRequestContext.class, EjbLiteral.INSTANCE));
+            final CreationalContext<?> ctx = beanManager.createCreationalContext(bean);
+            requestContext = (EjbRequestContext) beanManager.getReference(bean, EjbRequestContext.class, ctx);
         }
-
-
         try {
             requestContext.associate(context.getInvocationContext());
             requestContext.activate();
@@ -88,21 +110,17 @@ public class EjbRequestScopeActivationInterceptor implements Serializable, org.j
 
     public static class Factory implements InterceptorFactory {
 
-        private final InjectedValue<WeldContainer> weldContainer = new InjectedValue<WeldContainer>();
         private final Interceptor interceptor;
+        private final boolean alwaysActivate;
 
-        public Factory(final ClassLoader classLoader) {
-            this.interceptor = new EjbRequestScopeActivationInterceptor(classLoader, weldContainer);
+        public Factory(final ClassLoader classLoader, final ServiceName weldContainerServiceName, final boolean alwaysActivate) {
+            this.alwaysActivate = alwaysActivate;
+            this.interceptor = new EjbRequestScopeActivationInterceptor(classLoader, weldContainerServiceName, alwaysActivate);
         }
-
 
         @Override
         public org.jboss.invocation.Interceptor create(final InterceptorFactoryContext context) {
             return interceptor;
-        }
-
-        public InjectedValue<WeldContainer> getWeldContainer() {
-            return weldContainer;
         }
     }
 

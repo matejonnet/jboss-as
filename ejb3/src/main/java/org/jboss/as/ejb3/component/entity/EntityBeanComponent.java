@@ -34,6 +34,7 @@ import javax.ejb.EJBObject;
 import org.jboss.as.ee.component.BasicComponentInstance;
 import org.jboss.as.ee.component.Component;
 import org.jboss.as.ejb3.component.EJBComponent;
+import org.jboss.as.ejb3.component.allowedmethods.AllowedMethodsInformation;
 import org.jboss.as.ejb3.component.entity.entitycache.ReadyEntityCache;
 import org.jboss.as.ejb3.component.entity.entitycache.ReferenceCountingEntityCache;
 import org.jboss.as.ejb3.pool.InfinitePool;
@@ -117,7 +118,7 @@ public class EntityBeanComponent extends EJBComponent {
     protected Interceptor createInterceptor(final InterceptorFactory factory) {
         if (factory == null)
             return null;
-        final SimpleInterceptorFactoryContext context = new SimpleInterceptorFactoryContext();
+        final InterceptorFactoryContext context = new SimpleInterceptorFactoryContext();
         context.getContextData().put(Component.class, this);
         return factory.create(context);
     }
@@ -209,4 +210,8 @@ public class EntityBeanComponent extends EJBComponent {
         return unsetEntityContext;
     }
 
+    @Override
+    public AllowedMethodsInformation getAllowedMethodsInformation() {
+        return EntityBeanAllowedMethodsInformation.INSTANCE;
+    }
 }

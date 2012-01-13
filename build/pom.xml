@@ -30,7 +30,7 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-parent</artifactId>
-        <version>7.1.0.CR1-SNAPSHOT</version>
+        <version>7.1.0.Final-SNAPSHOT</version>
     </parent>
 
     <artifactId>jboss-as-build</artifactId>
@@ -102,6 +102,11 @@
         <dependency>
             <groupId>org.jboss</groupId>
             <artifactId>staxmapper</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jboss.as</groupId>
+            <artifactId>jboss-as-configadmin</artifactId>
         </dependency>
 
         <dependency>
@@ -355,16 +360,6 @@
                 </dependency>
 
                 <dependency>
-                    <groupId>org.apache.aries.jmx</groupId>
-                    <artifactId>org.apache.aries.jmx</artifactId>
-                </dependency>
-
-                <dependency>
-                    <groupId>org.apache.aries</groupId>
-                    <artifactId>org.apache.aries.util</artifactId>
-                </dependency>
-
-                <dependency>
                     <groupId>org.apache.cxf</groupId>
                     <artifactId>cxf-api</artifactId>
                 </dependency>
@@ -522,31 +517,6 @@
                 <dependency>
                     <groupId>org.apache.felix</groupId>
                     <artifactId>org.apache.felix.configadmin</artifactId>
-                </dependency>
-
-                <dependency>
-                    <groupId>org.apache.felix</groupId>
-                    <artifactId>org.apache.felix.eventadmin</artifactId>
-                </dependency>
-
-                <dependency>
-                    <groupId>org.apache.felix</groupId>
-                    <artifactId>org.apache.felix.log</artifactId>
-                </dependency>
-
-                <dependency>
-                    <groupId>org.apache.felix</groupId>
-                    <artifactId>org.apache.felix.metatype</artifactId>
-                </dependency>
-
-                <dependency>
-                    <groupId>org.apache.felix</groupId>
-                    <artifactId>org.apache.felix.scr</artifactId>
-                </dependency>
-
-                <dependency>
-                    <groupId>org.apache.felix</groupId>
-                    <artifactId>org.apache.felix.webconsole</artifactId>
                 </dependency>
 
                 <dependency>
@@ -746,6 +716,11 @@
                 <dependency>
                     <groupId>org.jboss.as</groupId>
                     <artifactId>jboss-as-clustering-jgroups</artifactId>
+                </dependency>
+
+                <dependency>
+                    <groupId>org.jboss.as</groupId>
+                    <artifactId>jboss-as-clustering-registry</artifactId>
                 </dependency>
 
                 <dependency>
@@ -1124,11 +1099,6 @@
                 </dependency>
 
                 <dependency>
-                    <groupId>org.jboss.osgi.blueprint</groupId>
-                    <artifactId>jbosgi-blueprint</artifactId>
-                </dependency>
-
-                <dependency>
                     <groupId>org.jboss.osgi.deployment</groupId>
                     <artifactId>jbosgi-deployment</artifactId>
                 </dependency>
@@ -1136,21 +1106,6 @@
                 <dependency>
                     <groupId>org.jboss.osgi.framework</groupId>
                     <artifactId>jbosgi-framework-core</artifactId>
-                </dependency>
-
-                <dependency>
-                    <groupId>org.jboss.osgi.http</groupId>
-                    <artifactId>jbosgi-http</artifactId>
-                </dependency>
-
-                <dependency>
-                    <groupId>org.jboss.osgi.jmx</groupId>
-                    <artifactId>jboss-osgi-jmx</artifactId>
-                </dependency>
-
-                <dependency>
-                    <groupId>org.jboss.osgi.logging</groupId>
-                    <artifactId>jboss-osgi-logging</artifactId>
                 </dependency>
 
                 <dependency>
@@ -1189,18 +1144,8 @@
                 </dependency>
 
                 <dependency>
-                    <groupId>org.jboss.osgi.webapp</groupId>
-                    <artifactId>jbosgi-webapp</artifactId>
-                </dependency>
-
-                <dependency>
-                    <groupId>org.jboss.osgi.webconsole</groupId>
-                    <artifactId>jbosgi-webconsole</artifactId>
-                </dependency>
-
-                <dependency>
-                    <groupId>org.jboss.osgi.xerces</groupId>
-                    <artifactId>jboss-osgi-xerces</artifactId>
+                    <groupId>org.jboss.remoting3</groupId>
+                    <artifactId>remoting-jmx</artifactId>
                 </dependency>
 
                 <dependency>

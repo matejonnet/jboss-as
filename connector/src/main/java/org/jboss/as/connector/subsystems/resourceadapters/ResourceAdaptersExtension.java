@@ -132,7 +132,7 @@ public class ResourceAdaptersExtension implements Extension {
     public void initialize(final ExtensionContext context) {
         SUBSYSTEM_RA_LOGGER.debugf("Initializing ResourceAdapters Extension");
         // Register the remoting subsystem
-        final SubsystemRegistration registration = context.registerSubsystem(SUBSYSTEM_NAME);
+        final SubsystemRegistration registration = context.registerSubsystem(SUBSYSTEM_NAME, 1, 0);
 
         ReloadRequiredWriteAttributeHandler reloadRequiredWriteAttributeHandler = new ReloadRequiredWriteAttributeHandler();
 
@@ -182,18 +182,20 @@ public class ResourceAdaptersExtension implements Extension {
                     reloadRequiredWriteAttributeHandler, Storage.CONFIGURATION);
         }
 
-        connectionDefinition.registerOperationHandler("flush-idle-connection-in-pool",
-                PoolOperations.FlushIdleConnectionInPool.RA_INSTANCE, FLUSH_IDLE_CONNECTION_DESC, false);
-        connectionDefinition.registerOperationHandler("flush-all-connection-in-pool",
-                PoolOperations.FlushAllConnectionInPool.RA_INSTANCE, FLUSH_ALL_CONNECTION_DESC, false);
-        connectionDefinition.registerOperationHandler("test-connection-in-pool", PoolOperations.TestConnectionInPool.RA_INSTANCE,
-                TEST_CONNECTION_DESC, false);
+        if (context.isRuntimeOnlyRegistrationValid()) {
+            connectionDefinition.registerOperationHandler("flush-idle-connection-in-pool",
+                    PoolOperations.FlushIdleConnectionInPool.RA_INSTANCE, FLUSH_IDLE_CONNECTION_DESC, false);
+            connectionDefinition.registerOperationHandler("flush-all-connection-in-pool",
+                    PoolOperations.FlushAllConnectionInPool.RA_INSTANCE, FLUSH_ALL_CONNECTION_DESC, false);
+            connectionDefinition.registerOperationHandler("test-connection-in-pool", PoolOperations.TestConnectionInPool.RA_INSTANCE,
+                    TEST_CONNECTION_DESC, false);
+        }
 
     }
 
     @Override
     public void initializeParsers(final ExtensionParsingContext context) {
-        context.setSubsystemXmlMapping(Namespace.CURRENT.getUriString(), ResourceAdapterSubsystemParser.INSTANCE);
+        context.setSubsystemXmlMapping(SUBSYSTEM_NAME, Namespace.CURRENT.getUriString(), ResourceAdapterSubsystemParser.INSTANCE);
     }
 
     public static final class ResourceAdapterSubsystemParser implements XMLStreamConstants, XMLElementReader<List<ModelNode>>,
@@ -335,12 +337,12 @@ public class ResourceAdaptersExtension implements Extension {
                     POOL_FLUSH_STRATEGY.marshallAsElement(conDef, streamWriter);
 
                     SAME_RM_OVERRIDE.marshallAsElement(conDef, streamWriter);
-                    if (conDef.get(INTERLEAVING.getName()).asBoolean()) {
+                    if (conDef.hasDefined(INTERLEAVING.getName()) && conDef.get(INTERLEAVING.getName()).asBoolean()) {
                         streamWriter.writeEmptyElement(INTERLEAVING.getXmlName());
                     } else {
                         INTERLEAVING.marshallAsElement(conDef, streamWriter);
                     }
-                    if (conDef.get(NOTXSEPARATEPOOL.getName()).asBoolean()) {
+                    if (conDef.hasDefined(NOTXSEPARATEPOOL.getName()) && conDef.get(NOTXSEPARATEPOOL.getName()).asBoolean()) {
                         streamWriter.writeEmptyElement(NOTXSEPARATEPOOL.getXmlName());
                     } else {
                         NOTXSEPARATEPOOL.marshallAsElement(conDef, streamWriter);

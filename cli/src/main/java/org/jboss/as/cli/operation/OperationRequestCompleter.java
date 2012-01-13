@@ -24,6 +24,7 @@ package org.jboss.as.cli.operation;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import org.jboss.as.cli.CommandArgument;
 import org.jboss.as.cli.CommandContext;
@@ -75,6 +76,58 @@ public class OperationRequestCompleter implements CommandLineCompleter {
 
         if(parsedCmd.isRequestComplete()) {
             return -1;
+        }
+
+        if(parsedCmd.endsOnHeaderListStart() || parsedCmd.hasHeaders()) {
+            final Map<String, OperationRequestHeader> headers = candidatesProvider.getHeaders(ctx);
+            if(headers.isEmpty()) {
+                return -1;
+            }
+
+            int result = buffer.length();
+            if(parsedCmd.getLastHeaderName() != null) {
+                if(buffer.endsWith(parsedCmd.getLastHeaderName())) {
+                    result = parsedCmd.getLastChunkIndex();
+                    for(String name : headers.keySet()) {
+                        if(name.startsWith(parsedCmd.getLastHeaderName())) {
+                            candidates.add(name);
+                        }
+                    }
+                } else {
+                    final OperationRequestHeader header = headers.get(parsedCmd.getLastHeaderName());
+                    if(header == null) {
+                        return -1;
+                    }
+                    final CommandLineCompleter headerCompleter = header.getCompleter();
+                    if(headerCompleter == null) {
+                        return -1;
+                    }
+                    result = headerCompleter.complete(ctx, buffer, cursor, candidates);
+                }
+            } else {
+                final List<ParsedOperationRequestHeader> parsedHeaders = parsedCmd.getHeaders();
+                if(parsedHeaders.isEmpty()) {
+                    candidates.addAll(headers.keySet());
+                } else if(parsedCmd.endsOnHeaderSeparator()) {
+                    candidates.addAll(headers.keySet());
+                    for(ParsedOperationRequestHeader parsed : parsedHeaders) {
+                        candidates.remove(parsed.getName());
+                    }
+                } else {
+                    final ParsedOperationRequestHeader lastParsedHeader = parsedHeaders.get(parsedHeaders.size() - 1);
+                    final OperationRequestHeader lastHeader = headers.get(lastParsedHeader.getName());
+                    if(lastHeader == null) {
+                        return -1;
+                    }
+                    final CommandLineCompleter headerCompleter = lastHeader.getCompleter();
+                    if(headerCompleter == null) {
+                        return -1;
+                    }
+                    result = headerCompleter.complete(ctx, buffer, cursor, candidates);
+                }
+            }
+            Collections.sort(candidates);
+            return result;
         }
 
         if (parsedCmd.hasProperties() || parsedCmd.endsOnPropertyListStart()) {

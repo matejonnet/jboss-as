@@ -1861,13 +1861,6 @@ public interface EjbMessages {
     @Message(id=14526, value = "Cannot call method %s in afterCompletion callback")
     IllegalStateException cannotCallMethodInAfterCompletion(String methodName);
 
-    /**
-     * Exception thrown if the timer service is currently not accessible
-     * @param methodName The ejb callback that disabled it
-     */
-    @Message(id=14527, value = "Cannot call timer service methods in %s")
-    IllegalStateException cannotCallTimerServiceMethod(String methodName);
-
     @Message(id = 14528, value = "%s is already associated with serialization group %s")
     IllegalStateException existingSerializationGroup(Object key, Object group);
 
@@ -1972,5 +1965,28 @@ public interface EjbMessages {
      */
     @Message(id = 14550, value = "%s failed since @Clustered annotation cannot be used for %s bean on class %s")
     DeploymentUnitProcessingException clusteredAnnotationIsNotApplicableForBean(final DeploymentUnit unit, final String componentName, final String componentClassName);
+
+
+    /**
+     * Exception thrown if a method cannot be invoked at the given time
+     */
+    @Message(id=14527, value = "Cannot call %s when state is %s")
+    IllegalStateException cannotCallMethod(String methodName, String state);
+
+
+    /**
+     * Exception thrown if the session-type of a session bean is not specified
+     */
+    @Message(id=14551, value = "<session-type> not specified for ejb %s. This must be present in ejb-jar.xml")
+    DeploymentUnitProcessingException sessionTypeNotSpecified(String bean);
+
+
+    /**
+     * Creates an exception indicating Default interceptors specify an absolute ordering
+     *
+     * @return a {@link DeploymentUnitProcessingException} for the error.
+     */
+    @Message(id = 14552, value = "Default interceptors cannot specify an <interceptor-order> element in ejb-jar.xml")
+    DeploymentUnitProcessingException defaultInterceptorsNotSpecifyOrder();
 
 }

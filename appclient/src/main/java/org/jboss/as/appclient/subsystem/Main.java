@@ -35,10 +35,12 @@ import java.util.concurrent.ExecutorService;
 import javax.xml.namespace.QName;
 
 import org.jboss.as.appclient.subsystem.parsing.AppClientXml;
+import org.jboss.as.controller.extension.ExtensionRegistry;
 import org.jboss.as.controller.parsing.Namespace;
 import org.jboss.as.controller.persistence.ExtensibleConfigurationPersister;
 import org.jboss.as.process.CommandLineConstants;
 import org.jboss.as.server.Bootstrap;
+import org.jboss.as.version.ProductConfig;
 import org.jboss.as.server.ServerEnvironment;
 import org.jboss.as.server.SystemExiter;
 import org.jboss.logmanager.handlers.ConsoleHandler;
@@ -49,7 +51,6 @@ import org.jboss.msc.service.ServiceActivator;
 import org.jboss.stdio.StdioContext;
 
 import static org.jboss.as.appclient.logging.AppClientMessages.MESSAGES;
-import static org.jboss.as.process.Main.getVersionString;
 
 /**
  * The application client entry point
@@ -118,17 +119,19 @@ public final class Main {
                     throw MESSAGES.cannotFindAppClient(realFile.getAbsoluteFile());
                 }
 
-                final AppClientXml parser = new AppClientXml(Module.getBootModuleLoader());
                 final Bootstrap bootstrap = Bootstrap.Factory.newInstance();
-                final Bootstrap.Configuration configuration = new Bootstrap.Configuration();
-                configuration.setServerEnvironment(serverEnvironment);
+                final Bootstrap.Configuration configuration = new Bootstrap.Configuration(serverEnvironment);
                 configuration.setModuleLoader(Module.getBootModuleLoader());
+                final ExtensionRegistry extensionRegistry = configuration.getExtensionRegistry();
+                final AppClientXml parser = new AppClientXml(Module.getBootModuleLoader(), extensionRegistry);
                 final Bootstrap.ConfigurationPersisterFactory configurationPersisterFactory = new Bootstrap.ConfigurationPersisterFactory() {
 
                     @Override
                     public ExtensibleConfigurationPersister createConfigurationPersister(ServerEnvironment serverEnvironment, ExecutorService executorService) {
-                        return new ApplicationClientConfigurationPersister(earPath, deploymentName, options.hostUrl, params,
+                        ExtensibleConfigurationPersister persister = new ApplicationClientConfigurationPersister(earPath, deploymentName, options.hostUrl, params,
                                 serverEnvironment.getServerConfigurationFile().getBootFile(), rootElement, parser);
+                        extensionRegistry.setWriterRegistry(persister);
+                        return persister;
                     }
                 };
                 configuration.setConfigurationPersisterFactory(configurationPersisterFactory);
@@ -156,6 +159,8 @@ public final class Main {
         final int argsLength = args.length;
         String appClientConfig = "appclient.xml";
         boolean clientArgs = false;
+        ProductConfig productConfig;
+
         for (int i = 0; i < argsLength; i++) {
             final String arg = args[i];
             try {
@@ -163,7 +168,8 @@ public final class Main {
                     clientArguments.add(arg);
                 } else if (CommandLineConstants.VERSION.equals(arg) || CommandLineConstants.SHORT_VERSION.equals(arg)
                         || CommandLineConstants.OLD_VERSION.equals(arg) || CommandLineConstants.OLD_SHORT_VERSION.equals(arg)) {
-                    System.out.println("JBoss Application Server " + getVersionString());
+                    productConfig = new ProductConfig(Module.getBootModuleLoader(), SecurityActions.getSystemProperty(ServerEnvironment.HOME_DIR));
+                    System.out.println(productConfig.getPrettyVersionString());
                     return null;
                 } else if (CommandLineConstants.HELP.equals(arg) || CommandLineConstants.SHORT_HELP.equals(arg) || CommandLineConstants.OLD_HELP.equals(arg)) {
                     usage();
@@ -232,7 +238,8 @@ public final class Main {
         }
 
         String hostControllerName = null; // No host controller unless in domain mode.
-        ret.environment = new ServerEnvironment(hostControllerName, systemProperties, systemEnvironment, appClientConfig, launchType, null);
+        productConfig = new ProductConfig(Module.getBootModuleLoader(), SecurityActions.getSystemProperty(ServerEnvironment.HOME_DIR));
+        ret.environment = new ServerEnvironment(hostControllerName, systemProperties, systemEnvironment, appClientConfig, launchType, null, productConfig);
         return ret;
     }
 

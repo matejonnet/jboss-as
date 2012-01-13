@@ -22,33 +22,38 @@
 
 package org.jboss.as.test.integration.domain.suites;
 
-import org.jboss.as.arquillian.container.domain.managed.DomainLifecycleUtil;
-import org.jboss.as.controller.client.ModelControllerClient;
-import org.jboss.as.controller.client.helpers.domain.DomainClient;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.COMPOSITE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HOST;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HOST_STATE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INCLUDE_RUNTIME;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATIONS;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PROXIES;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_RESOURCE_OPERATION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RECURSIVE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PROFILE_NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELATIVE_TO;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESULT;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RUNNING_SERVER;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SERVER;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.STEPS;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
+import static org.jboss.as.test.integration.domain.DomainTestSupport.validateResponse;
+
+import java.io.IOException;
+
+import org.jboss.as.controller.client.ModelControllerClient;
+import org.jboss.as.controller.client.helpers.domain.DomainClient;
 import org.jboss.as.test.integration.domain.DomainTestSupport;
+import org.jboss.as.test.integration.domain.management.util.DomainLifecycleUtil;
 import org.jboss.dmr.ModelNode;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
-
-import java.io.IOException;
-
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HOST;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATIONS;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.READ_RESOURCE_OPERATION;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RECURSIVE;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SERVER;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
-import static org.jboss.as.test.integration.domain.DomainTestSupport.validateResponse;
 
 /**
  * Test of various read operations against the domain controller.
@@ -86,7 +91,8 @@ public class ManagementReadsTestCase {
         domainOp.get(OP).set(READ_RESOURCE_OPERATION);
         domainOp.get(OP_ADDR).setEmptyList();
         domainOp.get(RECURSIVE).set(true);
-        domainOp.get("proxies").set(false);
+        domainOp.get(INCLUDE_RUNTIME).set(true);
+        domainOp.get(PROXIES).set(false);
 
         ModelNode response = domainClient.execute(domainOp);
         validateResponse(response);
@@ -101,7 +107,8 @@ public class ManagementReadsTestCase {
         hostOp.get(OP).set(READ_RESOURCE_OPERATION);
         hostOp.get(OP_ADDR).setEmptyList().add(HOST, "master");
         hostOp.get(RECURSIVE).set(true);
-        hostOp.get("proxies").set(false);
+        hostOp.get(INCLUDE_RUNTIME).set(true);
+        hostOp.get(PROXIES).set(false);
 
         ModelNode response = domainClient.execute(hostOp);
         validateResponse(response);
@@ -120,7 +127,8 @@ public class ManagementReadsTestCase {
         hostOp.get(OP).set(READ_RESOURCE_OPERATION);
         hostOp.get(OP_ADDR).setEmptyList().add(HOST, "slave");
         hostOp.get(RECURSIVE).set(true);
-        hostOp.get("proxies").set(false);
+        hostOp.get(INCLUDE_RUNTIME).set(true);
+        hostOp.get(PROXIES).set(false);
 
         ModelNode response = domainClient.execute(hostOp);
         validateResponse(response);
@@ -136,11 +144,15 @@ public class ManagementReadsTestCase {
         address.add(HOST, "master");
         address.add(SERVER, "main-one");
         serverOp.get(RECURSIVE).set(true);
-        serverOp.get("proxies").set(false);
+        serverOp.get(INCLUDE_RUNTIME).set(true);
+        serverOp.get(PROXIES).set(false);
 
         ModelNode response = domainClient.execute(serverOp);
         validateResponse(response);
         // TODO make some more assertions about result content
+        ModelNode result = response.get(RESULT);
+        Assert.assertTrue(result.isDefined());
+        Assert.assertTrue(result.hasDefined(PROFILE_NAME));
 
         address.setEmptyList();
         address.add(HOST, "slave");
@@ -148,6 +160,9 @@ public class ManagementReadsTestCase {
         response = domainClient.execute(serverOp);
         validateResponse(response);
         // TODO make some more assertions about result content
+        result = response.get(RESULT);
+        Assert.assertTrue(result.isDefined());
+        Assert.assertTrue(result.hasDefined(PROFILE_NAME));
     }
 
     @Test
@@ -159,7 +174,8 @@ public class ManagementReadsTestCase {
         address.add(HOST, "slave");
         address.add(SERVER, "main-three");
         serverOp.get(RECURSIVE).set(true);
-        serverOp.get("proxies").set(false);
+        serverOp.get(INCLUDE_RUNTIME).set(true);
+        serverOp.get(PROXIES).set(false);
 
         ModelNode response = domainClient.execute(serverOp);
         validateResponse(response);
@@ -216,10 +232,10 @@ public class ManagementReadsTestCase {
         request.get(OP).set(READ_RESOURCE_OPERATION);
         ModelNode address = request.get(OP_ADDR);
         address.add(HOST, "*");
-        address.add("running-server", "*");
+        address.add(RUNNING_SERVER, "*");
         address.add(SUBSYSTEM, "*");
         request.get(RECURSIVE).set(true);
-        request.get("proxies").set(false);
+        request.get(PROXIES).set(false);
 
         ModelNode response = domainClient.execute(request);
         validateResponse(response);
@@ -385,6 +401,26 @@ public class ManagementReadsTestCase {
     @Test
     public void testResolveExpressionOnSlaveHostDirect() throws Exception  {
         resolveExpressionOnSlaveHostTest(domainSlaveLifecycleUtil.getDomainClient());
+    }
+
+    @Test
+    public void testReadMasterHostState() throws Exception {
+        readHostState("master");
+    }
+
+    @Test
+    public void testReadSlaveHostState() throws Exception {
+        readHostState("slave");
+    }
+
+    private void readHostState(String host) throws Exception {
+        ModelNode op = testSupport.createOperationNode("host=" + host, READ_RESOURCE_OPERATION);
+        op.get(INCLUDE_RUNTIME).set(true);
+        DomainClient client = domainMasterLifecycleUtil.getDomainClient();
+        ModelNode response = client.execute(op);
+        ModelNode result = validateResponse(response);
+        Assert.assertTrue(result.hasDefined(HOST_STATE));
+        Assert.assertEquals("running", result.get(HOST_STATE).asString());
     }
 
     private void resolveExpressionOnSlaveHostTest(ModelControllerClient domainClient) throws Exception {

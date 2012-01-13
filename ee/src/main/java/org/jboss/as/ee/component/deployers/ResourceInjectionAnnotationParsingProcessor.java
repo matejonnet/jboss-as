@@ -31,7 +31,6 @@ import java.util.Set;
 
 import javax.annotation.Resource;
 import javax.annotation.Resources;
-import javax.validation.ValidatorFactory;
 
 import org.jboss.as.ee.component.Attachments;
 import org.jboss.as.ee.component.BindingConfiguration;
@@ -60,6 +59,7 @@ import org.jboss.jandex.MethodInfo;
 import org.jboss.modules.Module;
 
 import static org.jboss.as.ee.EeMessages.MESSAGES;
+import static org.jboss.as.server.deployment.Attachments.OSGI_MANIFEST;
 
 /**
  * Deployment processor responsible for analyzing each attached {@link org.jboss.as.ee.component.ComponentDescription} instance to configure
@@ -79,14 +79,13 @@ public class ResourceInjectionAnnotationParsingProcessor implements DeploymentUn
 
     static {
         final Map<String, String> locations = new HashMap<String, String>();
-        locations.put("javax.transaction.UserTransaction", "java:comp/UserTransaction");
-        locations.put("javax.transaction.TransactionSynchronizationRegistry", "java:comp/TransactionSynchronizationRegistry");
+        locations.put("javax.transaction.UserTransaction", "java:jboss/UserTransaction");
+        locations.put("javax.transaction.TransactionSynchronizationRegistry", "java:jboss/TransactionSynchronizationRegistry");
+
+        //we have to be careful with java:comp lookups here
+        //as they will not work in entries in application.xml, as there is no comp context availble
+        //so we can only use it for resources that are not valid to be entries in application.xml
         locations.put("javax.enterprise.inject.spi.BeanManager", "java:comp/BeanManager");
-        locations.put("javax.validation.Validator", "java:comp/Validator");
-        locations.put(ValidatorFactory.class.getName(), "java:comp/ValidatorFactory");
-        locations.put("javax.ejb.EJBContext", "java:comp/EJBContext");
-        locations.put("javax.ejb.SessionContext", "java:comp/EJBContext");
-        locations.put("javax.ejb.MessageDrivenContext", "java:comp/EJBContext");
         locations.put("javax.ejb.TimerService", "java:comp/TimerService");
         locations.put("org.osgi.framework.BundleContext", "java:comp/BundleContext");
         locations.put("org.omg.CORBA.ORB", "java:comp/ORB");
@@ -128,6 +127,9 @@ public class ResourceInjectionAnnotationParsingProcessor implements DeploymentUn
 
     public void deploy(final DeploymentPhaseContext phaseContext) throws DeploymentUnitProcessingException {
         final DeploymentUnit deploymentUnit = phaseContext.getDeploymentUnit();
+        if (deploymentUnit.hasAttachment(OSGI_MANIFEST)) {
+            return;
+        }
         final EEModuleDescription eeModuleDescription = deploymentUnit.getAttachment(Attachments.EE_MODULE_DESCRIPTION);
         final CompositeIndex index = deploymentUnit.getAttachment(org.jboss.as.server.deployment.Attachments.COMPOSITE_ANNOTATION_INDEX);
         final EEApplicationClasses applicationClasses = deploymentUnit.getAttachment(Attachments.EE_APPLICATION_CLASSES_DESCRIPTION);
@@ -212,6 +214,7 @@ public class ResourceInjectionAnnotationParsingProcessor implements DeploymentUn
     }
 
     protected void process(final DeploymentPhaseContext phaseContext, final EEModuleClassDescription classDescription, final AnnotationInstance annotation, final String injectionType, final String localContextName, final InjectionTarget targetDescription, final EEModuleDescription eeModuleDescription, final Module module, final EEApplicationClasses applicationClasses) throws DeploymentUnitProcessingException {
+        final EEResourceReferenceProcessorRegistry registry = phaseContext.getDeploymentUnit().getAttachment(Attachments.RESOURCE_REFERENCE_PROCESSOR_REGISTRY);
         final AnnotationValue lookupAnnotation = annotation.value("lookup");
         String lookup = lookupAnnotation == null ? null : lookupAnnotation.asString();
         // if "lookup" hasn't been specified then fallback on "mappedName" which we treat the same as "lookup"
@@ -241,9 +244,9 @@ public class ResourceInjectionAnnotationParsingProcessor implements DeploymentUn
             //otherwise we just try and handle it
             //if we don't have a value source we will try and inject from a lookup
             //and the user has to configure the value in a deployment descriptor
-            final EEResourceReferenceProcessor resourceReferenceProcessor = EEResourceReferenceProcessorRegistry.getResourceReferenceProcessor(injectionType);
+            final EEResourceReferenceProcessor resourceReferenceProcessor = registry.getResourceReferenceProcessor(injectionType);
             if (resourceReferenceProcessor != null) {
-                valueSource = resourceReferenceProcessor.getResourceReferenceBindingSource(phaseContext, eeModuleDescription, classDescription, injectionType, localContextName, targetDescription);
+                valueSource = resourceReferenceProcessor.getResourceReferenceBindingSource();
             }
         } else {
             //handle resource reference types

@@ -29,7 +29,7 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-parent</artifactId>
-        <version>7.1.0.CR1-SNAPSHOT</version>
+        <version>7.1.0.Final-SNAPSHOT</version>
     </parent>
 
     <artifactId>jboss-as-clustering</artifactId>
@@ -43,6 +43,7 @@
         <module>impl</module>
         <module>jgroups</module>
         <module>infinispan</module>
+        <module>registry</module>
         <module>service</module>
         <module>singleton</module>
         <module>web-spi</module>

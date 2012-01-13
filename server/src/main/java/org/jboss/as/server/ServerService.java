@@ -289,10 +289,10 @@ public final class ServerService extends AbstractControllerService {
 
     @Override
     protected void initModel(Resource rootResource, ManagementResourceRegistration rootRegistration) {
-        ServerControllerModelUtil.updateCoreModel(rootResource.getModel());
+        ServerControllerModelUtil.updateCoreModel(rootResource.getModel(), configuration.getServerEnvironment());
         ServerControllerModelUtil.initOperations(rootRegistration, injectedContentRepository.getValue(),
                 extensibleConfigurationPersister, configuration.getServerEnvironment(), processState,
-                runningModeControl, vaultReader, queuelessExecutor != null);
+                runningModeControl, vaultReader, configuration.getExtensionRegistry(), queuelessExecutor != null);
 
         // TODO maybe make creating of empty nodes part of the MNR description
         rootResource.registerChild(PathElement.pathElement(ModelDescriptionConstants.CORE_SERVICE, ModelDescriptionConstants.MANAGEMENT), Resource.Factory.create());

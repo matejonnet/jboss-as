@@ -21,6 +21,13 @@
  */
 package org.jboss.as.connector.subsystems.jca;
 
+import java.util.EnumSet;
+import java.util.List;
+
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
+
 import org.jboss.as.connector.subsystems.resourceadapters.ReloadRequiredRemoveStepHandler;
 import org.jboss.as.controller.Extension;
 import org.jboss.as.controller.ExtensionContext;
@@ -44,12 +51,6 @@ import org.jboss.staxmapper.XMLElementReader;
 import org.jboss.staxmapper.XMLElementWriter;
 import org.jboss.staxmapper.XMLExtendedStreamReader;
 import org.jboss.staxmapper.XMLExtendedStreamWriter;
-
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import java.util.EnumSet;
-import java.util.List;
 
 import static org.jboss.as.connector.ConnectorLogger.ROOT_LOGGER;
 import static org.jboss.as.connector.subsystems.jca.ArchiveValidationAdd.ArchiveValidationParameters;
@@ -87,7 +88,7 @@ public class JcaExtension implements Extension {
     public void initialize(final ExtensionContext context) {
         ROOT_LOGGER.debugf("Initializing Connector Extension");
 
-        final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME);
+        final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME, 1, 0);
 
         final ManagementResourceRegistration registration = subsystem.registerSubsystemModel(JcaSubsystemProviders.SUBSYSTEM);
         registration.registerOperationHandler(ADD, JcaSubsystemAdd.INSTANCE, JcaSubsystemProviders.SUBSYSTEM_ADD_DESC, false);
@@ -154,8 +155,8 @@ public class JcaExtension implements Extension {
 
     @Override
     public void initializeParsers(final ExtensionParsingContext context) {
-        context.setSubsystemXmlMapping(Namespace.JCA_1_0.getUriString(), ConnectorSubsystemParser.INSTANCE);
-        context.setSubsystemXmlMapping(Namespace.JCA_1_1.getUriString(), ConnectorSubsystemParser.INSTANCE);
+        context.setSubsystemXmlMapping(SUBSYSTEM_NAME, Namespace.JCA_1_0.getUriString(), ConnectorSubsystemParser.INSTANCE);
+        context.setSubsystemXmlMapping(SUBSYSTEM_NAME, Namespace.JCA_1_1.getUriString(), ConnectorSubsystemParser.INSTANCE);
     }
 
     private static ModelNode createEmptyAddOperation() {
@@ -218,8 +219,9 @@ public class JcaExtension implements Extension {
             if (parentNode.hasDefined(CACHED_CONNECTION_MANAGER)) {
                 ModelNode node = parentNode.get(CACHED_CONNECTION_MANAGER).get(CACHED_CONNECTION_MANAGER);
 
-                if (CachedConnectionManagerAdd.CcmParameters.DEBUG.getAttribute().isMarshallable(node) ||
-                        CachedConnectionManagerAdd.CcmParameters.ERROR.getAttribute().isMarshallable(node)) {
+                final String name = CachedConnectionManagerAdd.CcmParameters.INSTALL.getAttribute().getName();
+                if(node.hasDefined(name) &&
+                        node.get(name).asBoolean()) {
                     writer.writeEmptyElement(Element.CACHED_CONNECTION_MANAGER.getLocalName());
                     CachedConnectionManagerAdd.CcmParameters.DEBUG.getAttribute().marshallAsAttribute(node, writer);
                     CachedConnectionManagerAdd.CcmParameters.ERROR.getAttribute().marshallAsAttribute(node, writer);
@@ -274,25 +276,10 @@ public class JcaExtension implements Extension {
             }
         }
 
-        private boolean hasAnyOf(ModelNode node, String... names) {
-            for (String current : names) {
-                if (has(node, current)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         private boolean has(ModelNode node, String name) {
             return node.has(name) && node.get(name).isDefined();
         }
 
-
-
-        private void writeAttribute(final XMLExtendedStreamWriter writer, final Attribute attr, final ModelNode value)
-                throws XMLStreamException {
-            writer.writeAttribute(attr.getLocalName(), value.asString());
-        }
 
         @Override
         public void readElement(final XMLExtendedStreamReader reader, final List<ModelNode> list) throws XMLStreamException {
@@ -559,6 +546,7 @@ public class JcaExtension implements Extension {
                     }
                 }
             }
+            ccmOperation.get(CachedConnectionManagerAdd.CcmParameters.INSTALL.getAttribute().getName()).set(true);
             // Handle elements
             requireNoContent(reader);
 

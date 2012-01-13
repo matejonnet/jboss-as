@@ -27,15 +27,18 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.BOO
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CONCURRENT_GROUPS;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEPLOYMENT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIBE;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.EXTENSION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INTERFACE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.IN_SERIES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.JVM;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MANAGEMENT_CLIENT_CONTENT;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MANAGEMENT_MAJOR_VERSION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MANAGEMENT_MINOR_VERSION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MAX_FAILED_SERVERS;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MAX_FAILURE_PERCENTAGE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PROCESS_TYPE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PRODUCT_NAME;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PRODUCT_VERSION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PROFILE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELEASE_CODENAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELEASE_VERSION;
@@ -56,15 +59,12 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
-import org.jboss.as.controller.ExtensionContext;
-import org.jboss.as.controller.ExtensionContextImpl;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.PathElement;
-import org.jboss.as.controller.ProcessType;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.descriptions.common.CommonProviders;
-import org.jboss.as.controller.operations.common.ExtensionAddHandler;
-import org.jboss.as.controller.operations.common.ExtensionRemoveHandler;
+import org.jboss.as.controller.extension.ExtensionRegistry;
+import org.jboss.as.controller.extension.ExtensionResourceDefinition;
 import org.jboss.as.controller.operations.common.InterfaceAddHandler;
 import org.jboss.as.controller.operations.common.InterfaceCriteriaWriteHandler;
 import org.jboss.as.controller.operations.common.InterfaceLegacyCriteriaReadHandler;
@@ -122,6 +122,7 @@ import org.jboss.as.domain.controller.operations.deployment.ServerGroupDeploymen
 import org.jboss.as.domain.controller.operations.deployment.ServerGroupDeploymentReplaceHandler;
 import org.jboss.as.domain.controller.operations.deployment.ServerGroupDeploymentUndeployHandler;
 import org.jboss.as.domain.controller.resource.SocketBindingResourceDefinition;
+import org.jboss.as.host.controller.HostControllerEnvironment;
 import org.jboss.as.management.client.content.ManagedDMRContentResourceDefinition;
 import org.jboss.as.management.client.content.ManagedDMRContentTypeResourceDefinition;
 import org.jboss.as.server.ServerEnvironment;
@@ -147,27 +148,49 @@ public class DomainModelUtil {
      * Update the model to hold domain level configuration.
      *
      * @param rootResource the root resource to be updated.
+     * @param environment
      */
-    public static void updateCoreModel(final Resource rootResource) {
+    public static void updateCoreModel(final Resource rootResource, HostControllerEnvironment environment) {
         final ModelNode rootModel = rootResource.getModel();
         rootModel.get(RELEASE_VERSION).set(Version.AS_VERSION);
         rootModel.get(RELEASE_CODENAME).set(Version.AS_RELEASE_CODENAME);
+        rootModel.get(MANAGEMENT_MAJOR_VERSION).set(Version.MANAGEMENT_MAJOR_VERSION);
+        rootModel.get(MANAGEMENT_MINOR_VERSION).set(Version.MANAGEMENT_MINOR_VERSION);
+
+         // Community uses UNDEF values
+        ModelNode nameNode = rootModel.get(PRODUCT_NAME);
+        ModelNode versionNode = rootModel.get(PRODUCT_VERSION);
+
+        if (environment != null) {
+            String productName = environment.getProductConfig().getProductName();
+            String productVersion = environment.getProductConfig().getProductVersion();
+
+            if (productName != null) {
+                nameNode.set(productName);
+            }
+            if (productVersion != null) {
+                versionNode.set(productVersion);
+            }
+        }
     }
 
-    public static ExtensionContext initializeMasterDomainRegistry(final ManagementResourceRegistration root, final ExtensibleConfigurationPersister configurationPersister,
+    public static void initializeMasterDomainRegistry(final ManagementResourceRegistration root, final ExtensibleConfigurationPersister configurationPersister,
                                                                   final ContentRepository contentRepository, final FileRepository fileRepository,
-                                                                  final DomainController domainController, final UnregisteredHostChannelRegistry registry) {
-        return initializeDomainRegistry(root, configurationPersister, contentRepository, fileRepository, true, domainController, registry, domainController.getLocalHostInfo());
+                                                                  final DomainController domainController, final UnregisteredHostChannelRegistry channelRegistry,
+                                                                  final ExtensionRegistry extensionRegistry) {
+        initializeDomainRegistry(root, configurationPersister, contentRepository, fileRepository, true, domainController, channelRegistry, domainController.getLocalHostInfo(), extensionRegistry);
     }
 
-    public static ExtensionContext initializeSlaveDomainRegistry(final ManagementResourceRegistration root, final ExtensibleConfigurationPersister configurationPersister,
-                                                                 final ContentRepository contentRepository, final FileRepository fileRepository, final LocalHostControllerInfo hostControllerInfo) {
-        return initializeDomainRegistry(root, configurationPersister, contentRepository, fileRepository, false, null, null, hostControllerInfo);
+    public static void initializeSlaveDomainRegistry(final ManagementResourceRegistration root, final ExtensibleConfigurationPersister configurationPersister,
+                                                                 final ContentRepository contentRepository, final FileRepository fileRepository,
+                                                                 final LocalHostControllerInfo hostControllerInfo, final ExtensionRegistry extensionRegistry) {
+        initializeDomainRegistry(root, configurationPersister, contentRepository, fileRepository, false, null, null, hostControllerInfo, extensionRegistry);
     }
 
-    private static ExtensionContext initializeDomainRegistry(final ManagementResourceRegistration root, final ExtensibleConfigurationPersister configurationPersister,
+    private static void initializeDomainRegistry(final ManagementResourceRegistration root, final ExtensibleConfigurationPersister configurationPersister,
                                                              final ContentRepository contentRepo, final FileRepository fileRepository, final boolean isMaster,
-                                                             final DomainController domainController, final UnregisteredHostChannelRegistry registry, final LocalHostControllerInfo hostControllerInfo) {
+                                                             final DomainController domainController, final UnregisteredHostChannelRegistry channelRegistry,
+                                                             final LocalHostControllerInfo hostControllerInfo, final ExtensionRegistry extensionRegistry) {
 
         final EnumSet<OperationEntry.Flag> readOnly = EnumSet.of(OperationEntry.Flag.READ_ONLY);
         final EnumSet<OperationEntry.Flag> deploymentUpload = EnumSet.of(OperationEntry.Flag.MASTER_HOST_CONTROLLER_ONLY);
@@ -284,22 +307,16 @@ public class DomainModelUtil {
         mgmtContent.registerSubModel(planDef);
 
         // Extensions
-        final ManagementResourceRegistration extensions = root.registerSubModel(PathElement.pathElement(EXTENSION), CommonProviders.EXTENSION_PROVIDER);
-        final ExtensionContext extensionContext = new ExtensionContextImpl(profile, deployments, configurationPersister, ProcessType.HOST_CONTROLLER);
-        final ExtensionAddHandler addExtensionHandler = new ExtensionAddHandler(extensionContext, true);
-        extensions.registerOperationHandler(ExtensionAddHandler.OPERATION_NAME, addExtensionHandler, addExtensionHandler, false);
-        final ExtensionRemoveHandler removeExtensionHandler = new ExtensionRemoveHandler(extensionContext);
-        extensions.registerOperationHandler(ExtensionRemoveHandler.OPERATION_NAME, removeExtensionHandler, removeExtensionHandler, false);
+        root.registerSubModel(new ExtensionResourceDefinition(extensionRegistry, true));
+        extensionRegistry.setProfileResourceRegistration(profile);
 
         if(!isMaster) {
-            ApplyRemoteMasterDomainModelHandler armdmh = new ApplyRemoteMasterDomainModelHandler(extensionContext, fileRepository, contentRepo, hostControllerInfo);
+            ApplyRemoteMasterDomainModelHandler armdmh = new ApplyRemoteMasterDomainModelHandler(extensionRegistry, fileRepository, contentRepo, hostControllerInfo);
             root.registerOperationHandler(ApplyRemoteMasterDomainModelHandler.OPERATION_NAME, armdmh, armdmh, false, OperationEntry.EntryType.PRIVATE);
         } else {
-            ReadMasterDomainModelHandler rmdmh = new ReadMasterDomainModelHandler(domainController, registry);
+            ReadMasterDomainModelHandler rmdmh = new ReadMasterDomainModelHandler(domainController, channelRegistry);
             root.registerOperationHandler(ReadMasterDomainModelHandler.OPERATION_NAME, rmdmh, rmdmh, false, OperationEntry.EntryType.PRIVATE, EnumSet.of(OperationEntry.Flag.READ_ONLY));
         }
-
-        return extensionContext;
     }
 
     public static void validateRolloutPlanStructure(ModelNode plan) throws OperationFailedException {
@@ -358,7 +375,8 @@ public class DomainModelUtil {
         }
     }
 
-    private static final List<String> ALLOWED_SERVER_GROUP_CHILDREN = Arrays.asList(new String[]{ROLLING_TO_SERVERS, MAX_FAILURE_PERCENTAGE, MAX_FAILED_SERVERS});
+    private static final List<String> ALLOWED_SERVER_GROUP_CHILDREN = Arrays.asList(ROLLING_TO_SERVERS, MAX_FAILURE_PERCENTAGE, MAX_FAILED_SERVERS);
+
     private static void validateInSeriesServerGroup(ModelNode serverGroup) throws OperationFailedException {
         if(serverGroup.isDefined()) {
             try {

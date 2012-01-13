@@ -32,12 +32,12 @@ import java.util.concurrent.TimeoutException;
 
 import org.infinispan.AdvancedCache;
 import org.infinispan.Cache;
-import org.infinispan.config.Configuration;
+import org.infinispan.configuration.cache.AbstractLoaderConfiguration;
+import org.infinispan.configuration.cache.CacheMode;
+import org.infinispan.configuration.cache.Configuration;
 import org.infinispan.context.Flag;
 import org.infinispan.distribution.DataLocality;
 import org.infinispan.distribution.DistributionManager;
-import org.infinispan.loaders.CacheLoaderConfig;
-import org.infinispan.loaders.CacheStoreConfig;
 import org.infinispan.manager.EmbeddedCacheManager;
 import org.infinispan.notifications.Listener;
 import org.infinispan.notifications.cachelistener.annotation.CacheEntryActivated;
@@ -114,12 +114,12 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
         this.keyFactory = keyFactory;
         this.invoker = new ForceSynchronousCacheInvoker(invoker);
 
-        Configuration configuration = this.sessionCache.getConfiguration();
-        Configuration.CacheMode mode = configuration.getCacheMode();
-        this.passivationEnabled = configuration.isCacheLoaderPassivation() && !configuration.isCacheLoaderShared();
-        List<CacheLoaderConfig> loaders = configuration.getCacheLoaders();
-        CacheLoaderConfig loader = !loaders.isEmpty() ? loaders.get(0) : null;
-        this.requiresPurge = (loader != null) && (loader instanceof CacheStoreConfig) ? ((CacheStoreConfig) loader).isPurgeOnStartup() && mode.isReplicated() : false;
+        Configuration configuration = this.sessionCache.getCacheConfiguration();
+        CacheMode mode = configuration.clustering().cacheMode();
+        this.passivationEnabled = configuration.loaders().passivation() && !configuration.loaders().shared();
+        List<AbstractLoaderConfiguration> loaders = configuration.loaders().cacheLoaders();
+        AbstractLoaderConfiguration loader = !loaders.isEmpty() ? loaders.get(0) : null;
+        this.requiresPurge = (loader != null) ? loader.purgeOnStartup() && mode.isReplicated() : false;
         this.jvmRouteHandler = mode.isDistributed() ? new JvmRouteHandler(jvmRouteCache, this.manager) : null;
     }
 
@@ -432,7 +432,7 @@ public class DistributedCacheManager<T extends OutgoingDistributableSessionData,
 
         EmbeddedCacheManager container = (EmbeddedCacheManager) this.sessionCache.getCacheManager();
 
-        LockResult result = results.get(this.lockManager.lock(this.keyFactory.createKey(sessionId).toString(), container.getGlobalConfiguration().getDistributedSyncTimeout(), newLock));
+        LockResult result = results.get(this.lockManager.lock(this.keyFactory.createKey(sessionId).toString(), container.getCacheManagerConfiguration().transport().distributedSyncTimeout(), newLock));
 
         ROOT_LOGGER.tracef("acquireSessionOwnership(%s, %s) = %s", sessionId, newLock, result);
 

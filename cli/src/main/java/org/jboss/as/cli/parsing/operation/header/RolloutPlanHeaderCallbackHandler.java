@@ -25,7 +25,7 @@ package org.jboss.as.cli.parsing.operation.header;
 import org.jboss.as.cli.CommandFormatException;
 import org.jboss.as.cli.operation.impl.DefaultCallbackHandler;
 import org.jboss.as.cli.operation.impl.RolloutPlanGroup;
-import org.jboss.as.cli.operation.impl.RolloutPlanHeader;
+import org.jboss.as.cli.operation.impl.ParsedRolloutPlanHeader;
 import org.jboss.as.cli.operation.impl.SingleRolloutPlanGroup;
 import org.jboss.as.cli.parsing.ParsingContext;
 import org.jboss.as.cli.parsing.ParsingStateCallbackHandler;
@@ -39,7 +39,7 @@ import org.jboss.as.cli.parsing.operation.PropertyValueState;
  */
 public class RolloutPlanHeaderCallbackHandler implements ParsingStateCallbackHandler {
 
-    private final RolloutPlanHeader header = new RolloutPlanHeader();
+    private final ParsedRolloutPlanHeader header = new ParsedRolloutPlanHeader();
     private final DefaultCallbackHandler handler;
 
     final StringBuilder buffer = new StringBuilder();
@@ -47,6 +47,7 @@ public class RolloutPlanHeaderCallbackHandler implements ParsingStateCallbackHan
     private String name;
     private RolloutPlanGroup group;
     private boolean concurrent;
+    private int nameValueSep;
 
     public RolloutPlanHeaderCallbackHandler(DefaultCallbackHandler handler) {
         this.handler = handler;
@@ -55,7 +56,7 @@ public class RolloutPlanHeaderCallbackHandler implements ParsingStateCallbackHan
     @Override
     public void enteredState(ParsingContext ctx) throws CommandFormatException {
         final String id = ctx.getState().getId();
-        //System.out.println("rollout.enetered " + id + " '" + ctx.getCharacter() + "'");
+        //System.out.println("rollout.entered " + id + " '" + ctx.getCharacter() + "'");
 
         if(HeaderValueState.ID.equals(id)) {
             ctx.enterState(RolloutPlanState.INSTANCE);
@@ -68,6 +69,7 @@ public class RolloutPlanHeaderCallbackHandler implements ParsingStateCallbackHan
             if(name == null || name.isEmpty()) {
                 throw new CommandFormatException("Property is missing name at index " + ctx.getLocation());
             }
+            nameValueSep = ctx.getLocation();
         }
         buffer.setLength(0);
     }
@@ -91,12 +93,13 @@ public class RolloutPlanHeaderCallbackHandler implements ParsingStateCallbackHan
                     header.addProperty(name, value);
                 }
             } else {
-                ((SingleRolloutPlanGroup)group).addProperty(name, value);
+                ((SingleRolloutPlanGroup)group).addProperty(name, value, nameValueSep);
             }
+            nameValueSep = -1;
         } else if(PropertyState.ID.equals(id)) {
             if(name == null && buffer.length() > 0) {
                 if(group != null) {
-                    ((SingleRolloutPlanGroup)group).addProperty(buffer.toString().trim(), "true");
+                    ((SingleRolloutPlanGroup)group).addProperty(buffer.toString().trim(), "true", -1);
                 } else {
                     header.addProperty(buffer.toString().trim(), "true");
                 }

@@ -179,7 +179,7 @@ public class ThreadsSubsystemTestCase {
         container = ServiceContainer.Factory.create("test");
         ServiceTarget target = container.subTarget();
         ControlledProcessState processState = new ControlledProcessState(true);
-        ModelControllerService svc = new ModelControllerService(container, processState);
+        ModelControllerService svc = new ModelControllerService(processState);
         ServiceBuilder<ModelController> builder = target.addService(ServiceName.of("ModelController"), svc);
         builder.install();
         svc.latch.await();
@@ -799,17 +799,27 @@ public class ThreadsSubsystemTestCase {
         return operation;
     }
 
-    static class TestNewExtensionContext implements ExtensionContext {
+    static class TestExtensionContext implements ExtensionContext {
         final ManagementResourceRegistration testProfileRegistration;
         ManagementResourceRegistration createdRegistration;
 
-        TestNewExtensionContext(ManagementResourceRegistration testProfileRegistration) {
+        TestExtensionContext(ManagementResourceRegistration testProfileRegistration) {
             this.testProfileRegistration = testProfileRegistration;
         }
 
         @Override
         public ProcessType getProcessType() {
             return ProcessType.EMBEDDED_SERVER;
+        }
+
+        @Override
+        public RunningMode getRunningMode() {
+            return RunningMode.NORMAL;
+        }
+
+        @Override
+        public boolean isRuntimeOnlyRegistrationValid() {
+            return getProcessType().isServer() && getRunningMode() != RunningMode.ADMIN_ONLY;
         }
 
         @Override
@@ -852,12 +862,8 @@ public class ThreadsSubsystemTestCase {
         }
 
         @Override
-        public ExtensionContext createTracking(String moduleName) {
-            return this;
-        }
-
-        @Override
-        public void cleanup(Resource resource, String moduleName) {
+        public SubsystemRegistration registerSubsystem(String name, int majorVersion, int minorVersion) {
+            return registerSubsystem(name);
         }
     }
 
@@ -919,7 +925,7 @@ public class ThreadsSubsystemTestCase {
 
         private final CountDownLatch latch = new CountDownLatch(1);
 
-        ModelControllerService(final ServiceContainer serviceContainer, final ControlledProcessState processState) {
+        ModelControllerService(final ControlledProcessState processState) {
             super(ProcessType.EMBEDDED_SERVER, new RunningModeControl(RunningMode.NORMAL), new TestConfigurationPersister(), processState, NULL_PROVIDER, null, ExpressionResolver.DEFAULT);
         }
 
@@ -954,7 +960,7 @@ public class ThreadsSubsystemTestCase {
             });
 
             ManagementResourceRegistration profileRegistration = rootRegistration.registerSubModel(PathElement.pathElement("profile"), profileDescriptionProvider);
-            TestNewExtensionContext context = new TestNewExtensionContext(profileRegistration);
+            TestExtensionContext context = new TestExtensionContext(profileRegistration);
             ThreadsExtension extension = new ThreadsExtension();
             extension.initialize(context);
             Assert.assertNotNull(context.createdRegistration);
@@ -1008,6 +1014,12 @@ public class ThreadsSubsystemTestCase {
 
     /**
      * Override to get the actual result from the response.
+     *
+     * @param operation the operation to execute
+     *
+     * @return the response's "result" child node
+     *
+     * @throws OperationFailedException if the response outcome is "failed"
      */
     public ModelNode executeForResult(ModelNode operation) throws OperationFailedException {
         ModelNode rsp = controller.execute(operation, null, null, null);

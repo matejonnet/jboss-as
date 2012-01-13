@@ -31,13 +31,13 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 
 import javax.servlet.ServletException;
 
 import org.apache.catalina.Container;
 import org.apache.catalina.Engine;
 import org.apache.catalina.Host;
+import org.apache.catalina.LifecycleException;
 import org.apache.catalina.Manager;
 import org.apache.catalina.Pipeline;
 import org.apache.catalina.Valve;
@@ -45,21 +45,24 @@ import org.apache.catalina.connector.Connector;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
 import org.apache.catalina.core.StandardContext;
-import org.infinispan.config.Configuration;
-import org.infinispan.config.Configuration.CacheMode;
-import org.infinispan.config.FluentGlobalConfiguration;
-import org.infinispan.config.GlobalConfiguration;
-import org.infinispan.loaders.file.FileCacheStoreConfig;
+import org.infinispan.Cache;
+import org.infinispan.configuration.cache.CacheMode;
+import org.infinispan.configuration.cache.ConfigurationBuilder;
+import org.infinispan.configuration.global.GlobalConfigurationBuilder;
 import org.infinispan.manager.CacheContainer;
 import org.infinispan.manager.DefaultCacheManager;
 import org.infinispan.manager.EmbeddedCacheManager;
 import org.infinispan.remoting.transport.Address;
-import org.infinispan.remoting.transport.jgroups.JGroupsChannelLookup;
 import org.infinispan.remoting.transport.jgroups.JGroupsTransport;
 import org.infinispan.transaction.TransactionMode;
-import org.jboss.as.clustering.infinispan.subsystem.EmbeddedCacheManagerDefaults;
-import org.jboss.as.clustering.infinispan.subsystem.EmbeddedCacheManagerDefaultsService;
+import org.infinispan.transaction.tm.BatchModeTransactionManager;
+import org.jboss.as.clustering.CoreGroupCommunicationService;
+import org.jboss.as.clustering.infinispan.ChannelProvider;
+import org.jboss.as.clustering.infinispan.DefaultEmbeddedCacheManager;
+import org.jboss.as.clustering.infinispan.TransactionManagerProvider;
+import org.jboss.as.clustering.infinispan.subsystem.CacheAdd;
 import org.jboss.as.clustering.jgroups.MuxChannel;
+import org.jboss.as.clustering.lock.SharedLocalYieldingClusterLockManager;
 import org.jboss.as.clustering.web.ClusteringNotSupportedException;
 import org.jboss.as.clustering.web.OutgoingDistributableSessionData;
 import org.jboss.as.clustering.web.infinispan.DistributedCacheManagerFactory;
@@ -78,8 +81,7 @@ import org.jboss.metadata.web.jboss.ReplicationConfig;
 import org.jboss.metadata.web.jboss.ReplicationGranularity;
 import org.jboss.metadata.web.jboss.ReplicationTrigger;
 import org.jboss.metadata.web.jboss.SnapshotMode;
-import org.jboss.msc.service.StartContext;
-import org.jboss.msc.service.StartException;
+import org.jboss.msc.value.InjectedValue;
 import org.jgroups.Channel;
 import org.jgroups.conf.XmlConfigurator;
 
@@ -100,12 +102,44 @@ public class SessionTestUtil {
             throw new IllegalStateException("Failed to initialize distributedManagerFactory");
         }
 
+        final Cache sessionCache = cacheContainer.getCache();
+        final Cache jvmRouteCache = cacheContainer.getCache(JVM_ROUTE_CACHE_NAME);
         DistributedCacheManagerFactory factory = new DistributedCacheManagerFactory();
-        factory.getSessionCacheInjector().inject(cacheContainer.getCache());
-        factory.getJvmRouteCacheInjector().inject(cacheContainer.getCache(JVM_ROUTE_CACHE_NAME));
-
+        factory.getSessionCacheInjector().inject(sessionCache);
+        factory.getJvmRouteCacheInjector().inject(jvmRouteCache);
+        final CoreGroupCommunicationService service = new CoreGroupCommunicationService();
+        service.setChannel(((JGroupsTransport) sessionCache.getCacheManager().getTransport()).getChannel());
+        service.setScopeId(Integer.valueOf(0).shortValue());
+        final SharedLocalYieldingClusterLockManager lockManager = new SharedLocalYieldingClusterLockManager("lock", service, service);
+        factory.getLockManagerInjector().inject(lockManager);
         try {
-            DistributableSessionManager<OutgoingDistributableSessionData> manager = new DistributableSessionManager<OutgoingDistributableSessionData>(factory, mock(Container.class), metaData);
+            DistributableSessionManager<OutgoingDistributableSessionData> manager = new DistributableSessionManager<OutgoingDistributableSessionData>(factory, mock(Container.class), metaData) {
+                @Override
+                public synchronized void start() throws LifecycleException {
+                    try {
+                        service.start();
+                        lockManager.start();
+                        jvmRouteCache.start();
+                        sessionCache.start();
+                        super.start();
+                    } catch (Exception e) {
+                        throw new LifecycleException(e);
+                    }
+                }
+
+                @Override
+                public void stop() throws LifecycleException {
+                    try {
+                        super.stop();
+                        sessionCache.stop();
+                        jvmRouteCache.stop();
+                        lockManager.stop();
+                        service.stop();
+                    } catch (Exception e) {
+                        throw new LifecycleException(e);
+                    }
+                }
+            };
 
             setupContainer(warName, jvmRoute, manager);
 
@@ -118,67 +152,62 @@ public class SessionTestUtil {
             throw new IllegalStateException(e);
         }
     }
-
-    public static class ChannelProvider implements JGroupsChannelLookup {
-        @Override
-        public Channel getJGroupsChannel(Properties properties) {
-            try {
-                return new MuxChannel(XmlConfigurator.getInstance(Thread.currentThread().getContextClassLoader().getResource("jgroups-udp.xml")));
-            } catch (Exception e) {
-                throw new IllegalStateException(e);
-            }
-        }
-
-        @Override
-        public boolean shouldStartAndConnect() {
-            return true;
-        }
-
-        @Override
-        public boolean shouldStopAndDisconnect() {
-            return true;
-        }
-    }
     
     private static volatile int containerIndex = 1;
-    private static EmbeddedCacheManagerDefaults defaults = createDefaults();
-    private static EmbeddedCacheManagerDefaults createDefaults() {
-        EmbeddedCacheManagerDefaultsService service = new EmbeddedCacheManagerDefaultsService();
-        try {
-            service.start(mock(StartContext.class));
-        } catch (StartException e) {
-            throw new IllegalStateException(e);
-        }
-        return service.getValue();
-    }
 
     public static EmbeddedCacheManager createCacheContainer(boolean local, String passivationDir, boolean totalReplication, boolean purgeCacheLoader) throws Exception {
-        Configuration.CacheMode mode = local ? CacheMode.LOCAL : (totalReplication ? CacheMode.REPL_SYNC : CacheMode.DIST_SYNC);
-        GlobalConfiguration global = defaults.getGlobalConfiguration().clone();
-        FluentGlobalConfiguration.TransportConfig transport = global.fluent().transport();
-        if (mode.isClustered()) {
-            transport.transportClass(JGroupsTransport.class);
-            transport.addProperty(JGroupsTransport.CHANNEL_LOOKUP, ChannelProvider.class.getName());
-        } else {
-            transport.transportClass(null);
-        }
-        transport.clusterName("test").globalJmxStatistics().cacheManagerName("container" + containerIndex++).disable();
-
-        Configuration config = defaults.getDefaultConfiguration(mode).clone();
-        config.fluent().syncCommitPhase(true).syncRollbackPhase(true).invocationBatching().transaction().transactionMode(TransactionMode.TRANSACTIONAL).useSynchronization(true);
-
+        CacheMode mode = local ? CacheMode.LOCAL : (totalReplication ? CacheMode.REPL_SYNC : CacheMode.DIST_SYNC);
+        GlobalConfigurationBuilder globalBuilder = new GlobalConfigurationBuilder();
+        String name = "container" + containerIndex++;
+        globalBuilder.transport()
+                .transport(new JGroupsTransport())
+                .distributedSyncTimeout(60000)
+                .clusterName("test")
+                .globalJmxStatistics().cacheManagerName(name).disable()
+        ;
+        InjectedValue<Channel> channelInjection = new InjectedValue<Channel>();
+        ChannelProvider.init(globalBuilder.transport(), channelInjection);
+        ConfigurationBuilder builder = new ConfigurationBuilder().read(CacheAdd.getDefaultConfiguration(mode));
+        builder.transaction()
+                .syncCommitPhase(true)
+                .syncRollbackPhase(true)
+                .transactionMode(TransactionMode.TRANSACTIONAL)
+                .transactionManagerLookup(new TransactionManagerProvider(BatchModeTransactionManager.getInstance()))
+                .invocationBatching().enable()
+        ;
         if (passivationDir != null) {
-            config.fluent().loaders().passivation(true).preload(!purgeCacheLoader).addCacheLoader(new FileCacheStoreConfig().location(passivationDir).fetchPersistentState(mode.isReplicated()).purgeOnStartup(purgeCacheLoader).purgeSynchronously(true));
+            builder.loaders().passivation(true).preload(!purgeCacheLoader).addFileCacheStore().location(passivationDir).fetchPersistentState(mode.isReplicated()).purgeOnStartup(purgeCacheLoader).purgeSynchronously(true);
         }
 
-        final EmbeddedCacheManager container = new DefaultCacheManager(global, config, false);
+        try {
+            final Channel channel = new MuxChannel(XmlConfigurator.getInstance(Thread.currentThread().getContextClassLoader().getResource("jgroups-udp.xml")));
+            channel.setName(name);
+            channelInjection.inject(channel);
 
-        config = defaults.getDefaultConfiguration(Configuration.CacheMode.REPL_SYNC).clone();
-        config.fluent().syncCommitPhase(true).syncRollbackPhase(true).transaction().invocationBatching().transaction().transactionMode(TransactionMode.TRANSACTIONAL).useSynchronization(true);
+            final EmbeddedCacheManager container = new DefaultEmbeddedCacheManager(new DefaultCacheManager(globalBuilder.build(), builder.build(), false), CacheContainer.DEFAULT_CACHE_NAME) {
+                @Override
+                public void start() {
+                    try {
+                        channel.connect("test");
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e);
+                    }
+                    super.start();
+                }
 
-        container.defineConfiguration(JVM_ROUTE_CACHE_NAME, CacheContainer.DEFAULT_CACHE_NAME, config);
-        
-        return container;
+                @Override
+                public void stop() {
+                    super.stop();
+                    channel.close();
+                }
+            };
+    
+            container.defineConfiguration(JVM_ROUTE_CACHE_NAME, builder.build());
+
+            return container;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public static void setupContainer(String warName, String jvmRoute, Manager mgr) {
