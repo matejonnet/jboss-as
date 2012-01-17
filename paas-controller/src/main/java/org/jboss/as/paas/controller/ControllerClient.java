@@ -52,7 +52,7 @@ public class ControllerClient {
                 throw new RuntimeException("Could not connect in " + maxWaitTime / 1000 + " seconds.");
             }
             try {
-                log.debug("Waiting to connect to remote client. Going to sleep for 500ms.");
+                log.debug("Waiting to connect. Going to sleep for 500ms.");
                 Thread.sleep(500);
             } catch (InterruptedException e) {
                 // TODO Auto-generated catch block

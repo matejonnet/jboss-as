@@ -11,12 +11,13 @@ import java.util.List;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
+import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutorOC;
 import org.jboss.dmr.ModelNode;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class ResultMessagesDmrActions extends DmrActions {
+public class ResultMessagesDmrActions extends DmrActionExecutorOC {
 
     private List<Message> messages = new ArrayList<Message>();
 

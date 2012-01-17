@@ -1,45 +1,49 @@
 /**
  *
  */
-package org.jboss.as.paas.controller.dmr;
+package org.jboss.as.paas.controller.dmr.executor;
 
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
+import org.jboss.as.controller.client.Operation;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
-import org.jboss.as.controller.registry.Resource;
+import org.jboss.as.paas.controller.dmr.OperationStepEntry;
+import org.jboss.as.paas.controller.dmr.OperationStepRegistry;
 import org.jboss.as.paas.controller.operationqueue.DmrOperations;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 
 /**
+ * Executes dmr operations using operation context
+ *
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class DmrActions {
+public class DmrActionExecutorOC implements DmrActionExecutor {
 
     protected OperationContext context;
     protected OperationStepRegistry stepRegistry;
     protected DmrOperations dmrOperations;
 
-    public DmrActions(OperationContext context) {
+    public DmrActionExecutorOC(OperationContext context) {
         super();
         this.context = context;
     }
 
-    public DmrActions(OperationContext context, OperationStepRegistry stepRegistry) {
+    public DmrActionExecutorOC(OperationContext context, OperationStepRegistry stepRegistry) {
         super();
         this.context = context;
         this.stepRegistry = stepRegistry;
     }
 
-    public DmrActions(OperationContext context, OperationStepRegistry stepRegistry, DmrOperations dmrOperations) {
+    public DmrActionExecutorOC(OperationContext context, OperationStepRegistry stepRegistry, DmrOperations dmrOperations) {
         super();
         this.context = context;
         this.stepRegistry = stepRegistry;
         this.dmrOperations = dmrOperations;
     }
 
-    private static final Logger log = Logger.getLogger(DmrActions.class);
+    private static final Logger log = Logger.getLogger(DmrActionExecutorOC.class);
 
     protected void executeStep(OperationContext context, ModelNode operation) {
         doExecuteStep(context, operation);
@@ -146,7 +150,7 @@ public class DmrActions {
         addStepToContext(request, OperationContext.Stage.MODEL, stepName, null, onSuccess);
     }
 
-    public void addStepToContext(ModelNode request, final String stepName, final String[] requiredSteps) {
+    public void process(ModelNode request, final String stepName, final String[] requiredSteps) {
         addStepToContext(request, OperationContext.Stage.MODEL, stepName, requiredSteps);
     }
 
@@ -168,12 +172,6 @@ public class DmrActions {
 
     }
 
-    protected Resource navigate(PathAddress address) {
-        Resource rootResource = context.getRootResource();
-        log.tracef("Navigating from rootResource to [%s] ...", address.toString());
-        return rootResource.navigate(address);
-    }
-
     protected void executeNextStep(final OperationStepEntry step) {
         context.addStep(step.getRequest(), new OperationStepHandler() {
             @Override
@@ -181,5 +179,30 @@ public class DmrActions {
                 executeStep(context, operation, step.getStepName(), null, step.getOnSuccess());
             }
         }, step.getOpStage());
+    }
+
+    @Override
+    public void execute(ModelNode op) {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public ModelNode executeForResult(ModelNode op) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void close() {
+        // TODO Auto-generated method stub
+    }
+
+    /* (non-Javadoc)
+     * @see org.jboss.as.paas.controller.dmr.executor.DmrActionExecutor#executeForResult(org.jboss.as.controller.client.Operation)
+     */
+    @Override
+    public ModelNode executeForResult(Operation build) {
+        // TODO Auto-generated method stub
+        return null;
     }
 }

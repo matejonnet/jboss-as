@@ -6,7 +6,7 @@ package org.jboss.as.paas.controller.iaas;
 import java.util.Arrays;
 import java.util.List;
 
-import org.jboss.as.paas.configurator.sys.SysUtil;
+import org.jboss.as.paas.util.Util;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -18,7 +18,7 @@ public class IaasInstanceLocalWrapper implements IaasInstance {
      */
     @Override
     public List<String> getPublicAddresses() {
-        return Arrays.asList(new String[] { SysUtil.getLocalIp() });
+        return Arrays.asList(new String[] { Util.getLocalIp() });
     }
 
     /* (non-Javadoc)
@@ -42,7 +42,7 @@ public class IaasInstanceLocalWrapper implements IaasInstance {
      */
     @Override
     public List<String> getPrivateAddresses() {
-        return Arrays.asList(new String[] { SysUtil.getLocalIp() });
+        return Arrays.asList(new String[] { Util.getLocalIp() });
     }
 
 }

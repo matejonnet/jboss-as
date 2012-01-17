@@ -8,7 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.deltacloud.client.DeltaCloudClientException;
-import org.jboss.as.controller.OperationContext;
+import org.jboss.as.paas.configurator.client.RemoteConfigurator;
 import org.jboss.as.paas.controller.AsClusterPassManagement;
 import org.jboss.as.paas.controller.domain.IaasProvider;
 import org.jboss.logging.Logger;
@@ -32,10 +32,10 @@ public class IaasController {
         return INSTANCE;
     }
 
-    public void addProvider(String name, String driver, String url, String user, String password, String imageId, OperationContext context) throws MalformedURLException, DeltaCloudClientException {
+    public void addProvider(String name, String driver, String url, String user, String password, String imageId) throws MalformedURLException, DeltaCloudClientException {
         IaasProvider provier;
         if ("vm".equals(driver)) {
-            provier = new IaasProvider(name, driver, context);
+            provier = new IaasProvider(name, driver);
         } else {
             provier = new IaasProvider(name, driver, url, user, password, imageId);
         }
@@ -101,4 +101,7 @@ public class IaasController {
         return INSTANCE.getProvider(providerName).getPrivateAddresses(instanceId).get(0);
     }
 
+    public void configureInstance(String remoteIp) {
+        new RemoteConfigurator().reconfigureRemote(remoteIp);
+    }
 }

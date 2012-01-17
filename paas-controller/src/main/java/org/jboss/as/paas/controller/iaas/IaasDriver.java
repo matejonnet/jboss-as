@@ -45,7 +45,7 @@ public interface IaasDriver {
             if ("local".equals(driverName)) {
                 driver = new LocalIaasDriver();
             } else if ("vm".equals(driverName)) {
-                driver = new VmIaasDriver(iaasProvider.getContext());
+                driver = new VmIaasDriver();
             } else if (driverName.startsWith("jcloud-")) {
                 // TODO validate required params
                 String provider = driverName.split("-")[1];

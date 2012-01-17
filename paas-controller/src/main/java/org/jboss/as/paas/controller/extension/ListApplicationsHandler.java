@@ -7,7 +7,6 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.client.ModelControllerClient;
-import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 
@@ -37,12 +36,12 @@ public class ListApplicationsHandler extends BaseHandler implements OperationSte
         if (!super.execute(context)) {
             return;
         }
-        PaasDmrActions paasDmrActions = new PaasDmrActions(context);
-
-
-        System.out.println(">>>>>>>>> ListApplicationsHandle.execute: continue");
-
-        paasDmrActions.listApplications(operation);
+        //        PaasDmrActions paasDmrActions = new PaasDmrActions(context);
+        //
+        //
+        //        System.out.println(">>>>>>>>> ListApplicationsHandle.execute: continue");
+        //
+        //        paasDmrActions.listApplications(operation);
 
         context.completeStep();
     }

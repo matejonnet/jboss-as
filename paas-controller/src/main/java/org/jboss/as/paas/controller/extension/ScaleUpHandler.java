@@ -14,7 +14,6 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
-import org.jboss.as.paas.controller.PaasProcessor;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 import org.jboss.logging.Logger;
@@ -40,24 +39,24 @@ public class ScaleUpHandler extends BaseHandler implements OperationStepHandler 
             return;
         }
 
-        final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
-        final String provider = operation.get(ATTRIBUTE_PROVIDER).isDefined() ? operation.get(ATTRIBUTE_PROVIDER).asString() : null;
-        final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() ? operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean() : false;
-        final String instanceId = operation.get(ATTRIBUTE_INSTANCE_ID).isDefined() ? operation.get(ATTRIBUTE_INSTANCE_ID).asString() : null;
-
-        PaasProcessor paasProcessor = new PaasProcessor(context, jbossDmrActions, paasDmrActions, compositeDmrActions);
-
-        String serverGroupName = getServerGroupName(appName);
-
-        paasProcessor.addHostToExisingServerGroup(serverGroupName, provider, newInstance, instanceId);
-
-        completeStep(context);
-
-        if (stepRegistry.areExecuted(new String[] { "validateHostRegistration" })) {
-            jbossDmrActions.reloadHost(paasProcessor.getSlot().getHostIP());
-        }
-
-        onReturn();
+        //        final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
+        //        final String provider = operation.get(ATTRIBUTE_PROVIDER).isDefined() ? operation.get(ATTRIBUTE_PROVIDER).asString() : null;
+        //        final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() ? operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean() : false;
+        //        final String instanceId = operation.get(ATTRIBUTE_INSTANCE_ID).isDefined() ? operation.get(ATTRIBUTE_INSTANCE_ID).asString() : null;
+        //
+        //        PaasProcessor paasProcessor = new PaasProcessor(context, jbossDmrActions, paasDmrActions, compositeDmrActions);
+        //
+        //        String serverGroupName = getServerGroupName(appName);
+        //
+        //        paasProcessor.addHostToExisingServerGroup(serverGroupName, provider, newInstance, instanceId);
+        //
+        //        completeStep(context);
+        //
+        //        if (stepRegistry.areExecuted(new String[] { "validateHostRegistration" })) {
+        //            jbossDmrActions.reloadHost(paasProcessor.getSlot().getHostIP());
+        //        }
+        //
+        //        onReturn();
     }
 
     public static DescriptionProvider DESC = new DescriptionProvider() {

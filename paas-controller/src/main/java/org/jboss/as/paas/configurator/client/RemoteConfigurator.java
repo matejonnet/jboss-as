@@ -13,7 +13,7 @@ import java.net.SocketAddress;
 import java.net.UnknownHostException;
 
 import org.jboss.as.paas.configurator.Main;
-import org.jboss.as.paas.configurator.sys.SysUtil;
+import org.jboss.as.paas.util.Util;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -45,7 +45,7 @@ public class RemoteConfigurator {
         try {
             // String hostControllerIp =
             // InetAddress.getLocalHost().getHostAddress();
-            String hostControllerIp = SysUtil.getLocalIp();
+            String hostControllerIp = Util.getLocalIp();
             out.println(hostControllerIp);
             System.out.println("response: " + in.readLine());
         } catch (IOException e) {

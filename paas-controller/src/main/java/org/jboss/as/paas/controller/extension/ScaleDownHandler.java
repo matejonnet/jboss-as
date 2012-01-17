@@ -14,7 +14,6 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
-import org.jboss.as.paas.controller.PaasProcessor;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 import org.jboss.logging.Logger;
@@ -37,21 +36,21 @@ public class ScaleDownHandler extends BaseHandler implements OperationStepHandle
             return;
         }
 
-        final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
-        // TODO validate required attributes
-        // if(appName == null) {
-        // throw new
-        // OperationFormatException("Required argument name are missing.");
-        // }
-
-        PaasProcessor paasProcessor = new PaasProcessor(context, jbossDmrActions, paasDmrActions, compositeDmrActions);
-
-        String serverGroupName = getServerGroupName(appName);
-        paasProcessor.removeHostFromServerGroup(serverGroupName);
-
-        completeStep(context);
-
-        onReturn();
+        //        final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
+        //        // TODO validate required attributes
+        //        // if(appName == null) {
+        //        // throw new
+        //        // OperationFormatException("Required argument name are missing.");
+        //        // }
+        //
+        //        PaasProcessor paasProcessor = new PaasProcessor(context, jbossDmrActions, paasDmrActions, compositeDmrActions);
+        //
+        //        String serverGroupName = getServerGroupName(appName);
+        //        paasProcessor.removeHostFromServerGroup(serverGroupName);
+        //
+        //        completeStep(context);
+        //
+        //        onReturn();
     }
 
     public static DescriptionProvider DESC = new DescriptionProvider() {

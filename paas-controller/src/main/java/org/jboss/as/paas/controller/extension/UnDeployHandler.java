@@ -39,28 +39,28 @@ public class UnDeployHandler extends BaseHandler implements OperationStepHandler
             return;
         }
 
-        final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
-        //TODO validate required attributes
-        //        if(appName == null) {
-        //            throw new OperationFormatException("Required argument name are missing.");
+        //        final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
+        //        //TODO validate required attributes
+        //        //        if(appName == null) {
+        //        //            throw new OperationFormatException("Required argument name are missing.");
+        //        //        }
+        //
+        //        String serverGroupName = getServerGroupName(appName);
+        //
+        //        jbossDmrActions.undeployFromServerGroup(appName, serverGroupName);
+        //
+        //        try {
+        //            compositeDmrActions.removeHostsFromServerGroup(serverGroupName, true);
+        //        } catch (Exception e) {
+        //            //TODO throw new OperationFailedException(e);
+        //            e.printStackTrace();
         //        }
-
-        String serverGroupName = getServerGroupName(appName);
-
-        jbossDmrActions.undeployFromServerGroup(appName, serverGroupName);
-
-        try {
-            compositeDmrActions.removeHostsFromServerGroup(serverGroupName, true);
-        } catch (Exception e) {
-            //TODO throw new OperationFailedException(e);
-            e.printStackTrace();
-        }
-
-        jbossDmrActions.removeServerGroup(serverGroupName);
-
-        completeStep(context);
-
-        onReturn();
+        //
+        //        jbossDmrActions.removeServerGroup(serverGroupName);
+        //
+        //        completeStep(context);
+        //
+        //        onReturn();
     }
 
     public static DescriptionProvider DESC = new DescriptionProvider() {

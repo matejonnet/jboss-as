@@ -1,40 +1,45 @@
 package org.jboss.as.paas.controller.domain;
 
-import static org.jboss.as.paas.controller.extension.ServerInstanceAddHandler.ATTRIBUTE_INSTANCE_IP;
-
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-import org.jboss.as.controller.registry.Resource.ResourceEntry;
+import org.jboss.as.paas.controller.extension.ServerInstanceAddHandler;
+import org.jboss.dmr.ModelNode;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
 public class Instance {
 
-    private ResourceEntry instance;
+    private ModelNode instance;
 
-    public Instance(ResourceEntry instance) {
+    //private String instanceId;
+
+    public Instance(ModelNode instance) {
         this.instance = instance;
+        //instanceId = instance.keys().iterator().next();
     }
 
     public Set<ServerGroup> getServerGroups() {
         Set<ServerGroup> serverGroups = new LinkedHashSet<ServerGroup>();
-        for (ResourceEntry serverGroup : instance.getChildren("server-group")) {
-            serverGroups.add(new ServerGroup(serverGroup));
+        if (!instance.asProperty().getValue().hasDefined("server-group")) {
+            return serverGroups;
+        }
+        for (ModelNode serverGroupNode : instance.asProperty().getValue().get("server-group").asList()) {
+            serverGroups.add(new ServerGroup(serverGroupNode));
         }
         return serverGroups;
     }
 
     public String getProviderName() {
-        return instance.getModel().get("provider").asString();
+        return instance.asProperty().getValue().get("provider").asString();
     }
 
     public String getInstanceId() {
-        return instance.getName();
+        return instance.asProperty().getName();
     }
 
     public String getHostIP() {
-        return instance.getModel().get(ATTRIBUTE_INSTANCE_IP).asString();
+        return instance.asProperty().getValue().get(ServerInstanceAddHandler.ATTRIBUTE_INSTANCE_IP).asString();
     }
 }

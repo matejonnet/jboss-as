@@ -4,6 +4,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
+import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutor;
 import org.jboss.as.paas.controller.domain.Instance;
 import org.jboss.as.paas.controller.domain.ServerGroup;
 import org.jboss.as.paas.controller.iaas.InstanceSlot;
@@ -27,17 +28,19 @@ public class InstanceSearch {
 
     private Instance instance;
 
+    private DmrActionExecutor dmrActionExecutor;
+
     //private Set<Integer> usedPositions;
 
     /**
      * @param context
      * @param paasDmrActions
+     * @param dmrActionExecutor
      */
-    InstanceSearch(PaasDmrActions paasDmrActions) {
+    public InstanceSearch(PaasDmrActions paasDmrActions, DmrActionExecutor dmrActionExecutor) {
         super();
-        //this.context = context;
         this.paasDmrActions = paasDmrActions;
-        //paasDmrActions = new PaasDmrActions(context);
+        this.dmrActionExecutor = dmrActionExecutor;
     }
 
     /**
@@ -64,9 +67,9 @@ public class InstanceSearch {
      * @param instanceId
      * @return InstanceSlot from an existing instance
      */
-    InstanceSlot getFreeSlot(String group, String createOnProvider, String instanceId) {
+    public InstanceSlot getFreeSlot(String group, String createOnProvider, String instanceId) {
         if (instanceId != null) {
-            instance = paasDmrActions.getInstance(instanceId);
+            instance = paasDmrActions.getInstance(instanceId, dmrActionExecutor);
         } else {
             getInstanceWithFreeSlot(group, createOnProvider);
         }
@@ -83,8 +86,9 @@ public class InstanceSearch {
      * @return null if none available
      */
     private void getInstanceWithFreeSlot(String group, String createOnProvider) {
+        Set<Instance> instances = paasDmrActions.getInstances(dmrActionExecutor);
 
-        for (Instance instance : paasDmrActions.getInstances()) {
+        for (Instance instance : instances) {
             boolean hasFreeSlot = true;
             String providerName = instance.getProviderName();
             // if defined createOnProvider, allow only defined provider

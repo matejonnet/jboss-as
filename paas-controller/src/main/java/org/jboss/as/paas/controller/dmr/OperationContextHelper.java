@@ -33,7 +33,7 @@ public class OperationContextHelper {
      * @param operation
      * @return
      */
-    static OperationContext addAttachmentToContext(final OperationContext context, final Operation operation) {
+    public static OperationContext addAttachmentToContext(final OperationContext context, final Operation operation) {
         return new OperationContext() {
 
             @Override
