@@ -82,4 +82,16 @@ public class InstanceSlot {
         String instanceId;
         String hostIp;
     }
+
+    @Override
+    public String toString() {
+        StringBuffer buffer = new StringBuffer();
+        buffer.append(getInstanceId());
+        buffer.append("-");
+        buffer.append(getHostIP());
+        buffer.append("-");
+        buffer.append(getSlotPosition());
+
+        return buffer.toString();
+    }
 }

@@ -5,11 +5,9 @@ import java.util.List;
 
 import org.jboss.as.paas.controller.AsClusterPassManagement;
 import org.jboss.as.paas.controller.InstanceSearch;
-import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
 import org.jboss.as.paas.controller.dmr.Deployment;
 import org.jboss.as.paas.controller.dmr.JBossDmrActions;
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
-import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutor;
 import org.jboss.as.paas.controller.iaas.IaasController;
 import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
@@ -18,11 +16,9 @@ import org.jboss.logging.Logger;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class DeployOperation {
+public class DeployOperation extends OperationBase implements PaasOperation {
 
     private static final Logger log = Logger.getLogger(DeployOperation.class);
-
-    private DmrActionExecutor dmrActionExecutor;
 
     private File f;
     private String provider;
@@ -31,12 +27,17 @@ public class DeployOperation {
     private InstanceSlot slot;
     boolean createNewSG;
 
-    private PaasDmrActions paasDmrAction;
+    public DeployOperation(String appName, String provider, boolean newInstance, String instanceId) {
+        super();
+        this.appName = appName;
+        this.provider = provider;
+        this.newInstance = newInstance;
+        this.instanceId = instanceId;
+        this.createNewSG = false;
+    }
 
-    private JBossDmrActions jBossDmrActions;
-
-    public DeployOperation(File f, String provider, boolean newInstance, String instanceId, boolean createNewSG, DmrActionExecutor dmrActionExecutor) {
-        this.dmrActionExecutor = dmrActionExecutor;
+    public DeployOperation(File f, String provider, boolean newInstance, String instanceId, boolean createNewSG) {
+        super();
         this.f = f;
         this.provider = provider;
         this.newInstance = newInstance;
@@ -44,13 +45,13 @@ public class DeployOperation {
         this.createNewSG = createNewSG;
     }
 
+    @Override
     public void execute() {
         String appName = getAppName();
         String serverGroupName = getServerGroupName();
 
         JBossDmrActions jbossDmrActions = getJBossDmrActions();
         PaasDmrActions paasDmrActions = getPaasDmrActions();
-        CompositeDmrActions compositeDmrActions = new CompositeDmrActions(jbossDmrActions, paasDmrActions, dmrActionExecutor);
 
         //        PaasProcessor paasProcessor = new PaasProcessor(jbossDmrActions, paasDmrActions, compositeDmrActions);
 
@@ -72,7 +73,12 @@ public class DeployOperation {
             Deployment deployment = new Deployment();
             deployment.addDeployment(f, appName, appName);
 
-            jbossDmrActions.addDeploymentToServerGroup(f, appName, serverGroupName);
+            ModelNode opADSGa = jbossDmrActions.addDeploymentToServerGroupStepAdd(f, appName, serverGroupName);
+            dmrActionExecutor.execute(opADSGa);
+
+            ModelNode opADSGd = jbossDmrActions.addDeploymentToServerGroupStepDeploy(f, appName, serverGroupName);
+            dmrActionExecutor.execute(opADSGd);
+
         }
 
         ModelNode opHTSG = jbossDmrActions.addHostToServerGroup(slot, serverGroupName);
@@ -86,7 +92,7 @@ public class DeployOperation {
         ModelNode opStart = jbossDmrActions.startServer(slot.getHostIP(), slot.getSlotPosition());
         dmrActionExecutor.execute(opStart);
 
-        dmrActionExecutor.close();
+        //dmrActionExecutor.close();
     }
 
     /**
@@ -137,16 +143,12 @@ public class DeployOperation {
         }
     }
 
-    /**
-     * @param appName
-     * @return
-     */
-    public String getServerGroupName() {
-        return getAppName();
-    }
-
+    @Override
     public String getAppName() {
-        return f.getName();
+        if (appName == null) {
+            appName = f.getName();
+        }
+        return appName;
     }
 
     private boolean isInResult(String resultEntry, List<ModelNode> resultList) {
@@ -158,13 +160,6 @@ public class DeployOperation {
             }
         }
         return success;
-    }
-
-    private PaasDmrActions getPaasDmrActions() {
-        if (paasDmrAction == null) {
-            paasDmrAction = new PaasDmrActions();
-        }
-        return paasDmrAction;
     }
 
     private void waitRemoteHostToRegister(String hostIP) {
@@ -192,14 +187,6 @@ public class DeployOperation {
         ModelNode op = getJBossDmrActions().getRegistedHosts(hostIP);
         ModelNode hosts = dmrActionExecutor.executeForResult(op);
         return isInResult(hostIP, hosts.asList());
-    }
-
-    private JBossDmrActions getJBossDmrActions() {
-        if (jBossDmrActions == null) {
-            jBossDmrActions = new JBossDmrActions();
-        }
-
-        return jBossDmrActions;
     }
 
     //    private PaasProcessor getPaasProcessor() {

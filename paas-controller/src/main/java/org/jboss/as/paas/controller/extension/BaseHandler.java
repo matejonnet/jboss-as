@@ -7,7 +7,6 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.registry.Resource;
-import org.jboss.as.paas.controller.dmr.CompositeDmrActions;
 import org.jboss.as.paas.controller.dmr.JBossDmrActions;
 import org.jboss.as.paas.controller.dmr.OperationStepRegistry;
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
@@ -16,7 +15,7 @@ import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutor;
 import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutorInstance;
 import org.jboss.as.paas.controller.operationqueue.DmrOperations;
 import org.jboss.as.paas.controller.operationqueue.OperationQueue;
-import org.jboss.as.paas.controller.operations.DeployOperation;
+import org.jboss.as.paas.controller.operations.PaasOperation;
 import org.jboss.as.paas.util.Util;
 import org.jboss.logging.Logger;
 
@@ -29,7 +28,6 @@ abstract class BaseHandler {
 
     protected JBossDmrActions jbossDmrActions;
     protected PaasDmrActions paasDmrActions;
-    protected CompositeDmrActions compositeDmrActions;
     protected OperationStepRegistry stepRegistry;
     protected DmrOperations dmrOperations;
     protected ResultMessagesDmrActions messagesDmrActions;
@@ -42,20 +40,11 @@ abstract class BaseHandler {
      */
     public boolean execute(OperationContext context) {
         log.debug(">>>>>>>>> Handle.execute ");
-        //stepRegistry = new OperationStepRegistry();
-        //dmrOperations = new DmrOperations();
-        //jbossDmrActions = new JBossDmrActions(context, stepRegistry, dmrOperations);
 
         if (!isDomainController(context)) {
             context.completeStep();
             return false;
         }
-
-        //paasDmrActions = new PaasDmrActions(context, stepRegistry, dmrOperations);
-        //compositeDmrActions = new CompositeDmrActions(context, jbossDmrActions, paasDmrActions, stepRegistry, dmrOperations, operationQueue);
-        //messagesDmrActions = new ResultMessagesDmrActions(context, stepRegistry);
-        //operationQueue = new OperationQueue();
-        //operationQueue.add(dmrOperations);
         return true;
     }
 
@@ -73,7 +62,7 @@ abstract class BaseHandler {
         //remoteDmrActions.executeOnComplete();
     }
 
-    protected void scheduleOperation(final DeployOperation operation) {
+    protected void scheduleOperation(final PaasOperation operation) {
 
         //context.getServiceRegistry(modify)
         //serviceBuilder.addDependency(ThreadsServices.executorName(executorRef), Executor.class, service.getExecutor());

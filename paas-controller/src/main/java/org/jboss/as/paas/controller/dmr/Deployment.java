@@ -21,7 +21,7 @@ public class Deployment {
     }
 
     /**
-     * @see org.jboss.as.cli.handlers.addDeployment
+     * @see org.jboss.as.cli.handlers.DeployHandler.addDeployment
      */
     public void addDeployment(final File f, String name, final String runtimeName) {
         ModelNode request = new ModelNode();
@@ -52,7 +52,7 @@ public class Deployment {
     }
 
     /**
-     * @see org.jboss.as.cli.handlers.replaceDeployment
+     * @see org.jboss.as.cli.handlers.DeployHandler.replaceDeployment
      */
     public void replaceDeployment(final File f, String name, final String runtimeName) {
 

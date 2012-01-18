@@ -76,9 +76,7 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
             f = null;
         }
 
-        DmrActionExecutor actionExecutor = getActionExecutor();
-        DeployOperation operation = new DeployOperation(f, provider, newInstance, instanceId, true, actionExecutor);
-        //deployToServerGroup(f, operation.getAppName(), operation.getServerGroupName(), context);
+        DeployOperation operation = new DeployOperation(f, provider, newInstance, instanceId, true);
 
         context.getResult().add("Operation submitted. See status for datils.");
         context.completeStep();

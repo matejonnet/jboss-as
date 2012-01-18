@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.net.UnknownHostException;
 
 import org.jboss.as.controller.client.ModelControllerClient;
-import org.jboss.as.controller.client.OperationBuilder;
 import org.jboss.as.paas.controller.ControllerClient;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
@@ -32,13 +31,20 @@ public class DmrActionExecutorRemoteClient implements DmrActionExecutor {
 
     @Override
     public ModelNode executeForResult(ModelNode op) {
-        return executeForResult(new OperationBuilder(op).build());
+        log.debugf("Executing operation %s.", op);
+        try {
+            ModelNode result = getClient().execute(op);
+            return isSuccess(result, op);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
     public void close() {
         try {
-            getClient().close();
+            client.close();
+            client = null;
         } catch (IOException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
@@ -68,20 +74,25 @@ public class DmrActionExecutorRemoteClient implements DmrActionExecutor {
         log.debugf("Executing operation %s.", op.getOperation());
         try {
             ModelNode result = getClient().execute(op);
-            if (result.hasDefined("outcome") && "success".equals(result.get("outcome").asString())) {
-                log.tracef("Operation %s executed.", op.getOperation());
-                return result.get("result");
-            } else if (result.hasDefined("failure-description")) {
-                throw new RuntimeException(result.get("failure-description").toString());
-            } else if (result.hasDefined("domain-failure-description")) {
-                throw new RuntimeException(result.get("domain-failure-description").toString());
-            } else if (result.hasDefined("host-failure-descriptions")) {
-                throw new RuntimeException(result.get("host-failure-descriptions").toString());
-            } else {
-                throw MESSAGES.operationOutcome(result.get("outcome").asString());
-            }
+            return isSuccess(result, op.getOperation());
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    protected ModelNode isSuccess(ModelNode result, ModelNode op) {
+        if (result.hasDefined("outcome") && "success".equals(result.get("outcome").asString())) {
+            log.tracef("Operation %s executed.", op);
+            log.tracef("Operation result %s.", result);
+            return result.get("result");
+        } else if (result.hasDefined("failure-description")) {
+            throw new RuntimeException(result.get("failure-description").toString());
+        } else if (result.hasDefined("domain-failure-description")) {
+            throw new RuntimeException(result.get("domain-failure-description").toString());
+        } else if (result.hasDefined("host-failure-descriptions")) {
+            throw new RuntimeException(result.get("host-failure-descriptions").toString());
+        } else {
+            throw MESSAGES.operationOutcome(result.get("outcome").asString());
         }
     }
 

@@ -50,34 +50,46 @@ public class JBossDmrActions extends DmrBase {
         // /host=master/server-config=server-one:remove()
         // prepare composite operation
 
-        ModelNode steps = createCompositeOperation();
+        final ModelNode composite = new ModelNode();
+        composite.get("operation").set("composite");
+        composite.get("address").setEmptyList();
+        ModelNode steps = composite.get("steps");
+
+        steps.add(removeHostFromServerGroupStop(groupName, slot));
+        steps.add(removeHostFromServerGroupRemove(groupName, slot));
+
+        return composite;
+    }
+
+    public ModelNode removeHostFromServerGroupStop(String groupName, InstanceSlot slot) {
 
         ModelNode opStop = new ModelNode();
         opStop.get(OP).set("stop");
         opStop.get(OP_ADDR).add("host", slot.getHostIP());
         opStop.get(OP_ADDR).add("server-config", "server" + slot.getSlotPosition());
-        steps.add(opStop);
+
+        return opStop;
+    }
+
+    public ModelNode removeHostFromServerGroupRemove(String groupName, InstanceSlot slot) {
 
         ModelNode opRemove = new ModelNode();
         opRemove.get(OP).set("remove");
         opRemove.get(OP_ADDR).add("host", slot.getHostIP());
         opRemove.get(OP_ADDR).add("server-config", "server" + slot.getSlotPosition());
 
-        steps.add(opRemove);
-        return steps;
+        return opRemove;
     }
 
     /**
      * Deployment process extracted from org.jboss.as.cli.handlers.DeployHandler.doHandle(CommandContext)
      */
     public ModelNode undeployFromServerGroup(String appName, String serverGroup) {
-        final ModelNode request;
-
         // prepare composite operation
-        request = new ModelNode();
-        request.get("operation").set("composite");
-        request.get("address").setEmptyList();
-        ModelNode steps = request.get("steps");
+        final ModelNode composite = new ModelNode();
+        composite.get("operation").set("composite");
+        composite.get("address").setEmptyList();
+        ModelNode steps = composite.get("steps");
 
         // undeploy app - step undeploy
         ModelNode opUnDeploy = new ModelNode();
@@ -100,7 +112,7 @@ public class JBossDmrActions extends DmrBase {
         steps.add(opRemoveDeployment);
 
         //addStepToContext(request);
-        return request;
+        return composite;
 
         // TODO verify result
     }
@@ -175,42 +187,42 @@ public class JBossDmrActions extends DmrBase {
         return op;
     }
 
-    /**
-     * deploy application content and associate deployment with server group
-     * @param requiredSteps
-     * @return
-     */
-    public ModelNode addDeploymentToServerGroup(final File f, String appName, String serverGroup) {
+    public ModelNode addDeploymentToServerGroupStepAdd(final File f, String appName, String serverGroup) {
 
         // Deployment process extracted from
         // org.jboss.as.cli.handlers.DeployHandler.doHandle(CommandContext)
-
-        // add deployment
-        ModelNode opAddDeployment = new ModelNode();
-        opAddDeployment.get(OP).set("add");
-        opAddDeployment.get(OP_ADDR).add(DEPLOYMENT, appName);
-
-        // add deployment to server group
-        // prepare composite operation
-        ModelNode request = new ModelNode();
-        request.get("operation").set("composite");
-        request.get("address").setEmptyList();
-        ModelNode steps = request.get("steps");
 
         // deploy app - step add
         ModelNode opAdd = new ModelNode();
         opAdd.get(OP).set("add");
         opAdd.get(OP_ADDR).add("server-group", serverGroup);
         opAdd.get(OP_ADDR).add(DEPLOYMENT, appName);
-        steps.add(opAdd);
+
+        return opAdd;
+    }
+
+    public ModelNode addDeploymentToServerGroupStepDeploy(final File f, String appName, String serverGroup) {
+
+        // Deployment process extracted from
+        // org.jboss.as.cli.handlers.DeployHandler.doHandle(CommandContext)
 
         // deploy app - step deploy
         ModelNode opDeploy = new ModelNode();
         opDeploy.get(OP).set("deploy");
         opDeploy.get(OP_ADDR).add("server-group", serverGroup);
         opDeploy.get(OP_ADDR).add(DEPLOYMENT, appName);
-        steps.add(opDeploy);
 
-        return steps;
+        return opDeploy;
+    }
+
+    public ModelNode getServerResorce(InstanceSlot slot) {
+        // /host=172.16.254.134/server-config=server0:read-resource(include-runtime=true)
+
+        ModelNode op = new ModelNode();
+        op.get(OP).set("read-resource");
+        op.get("include-runtime").set("true");
+        op.get(OP_ADDR).add("host", slot.getHostIP());
+        op.get(OP_ADDR).add("server-config", "server" + slot.getSlotPosition());
+        return op;
     }
 }

@@ -14,6 +14,7 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
+import org.jboss.as.paas.controller.operations.UnDeployOperation;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 import org.jboss.logging.Logger;
@@ -34,36 +35,26 @@ public class UnDeployHandler extends BaseHandler implements OperationStepHandler
      * @see org.jboss.as.controller.OperationStepHandler#execute(org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode)
      */
     @Override
-    public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
+    public void execute(OperationContext context, ModelNode request) throws OperationFailedException {
         if (!super.execute(context)) {
             return;
         }
 
-        //        final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
-        //        //TODO validate required attributes
-        //        //        if(appName == null) {
-        //        //            throw new OperationFormatException("Required argument name are missing.");
-        //        //        }
-        //
-        //        String serverGroupName = getServerGroupName(appName);
-        //
-        //        jbossDmrActions.undeployFromServerGroup(appName, serverGroupName);
-        //
-        //        try {
-        //            compositeDmrActions.removeHostsFromServerGroup(serverGroupName, true);
-        //        } catch (Exception e) {
-        //            //TODO throw new OperationFailedException(e);
-        //            e.printStackTrace();
+        final String appName = request.get(ATTRIBUTE_APP_NAME).asString();
+        //TODO validate required attributes
+        //        if(appName == null) {
+        //            throw new OperationFormatException("Required argument name are missing.");
         //        }
-        //
-        //        jbossDmrActions.removeServerGroup(serverGroupName);
-        //
-        //        completeStep(context);
-        //
-        //        onReturn();
+
+        UnDeployOperation operation = new UnDeployOperation(appName);
+
+        context.getResult().add("Operation submitted. See status for datils.");
+        context.completeStep();
+
+        scheduleOperation(operation);
     }
 
-    public static DescriptionProvider DESC = new DescriptionProvider() {
+    static DescriptionProvider DESC = new DescriptionProvider() {
         @Override
         public ModelNode getModelDescription(Locale locale) {
 
