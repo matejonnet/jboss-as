@@ -53,8 +53,6 @@ public class DeployOperation extends OperationBase implements PaasOperation {
         JBossDmrActions jbossDmrActions = getJBossDmrActions();
         PaasDmrActions paasDmrActions = getPaasDmrActions();
 
-        //        PaasProcessor paasProcessor = new PaasProcessor(jbossDmrActions, paasDmrActions, compositeDmrActions);
-
         findSlot(provider, newInstance, serverGroupName, instanceId);
         if (slot == null) {
             //TODO add message
@@ -62,7 +60,6 @@ public class DeployOperation extends OperationBase implements PaasOperation {
         }
 
         log.debugf("Using free slot instanceId: [%s] host [%s] slot position [%s].", slot.getInstanceId(), slot.getHostIP(), slot.getSlotPosition());
-        //boolean isHostRegistered = validateHostRegistration(slot.getHostIP());
         waitRemoteHostToRegister(slot.getHostIP());
 
         if (createNewSG) {
@@ -117,11 +114,12 @@ public class DeployOperation extends OperationBase implements PaasOperation {
         PaasDmrActions paasDmrActions = getPaasDmrActions();
 
         try {
-            // TODO update config instances/instance
+            // TODO if provider is null, loop through providers
             String instanceId = IaasController.getInstance().createNewInstance(provider);
             String hostIp = IaasController.getInstance().getInstanceIp(provider, instanceId);
 
-            paasDmrActions.addInstance(instanceId, provider, hostIp);
+            ModelNode op = paasDmrActions.addInstance(instanceId, provider, hostIp);
+            dmrActionExecutor.execute(op);
 
             //Add password for remote server
             AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();

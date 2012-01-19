@@ -57,7 +57,7 @@ public class InstanceSearch {
                 return new InstanceSlot(instance, i);
             }
         }
-        throw new RuntimeException("There are no free slots on " + instance.getInstanceId() + " - " + instance.getHostIP() + ".");
+        throw new RuntimeException("There are no free slots on instance [" + instance.toString() + "].");
     }
 
     /**
@@ -100,18 +100,18 @@ public class InstanceSearch {
             Set<ServerGroup> serverGroups = instance.getServerGroups();
 
             if (serverGroups.size() > MAX_AS_PER_HOST) {
-                log.debugf("All slots ocupied on instance [%s].", instance.getInstanceId());
+                log.debugf("All slots ocupied on instance [%s].", instance.toString());
                 hasFreeSlot = false;
             }
 
             if (hasFreeSlot) {
-                log.debugf("Instance [%s] has free slot.", instance.getInstanceId());
+                log.debugf("Instance [%s] has free slot.", instance.toString());
                 if (!isServerGroupOnInstance(group, serverGroups)) {
-                    log.debugf("Instance [%s] defined.", instance.getInstanceId());
+                    log.debugf("Instance [%s] defined.", instance.toString());
                     this.instance = instance;
                     return;
                 } else {
-                    log.debugf("Instance [%s] already has group [%s].", instance.getInstanceId(), group);
+                    log.debugf("Instance [%s] already has group [%s].", instance.toString(), group);
                 }
             }
         }

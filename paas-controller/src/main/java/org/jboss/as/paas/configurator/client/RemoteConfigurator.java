@@ -32,8 +32,7 @@ public class RemoteConfigurator {
         try {
             //remoteConfigurator = new Socket(remoteIp, Main.CONFIGURATOR_PORT);
             remoteConfigurator = new Socket();
-            SocketAddress endpointAddress = new InetSocketAddress(remoteIp, Main.CONFIGURATOR_PORT);
-            remoteConfigurator.connect(endpointAddress, 30000);
+            connect(remoteConfigurator, remoteIp);
             out = new PrintWriter(remoteConfigurator.getOutputStream(), true);
             in = new BufferedReader(new InputStreamReader(remoteConfigurator.getInputStream()));
         } catch (UnknownHostException e) {
@@ -61,6 +60,30 @@ public class RemoteConfigurator {
                 e.printStackTrace();
             }
         }
+    }
+
+    protected void connect(Socket remoteConfigurator, String remoteIp) throws IOException {
+        SocketAddress endpointAddress = new InetSocketAddress(remoteIp, Main.CONFIGURATOR_PORT);
+
+        int retry = 10;
+
+        while (retry > 0) {
+            try {
+                System.out.println("Connecting to: " + remoteIp + " Retries left: " + retry);
+                remoteConfigurator.connect(endpointAddress, 3000);
+                System.out.println("Connected to: " + remoteIp);
+                return;
+            } catch (IOException e) {
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e1) {
+                    // TODO Auto-generated catch block
+                    e1.printStackTrace();
+                }
+                retry--;
+            }
+        }
+        throw new IOException("");
     }
 
 }
