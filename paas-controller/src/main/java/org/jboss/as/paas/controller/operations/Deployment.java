@@ -43,11 +43,6 @@ public class Deployment {
         } finally {
             org.jboss.as.paas.util.Util.safeClose(is);
         }
-
-        //TODO verify
-        //        if (!Util.isSuccess(result)) {
-        //            return;
-        //        }
     }
 
     /**

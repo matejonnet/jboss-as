@@ -7,6 +7,7 @@ import java.util.NoSuchElementException;
 import java.util.Properties;
 import java.util.Set;
 
+import org.jboss.as.paas.controller.domain.IaasProvider;
 import org.jclouds.compute.ComputeServiceContext;
 import org.jclouds.compute.ComputeServiceContextFactory;
 import org.jclouds.compute.RunNodesException;
@@ -20,37 +21,34 @@ import com.google.inject.Module;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class JCloudIaasDriver implements IaasDriver {
+class JCloudIaasDriver implements IaasDriver {
 
-    ComputeServiceContext context;
+    private ComputeServiceContext context;
+    private IaasProvider iaasProvider;
 
-    /**
-     *
-     * @param url eucalyptus url eg. "http://173.205.188.130:8773/services/Eucalyptus"
-     * @param username
-     * @param password
-     */
-    public JCloudIaasDriver(String provider, String url, String accesskeyid, String secretkey) {
+    JCloudIaasDriver(IaasProvider iaasProvider) {
+        // TODO validate required params
+
+        this.iaasProvider = iaasProvider;
+
+        String driverName = iaasProvider.getDriver();
+        String provider = driverName.split("-")[1];
+
         // get a context with eucalyptus that offers the portable ComputeService api
         Properties overrides = new Properties();
-        overrides.setProperty("eucalyptus.endpoint", url);
+        overrides.setProperty("eucalyptus.endpoint", iaasProvider.getUrl());
+
         context = new ComputeServiceContextFactory()
         //.createContext("eucalyptus", accesskeyid ,secretkey,ImmutableSet.<Module> of(new Log4JLoggingModule(), new JschSshClientModule()), overrides);
-        .createContext(provider, accesskeyid, secretkey, ImmutableSet.<Module> of(), overrides);
+        .createContext(provider, iaasProvider.getUsername(), iaasProvider.getPassword(), ImmutableSet.<Module> of(), overrides);
     }
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.paas.controller.iaas.IaasDriver#getInstance(java.lang.String)
-     */
     @Override
     public IaasInstance getInstance(String instanceId) {
         NodeMetadata node = context.getComputeService().getNodeMetadata(instanceId);
-        return IaasInstance.Factory.createInstance(node);
+        return IaasInstanceFactory.createInstance(node);
     }
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.paas.controller.iaas.IaasDriver#createInstance(java.lang.String)
-     */
     @Override
     public IaasInstance createInstance(String imageId) {
         // pick the highest version of the RightScale CentOs template
@@ -76,7 +74,7 @@ public class JCloudIaasDriver implements IaasDriver {
             Set<? extends NodeMetadata> nodes = context.getComputeService().createNodesInGroup("jboss-as", 1, template);
             //get first as we always create only one
             NodeMetadata node = nodes.iterator().next();
-            return IaasInstance.Factory.createInstance(node);
+            return IaasInstanceFactory.createInstance(node);
         } catch (RunNodesException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
@@ -90,8 +88,8 @@ public class JCloudIaasDriver implements IaasDriver {
     }
 
     @Override
-    public void close() {
-        context.close();
+    public IaasProvider getIaasProvider() {
+        return iaasProvider;
     }
 
 }

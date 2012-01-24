@@ -28,9 +28,6 @@ public class UnDeployHandler extends BaseHandler implements OperationStepHandler
 
     private UnDeployHandler() {}
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.controller.OperationStepHandler#execute(org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode)
-     */
     @Override
     public void execute(OperationContext context, ModelNode request) throws OperationFailedException {
         if (!super.execute(context)) {
@@ -65,5 +62,4 @@ public class UnDeployHandler extends BaseHandler implements OperationStepHandler
             return node;
         }
     };
-
 }

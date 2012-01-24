@@ -10,14 +10,14 @@ import org.apache.deltacloud.client.Instance;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class IaasInstanceDeltaClWrapper implements IaasInstance {
+class IaasInstanceDeltaClWrapper implements IaasInstance {
 
     private Instance instance;
 
     /**
      * @param instance
      */
-    public IaasInstanceDeltaClWrapper(Instance instance) {
+    IaasInstanceDeltaClWrapper(Instance instance) {
         this.instance = instance;
     }
 

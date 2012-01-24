@@ -4,9 +4,9 @@ import java.util.Set;
 
 import org.jboss.as.paas.controller.dmr.DmrOperations;
 import org.jboss.as.paas.controller.domain.Instance;
+import org.jboss.as.paas.controller.domain.InstanceSlot;
 import org.jboss.as.paas.controller.domain.ServerConfig;
 import org.jboss.as.paas.controller.iaas.IaasController;
-import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 
@@ -82,9 +82,6 @@ public class UnDeployOperation extends OperationBase implements PaasOperation {
 
         ModelNode opJBossRemove = DmrOperations.removeHostFromServerGroupRemove(groupName, slot);
         dmrActionExecutor.execute(opJBossRemove);
-
-        //        ModelNode opPaasRemove = getPaasDmrActions().removeHostFromServerGroup(groupName, slot);
-        //        dmrActionExecutor.execute(opPaasRemove);
     }
 
     private void waitServerToStop(InstanceSlot slot) {

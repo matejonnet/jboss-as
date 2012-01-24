@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.net.UnknownHostException;
 
 import org.jboss.as.controller.client.ModelControllerClient;
-import org.jboss.as.paas.controller.ControllerClient;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 
@@ -18,7 +17,7 @@ import org.jboss.logging.Logger;
  *
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class DmrActionExecutorRemoteClient implements DmrActionExecutor {
+class DmrActionExecutorRemoteClient implements DmrActionExecutor {
 
     private static final Logger log = Logger.getLogger(DmrActionExecutorRemoteClient.class);
 
@@ -40,25 +39,14 @@ public class DmrActionExecutorRemoteClient implements DmrActionExecutor {
         }
     }
 
-    @Override
-    public void close() {
-        try {
-            client.close();
-            client = null;
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-    }
-
     /**
      * @return the delegate
      */
     private ModelControllerClient getClient() {
+
         if (this.client == null) {
             try {
                 log.debug("Connecting client to controller.");
-                //                this.delegate = ModelControllerClient.Factory.create("127.0.0.1", 9999);
                 ControllerClient cc = new ControllerClient();
                 this.client = cc.getClient();
             } catch (UnknownHostException e) {

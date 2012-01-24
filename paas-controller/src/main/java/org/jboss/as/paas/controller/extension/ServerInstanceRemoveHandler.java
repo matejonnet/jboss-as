@@ -8,8 +8,6 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DES
 import java.util.Locale;
 
 import org.jboss.as.controller.AbstractRemoveStepHandler;
-import org.jboss.as.controller.OperationContext;
-import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.dmr.ModelNode;
 
@@ -20,8 +18,7 @@ public class ServerInstanceRemoveHandler extends AbstractRemoveStepHandler imple
 
     public static final ServerInstanceRemoveHandler INSTANCE = new ServerInstanceRemoveHandler();
 
-    private ServerInstanceRemoveHandler() {
-    }
+    private ServerInstanceRemoveHandler() {}
 
     @Override
     public ModelNode getModelDescription(Locale locale) {
@@ -30,11 +27,4 @@ public class ServerInstanceRemoveHandler extends AbstractRemoveStepHandler imple
         return node;
     }
 
-    @Override
-    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model) throws OperationFailedException {
-        //TODO
-        //      String suffix = PathAddress.pathAddress(operation.get(ModelDescriptionConstants.ADDRESS)).getLastElement().getValue();
-        //      ServiceName name = PaasController.createServiceName(suffix);
-        //      context.removeService(name);
-    }
 }

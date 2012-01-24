@@ -9,19 +9,24 @@ import java.util.List;
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutor;
 import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutorInstance;
+import org.jboss.as.paas.controller.domain.IaasProvider;
 import org.jboss.as.paas.controller.domain.Instance;
 import org.jboss.logging.Logger;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class VmIaasDriver implements IaasDriver {
+class VmIaasDriver implements IaasDriver {
 
     private final Logger log = Logger.getLogger(VmIaasDriver.class);
     private DmrActionExecutor dmrActionExecutor;
+    private IaasProvider iaasProvider;
 
-    public VmIaasDriver() {
+    public VmIaasDriver(IaasProvider iaasProvider) {
+        // TODO validate required params
+
         this.dmrActionExecutor = DmrActionExecutorInstance.get();
+        this.iaasProvider = iaasProvider;
     }
 
     @Override
@@ -44,5 +49,7 @@ public class VmIaasDriver implements IaasDriver {
     }
 
     @Override
-    public void close() {}
+    public IaasProvider getIaasProvider() {
+        return iaasProvider;
+    }
 }

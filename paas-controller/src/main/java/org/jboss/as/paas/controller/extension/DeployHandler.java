@@ -26,7 +26,6 @@ import org.jboss.logging.Logger;
 public class DeployHandler extends BaseHandler implements OperationStepHandler {
     public static final DeployHandler INSTANCE = new DeployHandler();
     public static final String OPERATION_NAME = "deploy";
-    // TODO rename attribute to PROPERTY
     private static final String ATTRIBUTE_PATH = "path";
     private static final String ATTRIBUTE_PROVIDER = "provider";
     private static final String ATTRIBUTE_NEW_INSTANCE = "new-instance";
@@ -36,11 +35,6 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
 
     private DeployHandler() {}
 
-    /**
-     * (non-Javadoc)
-     *
-     * @see org.jboss.as.controller.OperationStepHandler#execute(org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode)
-     */
     @Override
     public void execute(OperationContext context, ModelNode request) throws OperationFailedException {
         if (!super.execute(context)) {

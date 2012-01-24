@@ -7,7 +7,7 @@ import java.io.IOException;
 
 import org.jboss.as.cli.operation.OperationFormatException;
 import org.jboss.as.controller.client.ModelControllerClient;
-import org.jboss.as.paas.controller.ControllerClient;
+import org.jboss.as.paas.controller.dmr.executor.ControllerClient;
 import org.junit.Assert;
 
 /**

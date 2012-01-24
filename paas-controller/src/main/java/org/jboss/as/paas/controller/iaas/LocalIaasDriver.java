@@ -3,14 +3,22 @@
  */
 package org.jboss.as.paas.controller.iaas;
 
+import org.jboss.as.paas.controller.domain.IaasProvider;
 import org.jboss.logging.Logger;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class LocalIaasDriver implements IaasDriver {
+class LocalIaasDriver implements IaasDriver {
 
     private final Logger log = Logger.getLogger(LocalIaasDriver.class);
+    private IaasProvider iaasProvider;
+
+    public LocalIaasDriver(IaasProvider iaasProvider) {
+        // TODO validate required params
+
+        this.iaasProvider = iaasProvider;
+    }
 
     @Override
     public IaasInstance getInstance(String instanceId) {
@@ -28,6 +36,7 @@ public class LocalIaasDriver implements IaasDriver {
     }
 
     @Override
-    public void close() {}
-
+    public IaasProvider getIaasProvider() {
+        return iaasProvider;
+    }
 }

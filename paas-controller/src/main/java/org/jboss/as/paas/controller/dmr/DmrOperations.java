@@ -10,7 +10,7 @@ import static org.jboss.as.controller.client.helpers.ClientConstants.OP_ADDR;
 import java.io.File;
 
 import org.jboss.as.controller.PathAddress;
-import org.jboss.as.paas.controller.iaas.InstanceSlot;
+import org.jboss.as.paas.controller.domain.InstanceSlot;
 import org.jboss.dmr.ModelNode;
 
 /**

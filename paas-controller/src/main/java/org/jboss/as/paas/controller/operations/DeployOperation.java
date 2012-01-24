@@ -6,8 +6,8 @@ import java.util.List;
 import org.jboss.as.paas.controller.AsClusterPassManagement;
 import org.jboss.as.paas.controller.InstanceSearch;
 import org.jboss.as.paas.controller.dmr.DmrOperations;
+import org.jboss.as.paas.controller.domain.InstanceSlot;
 import org.jboss.as.paas.controller.iaas.IaasController;
-import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 
@@ -77,11 +77,6 @@ public class DeployOperation extends OperationBase implements PaasOperation {
         ModelNode opHTSG = DmrOperations.addHostToServerGroup(slot, serverGroupName);
         dmrActionExecutor.execute(opHTSG);
 
-        //        ModelNode opHTSGP = paasDmrActions.addHostToServerGroupPaas(slot.getInstanceId(), slot.getSlotPosition(), serverGroupName);
-        //        dmrActionExecutor.execute(opHTSGP);
-
-        //        jbossDmrActions.reloadHost(paasProcessor.getSlot().getHostIP());
-        //        ModelNode opStart = jbossDmrActions.reloadHost(slot.getHostIP());
         ModelNode opStart = DmrOperations.startServer(slot.getHostIP(), slot.getSlotPosition());
         dmrActionExecutor.execute(opStart);
 

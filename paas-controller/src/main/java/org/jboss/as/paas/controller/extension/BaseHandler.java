@@ -7,8 +7,6 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.registry.Resource;
-import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutor;
-import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutorInstance;
 import org.jboss.as.paas.controller.operations.PaasOperation;
 import org.jboss.as.paas.util.Util;
 import org.jboss.logging.Logger;
@@ -56,10 +54,6 @@ abstract class BaseHandler {
         final Resource resource = rootResource.navigate(addr);
         String domainController = resource.getModel().get("domain-controller").asPropertyList().get(0).getName();
         return "local".equals(domainController);
-    }
-
-    protected DmrActionExecutor getActionExecutor() {
-        return DmrActionExecutorInstance.get();
     }
 
 }

@@ -1,9 +1,8 @@
 /**
  *
  */
-package org.jboss.as.paas.controller.iaas;
+package org.jboss.as.paas.controller.domain;
 
-import org.jboss.as.paas.controller.domain.Instance;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>

@@ -11,6 +11,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 
 import org.jboss.as.paas.configurator.Main;
+import org.jboss.as.paas.util.Util;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -36,41 +37,47 @@ public class Server {
      */
     public void startServer() throws IOException {
         ServerSocket serverSocket = null;
-        try {
-            serverSocket = new ServerSocket(Main.CONFIGURATOR_PORT);
-        } catch (IOException e) {
-            System.out.println("Could not listen on port: " + Main.CONFIGURATOR_PORT);
-            System.exit(-1);
-        }
-
         Socket clientSocket = null;
+        PrintWriter out = null;
+        BufferedReader in = null;
+
         try {
-            clientSocket = serverSocket.accept();
-        } catch (IOException e) {
-            System.out.println("Accept failed: " + Main.CONFIGURATOR_PORT);
-            System.exit(-1);
+            try {
+                serverSocket = new ServerSocket(Main.CONFIGURATOR_PORT);
+            } catch (IOException e) {
+                System.out.println("Could not listen on port: " + Main.CONFIGURATOR_PORT);
+                System.exit(-1);
+            }
+
+            try {
+                clientSocket = serverSocket.accept();
+            } catch (IOException e) {
+                System.out.println("Accept failed: " + Main.CONFIGURATOR_PORT);
+                System.exit(-1);
+            }
+
+            out = new PrintWriter(clientSocket.getOutputStream(), true);
+            in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+
+            String inputLine;
+
+            // remote client must send host controller ip address only
+            inputLine = in.readLine();
+
+            JBossConfig config = new JBossConfig(pathToHostXml);
+            config.setDomainControllerIp(inputLine);
+
+            out.println("Configuration done.");
+
+            startJboss(pathToJbossRun);
+            out.println("Jboss start executed [" + pathToJbossRun + "].");
+
+        } finally {
+            Util.safeClose(out);
+            Util.safeClose(in);
+            clientSocket.close();
+            serverSocket.close();
         }
-
-        PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
-        BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-
-        String inputLine;
-
-        // remote client must send host controller ip address only
-        inputLine = in.readLine();
-
-        JBossConfig config = new JBossConfig(pathToHostXml);
-        config.setDomainControllerIp(inputLine);
-
-        out.println("Configuration done.");
-
-        out.close();
-        in.close();
-        clientSocket.close();
-        serverSocket.close();
-
-        startJboss(pathToJbossRun);
-        out.println("Jboss start executed [" + pathToJbossRun + "].");
 
         // exit when jboss is configured and started
         System.exit(0);

@@ -30,7 +30,6 @@ public class RemoteConfigurator {
         BufferedReader in = null;
 
         try {
-            //remoteConfigurator = new Socket(remoteIp, Main.CONFIGURATOR_PORT);
             remoteConfigurator = new Socket();
             connect(remoteConfigurator, remoteIp);
             out = new PrintWriter(remoteConfigurator.getOutputStream(), true);
@@ -42,27 +41,19 @@ public class RemoteConfigurator {
         }
 
         try {
-            // String hostControllerIp =
-            // InetAddress.getLocalHost().getHostAddress();
             String hostControllerIp = Util.getLocalIp();
             out.println(hostControllerIp);
             System.out.println("response: " + in.readLine());
         } catch (IOException e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         } finally {
-            out.close();
-            try {
-                in.close();
-                remoteConfigurator.close();
-            } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
+            Util.safeClose(out);
+            Util.safeClose(in);
+            Util.safeClose(remoteConfigurator);
         }
     }
 
-    protected void connect(Socket remoteConfigurator, String remoteIp) throws IOException {
+    private void connect(Socket remoteConfigurator, String remoteIp) throws IOException {
         SocketAddress endpointAddress = new InetSocketAddress(remoteIp, Main.CONFIGURATOR_PORT);
 
         int retry = 10;
@@ -77,8 +68,7 @@ public class RemoteConfigurator {
                 try {
                     Thread.sleep(3000);
                 } catch (InterruptedException e1) {
-                    // TODO Auto-generated catch block
-                    e1.printStackTrace();
+                    System.err.println("Waiting to retry connecting interupted.");
                 }
                 retry--;
             }

@@ -1,6 +1,5 @@
 package org.jboss.as.paas.controller.domain;
 
-import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
 
 /**
@@ -26,10 +25,10 @@ public class ServerConfig {
     private ModelNode serverConfig;
 
     /**
-     * @param serverGroup
+     * @param serverConfig
      */
-    public ServerConfig(ModelNode serverGroup) {
-        this.serverConfig = serverGroup;
+    public ServerConfig(ModelNode serverConfig) {
+        this.serverConfig = serverConfig;
     }
 
     /**

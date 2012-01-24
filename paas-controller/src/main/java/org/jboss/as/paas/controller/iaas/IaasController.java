@@ -20,7 +20,7 @@ public class IaasController {
     private static final Logger log = Logger.getLogger(IaasController.class);
 
     private static final IaasController INSTANCE = new IaasController();
-    private final Map<String, IaasProvider> providers = new HashMap<String, IaasProvider>();
+    private final Map<String, IaasDriver> drivers = new HashMap<String, IaasDriver>();
 
     private IaasController() {
         // hide public constructor
@@ -31,33 +31,47 @@ public class IaasController {
     }
 
     public void addProvider(String name, String driver, String url, String user, String password, String imageId) {
-        IaasProvider provier;
+        IaasProvider provider;
         if ("vm".equals(driver)) {
-            provier = new IaasProvider(name, driver);
+            provider = new IaasProvider(name, driver);
         } else {
-            provier = new IaasProvider(name, driver, url, user, password, imageId);
+            provider = new IaasProvider(name, driver, url, user, password, imageId);
         }
-        INSTANCE.providers.put(name, provier);
+        IaasDriver iaasDriver = IaasDriverFactory.createDriver(provider);
+        INSTANCE.drivers.put(name, iaasDriver);
+    }
+
+    private IaasProvider getProvider(String providerName) {
+        return getDriver(providerName).getIaasProvider();
+    }
+
+    private IaasDriver getDriver(String providerName) {
+        return INSTANCE.drivers.get(providerName);
     }
 
     public String createNewInstance(String providerName) throws Exception {
-        IaasProvider provider = INSTANCE.getProvider(providerName);
-        return createNewInstance(provider).getId();
+        IaasProvider provider = getProvider(providerName);
+        IaasInstance instance = createNewInstance(provider);
+        return instance.getId();
     }
 
-    public IaasInstance createNewInstance(IaasProvider provider) throws Exception {
+    private IaasInstance createNewInstance(IaasProvider provider) throws Exception {
         log.infof("Creating new server instance using %s provider", provider.getName());
 
-        IaasInstance instance = provider.createInstance();
+        //        InstanceController ic = new InstanceController(getDriver(provider.getName()));
+        //        IaasInstance instance = ic.createInstance(provider.getImageId());
+
+        IaasDriver iaasDriver = getDriver(provider.getName());
+        IaasInstance instance = iaasDriver.createInstance(provider.getImageId());
 
         log.debug("Waiting instance to boot ...");
 
-        waitInstanceToBoot(provider, instance);
+        waitInstanceToBoot(iaasDriver, instance);
 
         return instance;
     }
 
-    private void waitInstanceToBoot(IaasProvider provider, IaasInstance instance) throws Exception {
+    private void waitInstanceToBoot(IaasDriver driver, IaasInstance instance) throws Exception {
         // TODO make configurable
         int maxWaitTime = 120000; // 2min
         long started = System.currentTimeMillis();
@@ -65,7 +79,7 @@ public class IaasController {
         // wait for instance boot up
         while (!instance.isRunning() || instance.getPrivateAddresses().size() == 0) {
             if (instance.isRunning()) {
-                instance = provider.reloadInstanceMeta(instance);
+                instance = reloadInstanceMeta(driver, instance);
             }
 
             if (System.currentTimeMillis() - started > maxWaitTime) {
@@ -81,21 +95,25 @@ public class IaasController {
     }
 
     public void terminateInstance(String providerName, String instanceId) throws Exception {
-        IaasProvider provider = INSTANCE.getProvider(providerName);
+        IaasDriver driver = getDriver(providerName);
 
-        String hostIp = provider.getPrivateAddresses(instanceId).get(0);
+        String hostIp = driver.getInstance(instanceId).getPrivateAddresses().get(0);
 
         AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
         clusterPaasMngmt.removeRemoteSerer(hostIp);
 
-        provider.terminateInstance(instanceId);
+        driver.terminateInstance(instanceId);
+    }
+
+    public String getInstanceIp(String providerName, String instanceId) throws Exception {
+        IaasDriver driver = getDriver(providerName);
+        return getIaasInstance(driver, instanceId).getPrivateAddresses().get(0);
     }
 
     public InstanceState getInstanceStatus(String providerName, String instanceId) {
-        IaasProvider provider = INSTANCE.getProvider(providerName);
-        IaasInstance instance;
+        IaasDriver driver = getDriver(providerName);
         try {
-            instance = provider.getInstance(instanceId);
+            IaasInstance instance = getIaasInstance(driver, instanceId);
             return instance.getState();
         } catch (Exception e) {
             log.warn("Cannot get instance state.");
@@ -103,15 +121,16 @@ public class IaasController {
         }
     }
 
-    private IaasProvider getProvider(String providerName) {
-        return providers.get(providerName);
-    }
-
-    public String getInstanceIp(String providerName, String instanceId) throws Exception {
-        return INSTANCE.getProvider(providerName).getPrivateAddresses(instanceId).get(0);
-    }
-
     public void configureInstance(String remoteIp) {
         new RemoteConfigurator().reconfigureRemote(remoteIp);
     }
+
+    private IaasInstance getIaasInstance(IaasDriver driver, String instanceId) {
+        return driver.getInstance(instanceId);
+    }
+
+    private IaasInstance reloadInstanceMeta(IaasDriver driver, IaasInstance instance) {
+        return getIaasInstance(driver, instance.getId());
+    }
+
 }

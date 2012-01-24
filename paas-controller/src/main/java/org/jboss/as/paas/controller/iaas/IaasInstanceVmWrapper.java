@@ -8,7 +8,7 @@ import java.util.List;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class IaasInstanceVmWrapper implements IaasInstance {
+class IaasInstanceVmWrapper implements IaasInstance {
 
     private List<String> publicAddresses;
     private String instanceId;
@@ -17,7 +17,7 @@ public class IaasInstanceVmWrapper implements IaasInstance {
      * @param publicAddresses
      * @param instanceId
      */
-    public IaasInstanceVmWrapper(List<String> publicAddresses, String instanceId) {
+    IaasInstanceVmWrapper(List<String> publicAddresses, String instanceId) {
         super();
         this.publicAddresses = publicAddresses;
         this.instanceId = instanceId;

@@ -11,7 +11,7 @@ import org.jboss.as.paas.util.Util;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class IaasInstanceLocalWrapper implements IaasInstance {
+class IaasInstanceLocalWrapper implements IaasInstance {
 
     @Override
     public List<String> getPublicAddresses() {

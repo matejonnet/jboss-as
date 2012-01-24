@@ -56,13 +56,6 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
 
     }
 
-    /**
-     * (non-Javadoc)
-     *
-     * @see
-     * org.jboss.as.controller.descriptions.DescriptionProvider#getModelDescription
-     * (java.util.Locale)
-     */
     @Override
     public ModelNode getModelDescription(Locale locale) {
         log.trace("IaasProviderAddHandler.getModelDescription.");
@@ -93,13 +86,6 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         return node;
     }
 
-    /**
-     * (non-Javadoc)
-     *
-     * @see
-     * org.jboss.as.controller.AbstractAddStepHandler#populateModel(org.jboss
-     * .dmr.ModelNode, org.jboss.dmr.ModelNode)
-     */
     @Override
     protected void populateModel(ModelNode operation, ModelNode model) throws OperationFailedException {
 
@@ -137,36 +123,4 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         model.get(ATTRIBUTE_IMAGE_ID).set(imageId);
 
     }
-
-    //
-    // /* (non-Javadoc)
-    // * @see
-    // org.jboss.as.controller.AbstractAddStepHandler#performRuntime(org.jboss.as.controller.OperationContext,
-    // org.jboss.dmr.ModelNode, org.jboss.dmr.ModelNode,
-    // org.jboss.as.controller.ServiceVerificationHandler, java.util.List)
-    // */
-    // @Override
-    // protected void performRuntime(OperationContext context, ModelNode
-    // operation, ModelNode model, ServiceVerificationHandler
-    // verificationHandler, List<ServiceController<?>> newControllers) throws
-    // OperationFailedException {
-    // System.out.println(">>>>>>>>>>>>>> IaasProviderAddHandler.performRuntime");
-    // // TODO Auto-generated method stub
-    // //super.performRuntime(context, operation, model, verificationHandler,
-    // newControllers);
-    // String provider =
-    // PathAddress.pathAddress(operation.get(ModelDescriptionConstants.ADDRESS)).getLastElement().getValue();
-    // //TODO add all parameters
-    // PaasService service = new PaasService(provider,
-    // model.get("driver").asString());
-    // ServiceName name = PaasService.createServiceName(provider);
-    // ServiceController<PaasService> controller = context.getServiceTarget()
-    // .addService(name, service)
-    // .addListener(verificationHandler)
-    // .setInitialMode(ServiceController.Mode.ACTIVE)
-    // .install();
-    // newControllers.add(controller);
-    //
-    // }
-
 }

@@ -5,8 +5,8 @@ import java.util.Set;
 
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 import org.jboss.as.paas.controller.domain.Instance;
+import org.jboss.as.paas.controller.domain.InstanceSlot;
 import org.jboss.as.paas.controller.domain.ServerConfig;
-import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.logging.Logger;
 
 /**

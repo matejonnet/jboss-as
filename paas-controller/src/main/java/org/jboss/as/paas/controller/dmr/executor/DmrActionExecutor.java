@@ -15,8 +15,6 @@ public interface DmrActionExecutor {
      */
     ModelNode executeForResult(ModelNode op);
 
-    void close();
-
     ModelNode executeForResult(Operation operation);
 
 }
