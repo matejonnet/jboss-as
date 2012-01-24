@@ -17,7 +17,6 @@ import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.paas.controller.operations.UnDeployOperation;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
-import org.jboss.logging.Logger;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -26,8 +25,6 @@ public class UnDeployHandler extends BaseHandler implements OperationStepHandler
     public static final UnDeployHandler INSTANCE = new UnDeployHandler();
     public static final String OPERATION_NAME = "undeploy";
     private static final String ATTRIBUTE_APP_NAME = "name";
-
-    private final Logger log = Logger.getLogger(UnDeployHandler.class);
 
     private UnDeployHandler() {}
 

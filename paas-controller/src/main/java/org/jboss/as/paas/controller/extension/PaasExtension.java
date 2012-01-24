@@ -78,7 +78,7 @@ public class PaasExtension implements Extension {
         registration.registerOperationHandler(ADD, PaasAddHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
 
         // add module specific operations
-        registration.registerOperationHandler(ListApplicationsHandler.OPERATION_NAME, ListApplicationsHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        registration.registerOperationHandler(StatusHandler.OPERATION_NAME, StatusHandler.INSTANCE, StatusHandler.DESC, false);
         registration.registerOperationHandler(DeployHandler.OPERATION_NAME, DeployHandler.INSTANCE, DeployHandler.DESC, false);
         registration.registerOperationHandler(UnDeployHandler.OPERATION_NAME, UnDeployHandler.INSTANCE, UnDeployHandler.DESC, false);
         registration.registerOperationHandler(ScaleUpHandler.OPERATION_NAME, ScaleUpHandler.INSTANCE, ScaleUpHandler.DESC, false);
@@ -112,13 +112,6 @@ public class PaasExtension implements Extension {
         providerChild.registerReadOnlyAttribute("provider", null, Storage.CONFIGURATION);
         // providerChild.registerReadWriteAttribute("provider", null,
         // InstanceProviderHandle.INSTANCE, Storage.CONFIGURATION);
-
-        ManagementResourceRegistration serverGroupChildRegistration = serverInstanceChild.registerSubModel(PathElement.pathElement("server-group"), PaasProviders.SERVER_GROUP_CHILD);
-        // ManagementResourceRegistration serverGroupChild =
-        // registration.registerSubModel(PathElement.pathElement("server-group"),
-        // PaasProviders.INSTANCE_CHILD);
-        serverGroupChildRegistration.registerOperationHandler(ModelDescriptionConstants.ADD, ServerGroupAddHandler.INSTANCE, ServerGroupAddHandler.INSTANCE);
-        serverGroupChildRegistration.registerOperationHandler(ModelDescriptionConstants.REMOVE, ServerGroupRemoveHandler.INSTANCE, ServerGroupRemoveHandler.INSTANCE);
 
         subsystem.registerXMLElementWriter(parser);
     }

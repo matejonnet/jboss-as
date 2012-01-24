@@ -1,6 +1,5 @@
 package org.jboss.as.paas.controller.operations;
 
-import org.jboss.as.paas.controller.dmr.JBossDmrActions;
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutor;
 import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutorInstance;
@@ -14,7 +13,6 @@ public abstract class OperationBase {
 
     protected DmrActionExecutor dmrActionExecutor;
 
-    private JBossDmrActions jBossDmrActions;
     private PaasDmrActions paasDmrAction;
 
     public OperationBase() {
@@ -29,17 +27,9 @@ public abstract class OperationBase {
         return appName;
     }
 
-    protected JBossDmrActions getJBossDmrActions() {
-        if (jBossDmrActions == null) {
-            jBossDmrActions = new JBossDmrActions();
-        }
-
-        return jBossDmrActions;
-    }
-
     protected PaasDmrActions getPaasDmrActions() {
         if (paasDmrAction == null) {
-            paasDmrAction = new PaasDmrActions();
+            paasDmrAction = new PaasDmrActions(dmrActionExecutor);
         }
         return paasDmrAction;
     }

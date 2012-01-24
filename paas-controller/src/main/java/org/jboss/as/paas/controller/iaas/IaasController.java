@@ -3,11 +3,9 @@
  */
 package org.jboss.as.paas.controller.iaas;
 
-import java.net.MalformedURLException;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.jboss.as.paas.configurator.client.RemoteConfigurator;
 import org.jboss.as.paas.controller.AsClusterPassManagement;
 import org.jboss.as.paas.controller.domain.IaasProvider;
@@ -32,7 +30,7 @@ public class IaasController {
         return INSTANCE;
     }
 
-    public void addProvider(String name, String driver, String url, String user, String password, String imageId) throws MalformedURLException, DeltaCloudClientException {
+    public void addProvider(String name, String driver, String url, String user, String password, String imageId) {
         IaasProvider provier;
         if ("vm".equals(driver)) {
             provier = new IaasProvider(name, driver);
@@ -50,17 +48,20 @@ public class IaasController {
     public IaasInstance createNewInstance(IaasProvider provider) throws Exception {
         log.infof("Creating new server instance using %s provider", provider.getName());
 
-        // TODO create new thread to create new server instance and add
-        // deployment jobs to queue ?? can domain controller handle this without
-        // sleep ?
-
         IaasInstance instance = provider.createInstance();
 
+        log.debug("Waiting instance to boot ...");
+
+        waitInstanceToBoot(provider, instance);
+
+        return instance;
+    }
+
+    private void waitInstanceToBoot(IaasProvider provider, IaasInstance instance) throws Exception {
         // TODO make configurable
         int maxWaitTime = 120000; // 2min
         long started = System.currentTimeMillis();
 
-        log.debug("Waiting instance to boot ...");
         // wait for instance boot up
         while (!instance.isRunning() || instance.getPrivateAddresses().size() == 0) {
             if (instance.isRunning()) {
@@ -74,15 +75,12 @@ public class IaasController {
                 log.debug("Waiting instance to boot. Going to sleep for 1000.");
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+                log.warn("Waiting instance to boot. Interupted.");
             }
         }
-
-        return instance;
     }
 
-    public boolean terminateInstance(String providerName, String instanceId) throws Exception {
+    public void terminateInstance(String providerName, String instanceId) throws Exception {
         IaasProvider provider = INSTANCE.getProvider(providerName);
 
         String hostIp = provider.getPrivateAddresses(instanceId).get(0);
@@ -90,7 +88,19 @@ public class IaasController {
         AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
         clusterPaasMngmt.removeRemoteSerer(hostIp);
 
-        return provider.terminateInstance(instanceId);
+        provider.terminateInstance(instanceId);
+    }
+
+    public InstanceState getInstanceStatus(String providerName, String instanceId) {
+        IaasProvider provider = INSTANCE.getProvider(providerName);
+        IaasInstance instance;
+        try {
+            instance = provider.getInstance(instanceId);
+            return instance.getState();
+        } catch (Exception e) {
+            log.warn("Cannot get instance state.");
+            return InstanceState.UNRECOGNIZED;
+        }
     }
 
     private IaasProvider getProvider(String providerName) {

@@ -53,4 +53,6 @@ public interface IaasInstance {
      */
     List<String> getPrivateAddresses();
 
+    InstanceState getState();
+
 }

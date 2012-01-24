@@ -53,6 +53,20 @@ public class InstanceSlot {
         }
     }
 
+    public static int getSlotPosition(int portOffset) {
+        switch (portOffset) {
+        case 0:
+            return 0;
+        case 150:
+            return 1;
+        case 250:
+            return 2;
+            //TODO define other offsets
+        default:
+            throw new IllegalArgumentException("invalid port offset [" + portOffset + "].");
+        }
+    }
+
     /**
      * @return the hostIP
      */

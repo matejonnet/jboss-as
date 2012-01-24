@@ -1,4 +1,4 @@
-package org.jboss.as.paas.controller.dmr;
+package org.jboss.as.paas.controller.operations;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -31,21 +31,20 @@ public class Deployment {
             request.get(Util.RUNTIME_NAME).set(runtimeName);
         }
 
-        ModelNode result;
         FileInputStream is = null;
         try {
             is = new FileInputStream(f);
             OperationBuilder op = new OperationBuilder(request);
             op.addInputStream(is);
             request.get(Util.CONTENT).get(0).get(Util.INPUT_STREAM_INDEX).set(0);
-            result = dmrActionExecutor.executeForResult(op.build());
+            dmrActionExecutor.executeForResult(op.build());
         } catch (Exception e) {
             return;
         } finally {
             org.jboss.as.paas.util.Util.safeClose(is);
         }
 
-        //TODO
+        //TODO verify
         //        if (!Util.isSuccess(result)) {
         //            return;
         //        }
@@ -55,8 +54,6 @@ public class Deployment {
      * @see org.jboss.as.cli.handlers.DeployHandler.replaceDeployment
      */
     public void replaceDeployment(final File f, String name, final String runtimeName) {
-
-        ModelNode result;
 
         // replace
         final ModelNode request = new ModelNode();
@@ -72,16 +69,11 @@ public class Deployment {
             OperationBuilder op = new OperationBuilder(request);
             op.addInputStream(is);
             request.get(Util.CONTENT).get(0).get(Util.INPUT_STREAM_INDEX).set(0);
-            result = dmrActionExecutor.executeForResult(op.build());
+            dmrActionExecutor.executeForResult(op.build());
         } catch (Exception e) {
-            //ctx.printLine("Failed to replace the deployment: " + e.getLocalizedMessage());
             return;
         } finally {
             org.jboss.as.paas.util.Util.safeClose(is);
         }
-        //        if(!Util.isSuccess(result)) {
-        //            ctx.printLine(Util.getFailureDescription(result));
-        //            return;
-        //        }
     }
 }

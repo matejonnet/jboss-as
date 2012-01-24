@@ -17,7 +17,6 @@ import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.paas.controller.operations.DeployOperation;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
-import org.jboss.logging.Logger;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -29,8 +28,6 @@ public class ScaleUpHandler extends BaseHandler implements OperationStepHandler 
     private static final String ATTRIBUTE_PROVIDER = "provider";
     private static final String ATTRIBUTE_NEW_INSTANCE = "new-instance";
     private static final String ATTRIBUTE_INSTANCE_ID = "instance-id";
-
-    private final Logger log = Logger.getLogger(ScaleUpHandler.class);
 
     private ScaleUpHandler() {}
 

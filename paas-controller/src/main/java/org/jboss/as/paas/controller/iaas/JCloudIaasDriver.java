@@ -31,14 +31,13 @@ public class JCloudIaasDriver implements IaasDriver {
      * @param password
      */
     public JCloudIaasDriver(String provider, String url, String accesskeyid, String secretkey) {
-     // get a context with eucalyptus that offers the portable ComputeService api
+        // get a context with eucalyptus that offers the portable ComputeService api
         Properties overrides = new Properties();
         overrides.setProperty("eucalyptus.endpoint", url);
         context = new ComputeServiceContextFactory()
-                //.createContext("eucalyptus", accesskeyid ,secretkey,ImmutableSet.<Module> of(new Log4JLoggingModule(), new JschSshClientModule()), overrides);
-                .createContext(provider, accesskeyid ,secretkey, ImmutableSet.<Module> of(), overrides);
+        //.createContext("eucalyptus", accesskeyid ,secretkey,ImmutableSet.<Module> of(new Log4JLoggingModule(), new JschSshClientModule()), overrides);
+        .createContext(provider, accesskeyid, secretkey, ImmutableSet.<Module> of(), overrides);
     }
-
 
     /* (non-Javadoc)
      * @see org.jboss.as.paas.controller.iaas.IaasDriver#getInstance(java.lang.String)
@@ -69,7 +68,6 @@ public class JCloudIaasDriver implements IaasDriver {
             return null;
         }
 
-
         // specify your own groups which already have the correct rules applied
         //TODO-ML specify security group
         template.getOptions().as(EC2TemplateOptions.class).securityGroups("default");
@@ -86,14 +84,9 @@ public class JCloudIaasDriver implements IaasDriver {
         return null;
     }
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.paas.controller.iaas.IaasDriver#terminateInstance(java.lang.String)
-     */
     @Override
-    public boolean terminateInstance(String instanceId) {
+    public void terminateInstance(String instanceId) {
         context.getComputeService().destroyNode(instanceId);
-        //TODO-ML validate ?
-        return true;
     }
 
     @Override

@@ -17,8 +17,8 @@ import org.jboss.as.paas.configurator.Main;
  */
 public class Server {
 
-    public String pathToHostXml;
-    public String pathToJbossRun;
+    private String pathToHostXml;
+    private String pathToJbossRun;
 
     /**
      * @param pathToHostXml

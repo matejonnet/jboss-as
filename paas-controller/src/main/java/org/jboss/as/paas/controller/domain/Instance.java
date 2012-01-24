@@ -3,6 +3,8 @@ package org.jboss.as.paas.controller.domain;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
+import org.jboss.as.paas.controller.dmr.DmrOperations;
+import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutor;
 import org.jboss.as.paas.controller.extension.ServerInstanceAddHandler;
 import org.jboss.dmr.ModelNode;
 
@@ -12,21 +14,20 @@ import org.jboss.dmr.ModelNode;
 public class Instance {
 
     private ModelNode instance;
+    private DmrActionExecutor dmrActionExecutor;
 
-    //private String instanceId;
-
-    public Instance(ModelNode instance) {
+    public Instance(ModelNode instance, DmrActionExecutor dmrActionExecutor) {
         this.instance = instance;
-        //instanceId = instance.keys().iterator().next();
+        this.dmrActionExecutor = dmrActionExecutor;
     }
 
-    public Set<ServerGroup> getServerGroups() {
-        Set<ServerGroup> serverGroups = new LinkedHashSet<ServerGroup>();
-        if (!instance.asProperty().getValue().hasDefined("server-group")) {
-            return serverGroups;
-        }
-        for (ModelNode serverGroupNode : instance.asProperty().getValue().get("server-group").asList()) {
-            serverGroups.add(new ServerGroup(serverGroupNode));
+    public Set<ServerConfig> getServerGroups() {
+        ModelNode op = DmrOperations.getServerConfig(getHostIP());
+        ModelNode nodeSGs = dmrActionExecutor.executeForResult(op);
+
+        Set<ServerConfig> serverGroups = new LinkedHashSet<ServerConfig>();
+        for (ModelNode serverConfigNode : nodeSGs.asList()) {
+            serverGroups.add(new ServerConfig(serverConfigNode));
         }
         return serverGroups;
     }
@@ -41,5 +42,17 @@ public class Instance {
 
     public String getHostIP() {
         return instance.asProperty().getValue().get(ServerInstanceAddHandler.ATTRIBUTE_INSTANCE_IP).asString();
+    }
+
+    @Override
+    public String toString() {
+        StringBuffer buff = new StringBuffer();
+        buff.append("provider: ");
+        buff.append(getProviderName());
+        buff.append(" insance-id: ");
+        buff.append(getInstanceId());
+        buff.append(" host-ip:");
+        buff.append(getHostIP());
+        return buff.toString();
     }
 }

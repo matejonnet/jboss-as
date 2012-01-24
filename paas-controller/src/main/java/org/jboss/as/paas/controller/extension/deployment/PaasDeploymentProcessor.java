@@ -18,7 +18,7 @@ import org.jboss.logging.Logger;
  */
 public class PaasDeploymentProcessor implements DeploymentUnitProcessor {
 
-    Logger log = Logger.getLogger(PaasDeploymentProcessor.class);
+    private Logger log = Logger.getLogger(PaasDeploymentProcessor.class);
 
     /**
      * See {@link Phase} for a description of the different phases
@@ -39,7 +39,6 @@ public class PaasDeploymentProcessor implements DeploymentUnitProcessor {
     }
 
     @Override
-    public void undeploy(DeploymentUnit context) {
-    }
+    public void undeploy(DeploymentUnit context) {}
 
 }

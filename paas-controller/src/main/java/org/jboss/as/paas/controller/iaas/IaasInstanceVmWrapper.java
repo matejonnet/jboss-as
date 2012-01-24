@@ -23,37 +23,31 @@ public class IaasInstanceVmWrapper implements IaasInstance {
         this.instanceId = instanceId;
     }
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.paas.controller.iaas.IaasInstance#getPublicAddresses()
-     */
     @Override
     public List<String> getPublicAddresses() {
         return publicAddresses;
     }
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.paas.controller.iaas.IaasInstance#isRunning()
-     */
     @Override
     public boolean isRunning() {
         return true;
     }
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.paas.controller.iaas.IaasInstance#getId()
-     */
     @Override
     public String getId() {
         return instanceId;
     }
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.paas.controller.iaas.IaasInstance#getPrivateAddresses()
-     */
     @Override
     public List<String> getPrivateAddresses() {
-        //TODO warning
+        //TODO add private address property to instance xml tag
         return publicAddresses;
+    }
+
+    @Override
+    public InstanceState getState() {
+        //TODO check if instance if really up and running
+        return InstanceState.RUNNING;
     }
 
 }

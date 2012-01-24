@@ -28,13 +28,13 @@ public class IaasInstanceJCloudWrapper implements IaasInstance {
      */
     @Override
     public List<String> getPublicAddresses() {
-        String[] addresses = (String[]) instance.getPublicAddresses().toArray(new String[0]);
+        String[] addresses = instance.getPublicAddresses().toArray(new String[0]);
         return Arrays.asList(addresses);
     }
 
     @Override
     public List<String> getPrivateAddresses() {
-        String[] addresses = (String[]) instance.getPrivateAddresses().toArray(new String[0]);
+        String[] addresses = instance.getPrivateAddresses().toArray(new String[0]);
         return Arrays.asList(addresses);
     }
 
@@ -52,6 +52,15 @@ public class IaasInstanceJCloudWrapper implements IaasInstance {
     @Override
     public String getId() {
         return instance.getId();
+    }
+
+    /* (non-Javadoc)
+     * @see org.jboss.as.paas.controller.iaas.IaasInstance#getState()
+     */
+    @Override
+    public InstanceState getState() {
+        NodeState state = instance.getState();
+        return InstanceState.valueOf(state.toString());
     }
 
 }

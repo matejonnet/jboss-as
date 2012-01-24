@@ -6,13 +6,13 @@ package org.jboss.as.paas.controller.domain;
 import java.util.List;
 
 import org.jboss.as.paas.controller.iaas.IaasDriver;
+import org.jboss.as.paas.controller.iaas.IaasDriverFactory;
 import org.jboss.as.paas.controller.iaas.IaasInstance;
 import org.jboss.logging.Logger;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-//TODO extract abstract and remove OperationContext from non VM provider. create different implementations
 public class IaasProvider {
 
     private static Logger log = Logger.getLogger(IaasProvider.class);
@@ -44,7 +44,7 @@ public class IaasProvider {
 
     private IaasDriver getDeletage() throws Exception {
         if (driverDeletage == null) {
-            driverDeletage = IaasDriver.Factory.createDriver(this);
+            driverDeletage = IaasDriverFactory.createDriver(this);
         }
         return driverDeletage;
     }
@@ -78,12 +78,16 @@ public class IaasProvider {
         return getDeletage().createInstance(imageId);
     }
 
-    public boolean terminateInstance(String instanceId) throws Exception {
-        return getDeletage().terminateInstance(instanceId);
+    public void terminateInstance(String instanceId) throws Exception {
+        getDeletage().terminateInstance(instanceId);
     }
 
     public List<String> getPublicAddresses(String instanceId) throws Exception {
         return getDeletage().getInstance(instanceId).getPublicAddresses();
+    }
+
+    public IaasInstance getInstance(String instanceId) throws Exception {
+        return getDeletage().getInstance(instanceId);
     }
 
     public IaasInstance reloadInstanceMeta(IaasInstance instance) throws Exception {

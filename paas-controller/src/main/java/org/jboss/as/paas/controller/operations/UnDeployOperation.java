@@ -2,9 +2,9 @@ package org.jboss.as.paas.controller.operations;
 
 import java.util.Set;
 
-import org.jboss.as.paas.controller.dmr.JBossDmrActions;
+import org.jboss.as.paas.controller.dmr.DmrOperations;
 import org.jboss.as.paas.controller.domain.Instance;
-import org.jboss.as.paas.controller.domain.ServerGroup;
+import org.jboss.as.paas.controller.domain.ServerConfig;
 import org.jboss.as.paas.controller.iaas.IaasController;
 import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
@@ -25,27 +25,26 @@ public class UnDeployOperation extends OperationBase implements PaasOperation {
     @Override
     public void execute() {
         String serverGroupName = getServerGroupName();
-        JBossDmrActions jbossDmrActions = getJBossDmrActions();
 
-        ModelNode opUdeploy = jbossDmrActions.undeployFromServerGroup(getAppName(), serverGroupName);
+        ModelNode opUdeploy = DmrOperations.undeployFromServerGroup(getAppName(), serverGroupName);
         dmrActionExecutor.execute(opUdeploy);
 
         removeHostsFromServerGroup(serverGroupName, true);
 
-        ModelNode opRemoveSG = jbossDmrActions.removeServerGroup(serverGroupName);
+        ModelNode opRemoveSG = DmrOperations.removeServerGroup(serverGroupName);
         dmrActionExecutor.execute(opRemoveSG);
     }
 
     public void removeHostsFromServerGroup(String groupName, boolean removeFromAll) {
 
         //        for (Instance instance : paasDmrActions.getInstances()) {
-        Set<Instance> instances = getPaasDmrActions().getInstances(dmrActionExecutor);
+        Set<Instance> instances = getPaasDmrActions().getInstances();
         outer:
         for (int i = instances.size() - 1; i > -1; i--) {
             Instance instance = (Instance) instances.toArray()[i];
-            Set<ServerGroup> serverGroups = instance.getServerGroups();
+            Set<ServerConfig> serverGroups = instance.getServerGroups();
 
-            for (ServerGroup serverGroup : serverGroups) {
+            for (ServerConfig serverGroup : serverGroups) {
                 if (groupName.equals(serverGroup.getName())) {
                     String providerName = instance.getProviderName();
                     String hostIP;
@@ -61,8 +60,11 @@ public class UnDeployOperation extends OperationBase implements PaasOperation {
                     int slotsInOwningGroup = serverGroups.size();
                     //if this is the only group on instance
                     if (slotsInOwningGroup < 2) {
-                        //TODO XXX uncomment
-                        //operationQueue.add(new TerminateInstances(providerName, instance));
+                        try {
+                            IaasController.getInstance().terminateInstance(providerName, instance.getInstanceId());
+                        } catch (Exception e) {
+                            log.errorf("Cannot terminate instance [%s]", instance);
+                        }
                     }
                     if (!removeFromAll) {
                         break outer;
@@ -72,21 +74,21 @@ public class UnDeployOperation extends OperationBase implements PaasOperation {
         }
     }
 
-    public void removeHostFromServerGroup(String groupName, InstanceSlot slot) {
-        ModelNode opJBossStop = getJBossDmrActions().removeHostFromServerGroupStop(groupName, slot);
+    private void removeHostFromServerGroup(String groupName, InstanceSlot slot) {
+        ModelNode opJBossStop = DmrOperations.removeHostFromServerGroupStop(groupName, slot);
         dmrActionExecutor.execute(opJBossStop);
 
         waitServerToStop(slot);
 
-        ModelNode opJBossRemove = getJBossDmrActions().removeHostFromServerGroupRemove(groupName, slot);
+        ModelNode opJBossRemove = DmrOperations.removeHostFromServerGroupRemove(groupName, slot);
         dmrActionExecutor.execute(opJBossRemove);
 
-        ModelNode opPaasRemove = getPaasDmrActions().removeHostFromServerGroup(groupName, slot);
-        dmrActionExecutor.execute(opPaasRemove);
+        //        ModelNode opPaasRemove = getPaasDmrActions().removeHostFromServerGroup(groupName, slot);
+        //        dmrActionExecutor.execute(opPaasRemove);
     }
 
     private void waitServerToStop(InstanceSlot slot) {
-        ModelNode opServerRunning = getJBossDmrActions().getServerResorce(slot);
+        ModelNode opServerRunning = DmrOperations.getServerResorce(slot);
 
         ModelNode result;
         int maxWaitTime = 15000; // 30sec

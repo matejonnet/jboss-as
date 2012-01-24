@@ -6,6 +6,7 @@ package org.jboss.as.paas.controller.test.IaaS;
 import org.jboss.as.paas.controller.domain.IaasProvider;
 import org.jboss.as.paas.controller.iaas.IaasController;
 import org.jboss.as.paas.controller.iaas.IaasDriver;
+import org.jboss.as.paas.controller.iaas.IaasDriverFactory;
 import org.jboss.as.paas.controller.iaas.IaasInstance;
 import org.junit.Assert;
 
@@ -54,7 +55,7 @@ public class IaasOperations {
     // @Test
     public void getLocalAddress() {
         IaasProvider provider = getProvider();
-        IaasDriver driver = IaasDriver.Factory.createDriver(provider);
+        IaasDriver driver = IaasDriverFactory.createDriver(provider);
         IaasInstance instance = driver.getInstance(instanceId);
         Assert.assertTrue(instance.getPrivateAddresses().size() > 0);
         System.out.println("privateIp: " + instance.getPrivateAddresses().get(0));

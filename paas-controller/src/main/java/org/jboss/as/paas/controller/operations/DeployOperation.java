@@ -5,9 +5,7 @@ import java.util.List;
 
 import org.jboss.as.paas.controller.AsClusterPassManagement;
 import org.jboss.as.paas.controller.InstanceSearch;
-import org.jboss.as.paas.controller.dmr.Deployment;
-import org.jboss.as.paas.controller.dmr.JBossDmrActions;
-import org.jboss.as.paas.controller.dmr.PaasDmrActions;
+import org.jboss.as.paas.controller.dmr.DmrOperations;
 import org.jboss.as.paas.controller.iaas.IaasController;
 import org.jboss.as.paas.controller.iaas.InstanceSlot;
 import org.jboss.dmr.ModelNode;
@@ -25,7 +23,7 @@ public class DeployOperation extends OperationBase implements PaasOperation {
     private boolean newInstance;
     private String instanceId;
     private InstanceSlot slot;
-    boolean createNewSG;
+    private boolean createNewSG;
 
     public DeployOperation(String appName, String provider, boolean newInstance, String instanceId) {
         super();
@@ -50,9 +48,6 @@ public class DeployOperation extends OperationBase implements PaasOperation {
         String appName = getAppName();
         String serverGroupName = getServerGroupName();
 
-        JBossDmrActions jbossDmrActions = getJBossDmrActions();
-        PaasDmrActions paasDmrActions = getPaasDmrActions();
-
         findSlot(provider, newInstance, serverGroupName, instanceId);
         if (slot == null) {
             //TODO add message
@@ -60,33 +55,34 @@ public class DeployOperation extends OperationBase implements PaasOperation {
         }
 
         log.debugf("Using free slot instanceId: [%s] host [%s] slot position [%s].", slot.getInstanceId(), slot.getHostIP(), slot.getSlotPosition());
+
         waitRemoteHostToRegister(slot.getHostIP());
 
         if (createNewSG) {
-            ModelNode opCSG = jbossDmrActions.createServerGroup(serverGroupName);
+            ModelNode opCSG = DmrOperations.createServerGroup(serverGroupName);
             dmrActionExecutor.execute(opCSG);
 
             //TODO redeploy
             Deployment deployment = new Deployment();
             deployment.addDeployment(f, appName, appName);
 
-            ModelNode opADSGa = jbossDmrActions.addDeploymentToServerGroupStepAdd(f, appName, serverGroupName);
+            ModelNode opADSGa = DmrOperations.addDeploymentToServerGroupStepAdd(f, appName, serverGroupName);
             dmrActionExecutor.execute(opADSGa);
 
-            ModelNode opADSGd = jbossDmrActions.addDeploymentToServerGroupStepDeploy(f, appName, serverGroupName);
+            ModelNode opADSGd = DmrOperations.addDeploymentToServerGroupStepDeploy(f, appName, serverGroupName);
             dmrActionExecutor.execute(opADSGd);
 
         }
 
-        ModelNode opHTSG = jbossDmrActions.addHostToServerGroup(slot, serverGroupName);
+        ModelNode opHTSG = DmrOperations.addHostToServerGroup(slot, serverGroupName);
         dmrActionExecutor.execute(opHTSG);
 
-        ModelNode opHTSGP = paasDmrActions.addHostToServerGroupPaas(slot.getInstanceId(), slot.getSlotPosition(), serverGroupName);
-        dmrActionExecutor.execute(opHTSGP);
+        //        ModelNode opHTSGP = paasDmrActions.addHostToServerGroupPaas(slot.getInstanceId(), slot.getSlotPosition(), serverGroupName);
+        //        dmrActionExecutor.execute(opHTSGP);
 
         //        jbossDmrActions.reloadHost(paasProcessor.getSlot().getHostIP());
         //        ModelNode opStart = jbossDmrActions.reloadHost(slot.getHostIP());
-        ModelNode opStart = jbossDmrActions.startServer(slot.getHostIP(), slot.getSlotPosition());
+        ModelNode opStart = DmrOperations.startServer(slot.getHostIP(), slot.getSlotPosition());
         dmrActionExecutor.execute(opStart);
 
         //dmrActionExecutor.close();
@@ -100,7 +96,7 @@ public class DeployOperation extends OperationBase implements PaasOperation {
         if (!newInstance) {
             if (log.isTraceEnabled())
                 log.tracef("Searching for existing instance on provider [%s]: instanceId: [%s].", provider, instanceId);
-            InstanceSearch instanceSearch = new InstanceSearch(getPaasDmrActions(), dmrActionExecutor);
+            InstanceSearch instanceSearch = new InstanceSearch(getPaasDmrActions());
             slot = instanceSearch.getFreeSlot(serverGroupName, provider, instanceId);
         }
 
@@ -111,14 +107,18 @@ public class DeployOperation extends OperationBase implements PaasOperation {
 
     private void addNewServerInstanceToDomain(String provider, String serverGroupName) {
 
-        PaasDmrActions paasDmrActions = getPaasDmrActions();
+        if (provider == null) {
+            // TODO if provider is null, loop through providers
+            // ModelNode op = paasDmrActions.getIaasProviders();
+            // ModelNode result = dmrActionExecutor.executeForResult(op);
+            // result.asPropertyList();
+        }
 
         try {
-            // TODO if provider is null, loop through providers
             String instanceId = IaasController.getInstance().createNewInstance(provider);
             String hostIp = IaasController.getInstance().getInstanceIp(provider, instanceId);
 
-            ModelNode op = paasDmrActions.addInstance(instanceId, provider, hostIp);
+            ModelNode op = DmrOperations.addInstance(instanceId, provider, hostIp);
             dmrActionExecutor.execute(op);
 
             //Add password for remote server
@@ -182,14 +182,8 @@ public class DeployOperation extends OperationBase implements PaasOperation {
     }
 
     private boolean validateHostRegistration(String hostIP) {
-        ModelNode op = getJBossDmrActions().getRegistedHosts(hostIP);
+        ModelNode op = DmrOperations.getRegistedHosts();
         ModelNode hosts = dmrActionExecutor.executeForResult(op);
         return isInResult(hostIP, hosts.asList());
     }
-
-    //    private PaasProcessor getPaasProcessor() {
-    //        // TODO Auto-generated method stub
-    //        return null;
-    //    }
-
 }

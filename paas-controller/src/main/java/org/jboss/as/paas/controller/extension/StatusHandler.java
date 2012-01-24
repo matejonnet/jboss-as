@@ -14,19 +14,20 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
-import org.jboss.as.paas.controller.operations.ScaleDownOperation;
+import org.jboss.as.paas.controller.operations.StatusOperation;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class ScaleDownHandler extends BaseHandler implements OperationStepHandler {
-    public static final ScaleDownHandler INSTANCE = new ScaleDownHandler();
-    public static final String OPERATION_NAME = "scale-down";
-    private static final String ATTRIBUTE_APP_NAME = "name";
+public class StatusHandler extends BaseHandler implements OperationStepHandler {
 
-    private ScaleDownHandler() {}
+    public static final StatusHandler INSTANCE = new StatusHandler();
+    public static final String OPERATION_NAME = "status";
+    private static final String ATTRIBUTE_APP_NAME = "app-name";
+
+    private StatusHandler() {}
 
     @Override
     public void execute(OperationContext context, ModelNode request) throws OperationFailedException {
@@ -34,17 +35,23 @@ public class ScaleDownHandler extends BaseHandler implements OperationStepHandle
             return;
         }
 
-        final String appName = request.get(ATTRIBUTE_APP_NAME).asString();
-        // TODO validate required attributes
-        // if(!request.hasDefined(...)) {
-        // }
+        final String appName = request.get(ATTRIBUTE_APP_NAME).isDefined() ? request.get(ATTRIBUTE_APP_NAME).asString() : null;
 
-        ScaleDownOperation operation = new ScaleDownOperation(appName);
+        StatusOperation status = new StatusOperation();
 
-        context.getResult().add("Operation submitted. See status for datils.");
+        ModelNode result = new ModelNode();
+        result.setEmptyObject();
+        if (appName == null) {
+            status.getAppStatus(result);
+        } else {
+            status.getAppStatus(result, appName);
+        }
+
+        status.getInstancesStatus(result);
+
+        context.getResult().set(result);
         context.completeStep();
 
-        scheduleOperation(operation);
     }
 
     public static DescriptionProvider DESC = new DescriptionProvider() {
@@ -56,7 +63,7 @@ public class ScaleDownHandler extends BaseHandler implements OperationStepHandle
 
             node.get(REQUEST_PROPERTIES, ATTRIBUTE_APP_NAME, DESCRIPTION).set("Application name.");
             node.get(REQUEST_PROPERTIES, ATTRIBUTE_APP_NAME, TYPE).set(ModelType.STRING);
-            node.get(REQUEST_PROPERTIES, ATTRIBUTE_APP_NAME, REQUIRED).set(true);
+            node.get(REQUEST_PROPERTIES, ATTRIBUTE_APP_NAME, REQUIRED).set(false);
 
             return node;
         }

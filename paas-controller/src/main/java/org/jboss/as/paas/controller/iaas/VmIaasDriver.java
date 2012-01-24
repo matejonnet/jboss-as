@@ -26,9 +26,9 @@ public class VmIaasDriver implements IaasDriver {
 
     @Override
     public IaasInstance getInstance(String instanceId) {
-        PaasDmrActions paasDmrActions = new PaasDmrActions();
+        PaasDmrActions paasDmrActions = new PaasDmrActions(dmrActionExecutor);
 
-        Instance instance = paasDmrActions.getInstance(instanceId, dmrActionExecutor);
+        Instance instance = paasDmrActions.getInstance(instanceId);
         List<String> publicAddresses = Arrays.asList(new String[] { instance.getHostIP() });
         return new IaasInstanceVmWrapper(publicAddresses, instanceId);
     }
@@ -39,9 +39,8 @@ public class VmIaasDriver implements IaasDriver {
     }
 
     @Override
-    public boolean terminateInstance(String instanceId) {
+    public void terminateInstance(String instanceId) {
         log.warn("Terminate instance called on vm driver. Skipping termination.");
-        return true;
     }
 
     @Override
