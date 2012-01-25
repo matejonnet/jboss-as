@@ -2,10 +2,10 @@
 #
 # add to /etc/rc.local
 # /opt/jboss-as/jboss-as-7/bin/bootstrap-jboss-as7-paas.sh
-
-#root@ubuntu:~# chmod +x /opt/jboss-as/jboss-as-7/bin/*.sh
-
-#//TODO move all configuration to jboss-configurator.jar ?
+# chmod +x /opt/jboss-as/jboss-as-7/bin/*.sh
+#
+# create all jboss scripts executable
+# chmod +x $jboss_path/bin/*.sh
 
 echo "bootstraping jboss AS 7 paas"
 echo "booting ... " > /var/log/jboss-paas-config.log
@@ -38,17 +38,9 @@ while true; do
     fi
 done
 
-#: ${LISTEN_ADDRESS:=$(ifconfig eth0 | grep "inet addr" | cut -f2 -d: | cut -d' ' -f1)}
 LISTEN_ADDRESS=`cat /tmp/local.ip`
 
 sed -i "s/name=\"master\"/name=\"${LISTEN_ADDRESS}\"/g" $jboss_path/domain/configuration/host.xml
-#sed -i "s/127.0.0.1/${LISTEN_ADDRESS}/g" $jboss_path/domain/configuration/host.xml
-
-#chmod +x $jboss_path/bin/domain.sh
-#chmod +x $jboss_path/bin/domain-debug.sh
-#chmod +x $jboss_path/bin/jboss-admin.sh
 
 jboss_configurator_args="server $jboss_path/domain/configuration/host.xml $jboss_path/bin/startjboss.sh"
-#/opt/java/jre1.6/bin/java -Daddress.local.ip=$LISTEN_ADDRESS -classpath $jboss_path/modules/org/jboss/as/paas/controller/main/jboss-configurator.jar org.alterjoc.jbossconfigurator.Main $jboss_configurator_args 2>&1 1>/var/log/jboss-paas-config.log &
 /opt/java/jre1.6/bin/java -classpath $jboss_path/modules/org/jboss/as/paas/controller/main/jboss-as-paas-controller.jar org.jboss.as.paas.configurator.Main $jboss_configurator_args 2>&1 1>/var/log/jboss-paas-config.log &
-
