@@ -10,23 +10,23 @@ A. Install JBoss on IaaS instance
       chmod +x $JBOSS_HOME/bin/*.sh
 5. configure $JBOSS_HOME/bin/bootstrap-jboss-as7-paas.sh to execute after server boots (add to /etc/rc.local)
 
-B. Create IaaS image from IaaS instance (steps I used on eucalyptus)
+B. Create IaaS image from IaaS instance (steps I used on eucalyptus). If running on static servers (non IaaS) skip this step.
    @instance
-   rm /etc/udev/rules.d/70-persistent-net.rules
-   restore default host.xml ( name & DC) if you were running jboss as
-   vi /opt/jboss-as/jboss-as-7/domain/configuration/host.xml
+     rm /etc/udev/rules.d/70-persistent-net.rules
+     restore default host.xml ( name & DC) if you were running jboss as
+     vi /opt/jboss-as/jboss-as-7/domain/configuration/host.xml
 
-   mkdir /mnt/remotefs
-   sshfs root@<clc-host>:/root/bundles /mnt/remotefs/
-   cd /mnt/remotefs
-   . /mnt/remotefs/euca/eucarc
+     mkdir /mnt/remotefs
+     sshfs root@<clc-host>:/root/bundles /mnt/remotefs/
+     cd /mnt/remotefs
+     . /mnt/remotefs/euca/eucarc
 
-   euca-bundle-vol -c ${EC2_CERT} -k ${EC2_PRIVATE_KEY} -u ${EC2_USER_ID} --ec2cert ${EUCALYPTUS_CERT} --no-inherit --kernel eki-48211657 --ramdisk eri-8F621722 -d /mnt/remotefs -r i386 -p ubuntu.9-04.i386-java-v15 -s 1024 -e /mnt,/root/.ssh,/root/.bash_history
+     euca-bundle-vol -c ${EC2_CERT} -k ${EC2_PRIVATE_KEY} -u ${EC2_USER_ID} --ec2cert ${EUCALYPTUS_CERT} --no-inherit --kernel eki-48211657 --ramdisk eri-8F621722 -d /mnt/remotefs -r i386 -p ubuntu.9-04.i386-java-v15 -s 1024 -e /mnt,/root/.ssh,/root/.bash_history
 
    @clc
-   . .euca/eucarc
-   euca-upload-bundle -b ubuntu-image-bucket -m /root/bundles/ubuntu.9-04.i386-java-v15.manifest.xml
-   euca-register ubuntu-image-bucket/ubuntu.9-04.i386-java-v15.manifest.xml
+     . .euca/eucarc
+     euca-upload-bundle -b ubuntu-image-bucket -m /root/bundles/ubuntu.9-04.i386-java-v15.manifest.xml
+     euca-register ubuntu-image-bucket/ubuntu.9-04.i386-java-v15.manifest.xml
 
 After IaaS image is registered you can boot an instance of it and configure paas.xml ($JBOSS_HOME/domain/configuration/)
 
@@ -44,7 +44,6 @@ Sample paas.xml config:
                 </instances>
             </subsystem>
         </profile>
-
 
 Operations:
   /profile=paas-controller/subsystem=paas-controller:deploy(path=/root/hello-servlet-noEJBnoDist.war)
