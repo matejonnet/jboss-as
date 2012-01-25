@@ -15,8 +15,7 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
-import org.jboss.as.paas.controller.PaasProcessor;
-import org.jboss.as.paas.controller.dmr.Message;
+import org.jboss.as.paas.controller.operations.DeployOperation;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 import org.jboss.logging.Logger;
@@ -27,7 +26,6 @@ import org.jboss.logging.Logger;
 public class DeployHandler extends BaseHandler implements OperationStepHandler {
     public static final DeployHandler INSTANCE = new DeployHandler();
     public static final String OPERATION_NAME = "deploy";
-    // TODO rename attribute to PROPERTY
     private static final String ATTRIBUTE_PATH = "path";
     private static final String ATTRIBUTE_PROVIDER = "provider";
     private static final String ATTRIBUTE_NEW_INSTANCE = "new-instance";
@@ -37,25 +35,18 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
 
     private DeployHandler() {}
 
-    /**
-     * (non-Javadoc)
-     *
-     * @see org.jboss.as.controller.OperationStepHandler#execute(org.jboss.as.controller.OperationContext, org.jboss.dmr.ModelNode)
-     */
     @Override
-    public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
+    public void execute(OperationContext context, ModelNode request) throws OperationFailedException {
         if (!super.execute(context)) {
             return;
         }
 
         log.trace("Executing deploy handle ...");
 
-        PaasProcessor paasProcessor = new PaasProcessor(context, jbossDmrActions, paasDmrActions, compositeDmrActions);
-
-        final String filePath = operation.get(ATTRIBUTE_PATH).asString();
-        final String provider = operation.get(ATTRIBUTE_PROVIDER).isDefined() ? operation.get(ATTRIBUTE_PROVIDER).asString() : null;
-        final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() && operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean();
-        final String instanceId = operation.get(ATTRIBUTE_INSTANCE_ID).isDefined() ? operation.get(ATTRIBUTE_INSTANCE_ID).asString() : null;
+        final String filePath = request.get(ATTRIBUTE_PATH).asString();
+        final String provider = request.get(ATTRIBUTE_PROVIDER).isDefined() ? request.get(ATTRIBUTE_PROVIDER).asString() : null;
+        final boolean newInstance = request.get(ATTRIBUTE_NEW_INSTANCE).isDefined() && request.get(ATTRIBUTE_NEW_INSTANCE).asBoolean();
+        final String instanceId = request.get(ATTRIBUTE_INSTANCE_ID).isDefined() ? request.get(ATTRIBUTE_INSTANCE_ID).asString() : null;
 
         // TODO validate required attributes
 
@@ -78,30 +69,12 @@ public class DeployHandler extends BaseHandler implements OperationStepHandler {
             f = null;
         }
 
-        String appName = f.getName();
-        String serverGroupName = getServerGroupName(appName);
+        DeployOperation operation = new DeployOperation(f, provider, newInstance, instanceId, true);
 
-        paasProcessor.addHostToNewServerGroup(serverGroupName, provider, newInstance, instanceId);
+        context.getResult().add("Operation submitted. See status for datils.");
+        context.completeStep();
 
-        jbossDmrActions.deployToServerGroup(f, appName, serverGroupName, new String[] { "validateHostRegistration" });
-
-        if (paasProcessor.getSlot() == null) {
-            context.getResult().add("No free slot.");
-            context.completeStep();
-            return;
-        }
-
-        String msg = "Instance [" + paasProcessor.getSlot().getInstanceId() + "] is not registered in domain controller jet. Re-run deploy command with instance-id parameter.";
-        Message message = new Message(msg, Message.FireOn.FAILED, new String[] { "validateHostRegistration" });
-        messagesDmrActions.addMessage(message);
-
-        completeStep(context);
-
-        if (stepRegistry.areExecuted(new String[] { "validateHostRegistration" })) {
-            jbossDmrActions.reloadHost(paasProcessor.getSlot().getHostIP());
-        }
-
-        onReturn();
+        scheduleOperation(operation);
     }
 
     /**

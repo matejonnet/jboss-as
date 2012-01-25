@@ -47,14 +47,10 @@ public class PaasExtension implements Extension {
     private static final Logger log = Logger.getLogger(PaasExtension.class);
 
     /** The name space used for the {@code substystem} element */
-    // public static final String NAMESPACE =
-    // "urn:org.jboss.as.paas.controller:1.0";
     public static final String NAMESPACE = "urn:jboss:domain:paas-controller:1.0";
 
     /** The name of our subsystem within the model. */
     public static final String SUBSYSTEM_NAME = "paas-controller";
-    // public static final String SUBSYSTEM_NAME =
-    // "org.jboss.as.paas.controller";
 
     /** The parser used for parsing our subsystem */
     private final SubsystemParser parser = new SubsystemParser();
@@ -74,51 +70,29 @@ public class PaasExtension implements Extension {
         // is an if (isDomainController)
         final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME);
         final ManagementResourceRegistration registration = subsystem.registerSubsystemModel(PaasProviders.SUBSYSTEM);
+
         // We always need to add an 'add' operation
         registration.registerOperationHandler(ADD, PaasAddHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
 
         // add module specific operations
-        registration.registerOperationHandler(ListApplicationsHandler.OPERATION_NAME, ListApplicationsHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        registration.registerOperationHandler(StatusHandler.OPERATION_NAME, StatusHandler.INSTANCE, StatusHandler.DESC, false);
         registration.registerOperationHandler(DeployHandler.OPERATION_NAME, DeployHandler.INSTANCE, DeployHandler.DESC, false);
         registration.registerOperationHandler(UnDeployHandler.OPERATION_NAME, UnDeployHandler.INSTANCE, UnDeployHandler.DESC, false);
         registration.registerOperationHandler(ScaleUpHandler.OPERATION_NAME, ScaleUpHandler.INSTANCE, ScaleUpHandler.DESC, false);
         registration.registerOperationHandler(ScaleDownHandler.OPERATION_NAME, ScaleDownHandler.INSTANCE, ScaleDownHandler.DESC, false);
 
-        // We always need to add a 'describe' operation
         registration.registerOperationHandler(DESCRIBE, PaasDescribeHandler.INSTANCE, PaasDescribeHandler.INSTANCE, false, OperationEntry.EntryType.PRIVATE);
 
         // Add the provider child
         ManagementResourceRegistration providerChild = registration.registerSubModel(PathElement.pathElement("provider"), PaasProviders.PROVIDER_CHILD);
         providerChild.registerOperationHandler(ModelDescriptionConstants.ADD, IaasProviderAddHandler.INSTANCE, IaasProviderAddHandler.INSTANCE);
         providerChild.registerOperationHandler(ModelDescriptionConstants.REMOVE, IaasProviderRemoveHandler.INSTANCE, IaasProviderRemoveHandler.INSTANCE);
-        // TODO typeChild.registerReadWriteAttribute("tick", null,
-        // TrackerTickHandler.INSTANCE, Storage.CONFIGURATION);
-        // providerChild.registerReadWriteAttribute("driver", null,
-        // ProviderDriverHandle.INSTANCE, Storage.CONFIGURATION);
-        // providerChild.registerReadWriteAttribute("url", null,
-        // Storage.CONFIGURATION);
-        // providerChild.registerReadWriteAttribute("username", null,
-        // Storage.CONFIGURATION);
-        // providerChild.registerReadWriteAttribute("password", null,
-        // Storage.CONFIGURATION);
-        // providerChild.registerReadWriteAttribute("image-id", null,
-        // Storage.CONFIGURATION);
 
         ManagementResourceRegistration serverInstanceChild = registration.registerSubModel(PathElement.pathElement("instance"), PaasProviders.INSTANCE_CHILD);
         serverInstanceChild.registerOperationHandler(ModelDescriptionConstants.ADD, ServerInstanceAddHandler.INSTANCE, ServerInstanceAddHandler.INSTANCE);
         serverInstanceChild.registerOperationHandler(ModelDescriptionConstants.REMOVE, ServerInstanceRemoveHandler.INSTANCE, ServerInstanceRemoveHandler.INSTANCE);
 
-        // TODO read only ?
         providerChild.registerReadOnlyAttribute("provider", null, Storage.CONFIGURATION);
-        // providerChild.registerReadWriteAttribute("provider", null,
-        // InstanceProviderHandle.INSTANCE, Storage.CONFIGURATION);
-
-        ManagementResourceRegistration serverGroupChildRegistration = serverInstanceChild.registerSubModel(PathElement.pathElement("server-group"), PaasProviders.SERVER_GROUP_CHILD);
-        // ManagementResourceRegistration serverGroupChild =
-        // registration.registerSubModel(PathElement.pathElement("server-group"),
-        // PaasProviders.INSTANCE_CHILD);
-        serverGroupChildRegistration.registerOperationHandler(ModelDescriptionConstants.ADD, ServerGroupAddHandler.INSTANCE, ServerGroupAddHandler.INSTANCE);
-        serverGroupChildRegistration.registerOperationHandler(ModelDescriptionConstants.REMOVE, ServerGroupRemoveHandler.INSTANCE, ServerGroupRemoveHandler.INSTANCE);
 
         subsystem.registerXMLElementWriter(parser);
     }
@@ -135,7 +109,6 @@ public class PaasExtension implements Extension {
      */
     private static class SubsystemParser implements XMLStreamConstants, XMLElementReader<List<ModelNode>>, XMLElementWriter<SubsystemMarshallingContext> {
 
-        /** {@inheritDoc} */
         @Override
         public void readElement(XMLExtendedStreamReader reader, List<ModelNode> list) throws XMLStreamException {
             // Require no attributes
@@ -162,8 +135,6 @@ public class PaasExtension implements Extension {
                     throw ParseUtils.unexpectedElement(reader);
                 }
             }
-            // TODO remove: break point holder
-            System.currentTimeMillis();
         }
 
         private void readIaasProvider(XMLExtendedStreamReader reader, List<ModelNode> list) throws XMLStreamException {
@@ -313,7 +284,6 @@ public class PaasExtension implements Extension {
             list.add(addType);
         }
 
-        /** {@inheritDoc} */
         @Override
         public void writeContent(final XMLExtendedStreamWriter writer, final SubsystemMarshallingContext context) throws XMLStreamException {
             // Write out the main subsystem element
@@ -392,7 +362,6 @@ public class PaasExtension implements Extension {
     private static class PaasDescribeHandler implements OperationStepHandler, DescriptionProvider {
         static final PaasDescribeHandler INSTANCE = new PaasDescribeHandler();
 
-        // TODO
         @Override
         public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
             context.getResult().add(createAddSubsystemOperation());

@@ -5,13 +5,13 @@ package org.jboss.as.paas.controller;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.Closeable;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 
+import org.jboss.as.paas.util.Util;
 import org.jboss.logging.Logger;
 import org.jboss.sasl.util.UsernamePasswordHashUtil;
 
@@ -33,7 +33,7 @@ public class AsClusterPassManagement {
             String hash = new UsernamePasswordHashUtil().generateHashedHexURP(remoteHostIp, MANAGEMENT_REALM, SECRET_PASS);
             entry = remoteHostIp + "=" + hash;
         } catch (NoSuchAlgorithmException e) {
-            //TODO handle exception
+            log.error("Cannot hash user password.", e);
             return;
         }
 
@@ -50,9 +50,9 @@ public class AsClusterPassManagement {
         File propFile = getPropertiesFile();
         try {
             removePassFromFile(remoteHostIp, propFile);
+            log.debugf("User '%s' removed from file '%s'\n", remoteHostIp, propFile.getCanonicalPath());
         } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+            log.error("Unable to remove user from " + propFile.getAbsolutePath() + " due to error " + e.getMessage());
         }
     }
 
@@ -89,10 +89,10 @@ public class AsClusterPassManagement {
                 writer.write(currentLine);
             }
         } finally {
-            safeClose(reader);
-            safeClose(writer);
-            safeClose(fr);
-            safeClose(fw);
+            Util.safeClose(reader);
+            Util.safeClose(writer);
+            Util.safeClose(fr);
+            Util.safeClose(fw);
         }
 
         return tempFile.renameTo(file);
@@ -109,17 +109,8 @@ public class AsClusterPassManagement {
             bw.append(entry);
             bw.newLine();
         } finally {
-            safeClose(bw);
-            safeClose(fw);
-        }
-
-    }
-
-    private void safeClose(Closeable c) {
-        if (c != null) {
-            try {
-                c.close();
-            } catch (IOException e) {}
+            Util.safeClose(bw);
+            Util.safeClose(fw);
         }
     }
 

@@ -5,8 +5,8 @@ import java.util.Set;
 
 import org.jboss.as.paas.controller.dmr.PaasDmrActions;
 import org.jboss.as.paas.controller.domain.Instance;
-import org.jboss.as.paas.controller.domain.ServerGroup;
-import org.jboss.as.paas.controller.iaas.InstanceSlot;
+import org.jboss.as.paas.controller.domain.InstanceSlot;
+import org.jboss.as.paas.controller.domain.ServerConfig;
 import org.jboss.logging.Logger;
 
 /**
@@ -18,26 +18,12 @@ public class InstanceSearch {
     public static final int MAX_AS_PER_HOST = 3;
 
     private static final Logger log = Logger.getLogger(InstanceSearch.class);
-
-    //private Set<Integer> usedPositions = new HashSet<Integer>();
-
-    //private OperationContext context;
-
     private PaasDmrActions paasDmrActions;
-
     private Instance instance;
 
-    //private Set<Integer> usedPositions;
-
-    /**
-     * @param context
-     * @param paasDmrActions
-     */
-    InstanceSearch(PaasDmrActions paasDmrActions) {
+    public InstanceSearch(PaasDmrActions paasDmrActions) {
         super();
-        //this.context = context;
         this.paasDmrActions = paasDmrActions;
-        //paasDmrActions = new PaasDmrActions(context);
     }
 
     /**
@@ -45,7 +31,7 @@ public class InstanceSearch {
      */
     private InstanceSlot findFreeSlot() {
         Set<Integer> usedPositions = new HashSet<Integer>();
-        for (ServerGroup serverGroup : instance.getServerGroups()) {
+        for (ServerConfig serverGroup : instance.getServerGroups()) {
             usedPositions.add(serverGroup.getPosition());
         }
 
@@ -54,17 +40,10 @@ public class InstanceSearch {
                 return new InstanceSlot(instance, i);
             }
         }
-        throw new RuntimeException("There are no free slots on " + instance.getInstanceId() + " - " + instance.getHostIP() + ".");
+        throw new RuntimeException("There are no free slots on instance [" + instance.toString() + "].");
     }
 
-    /**
-     *
-     * @param group
-     * @param createOnProvider
-     * @param instanceId
-     * @return InstanceSlot from an existing instance
-     */
-    InstanceSlot getFreeSlot(String group, String createOnProvider, String instanceId) {
+    public InstanceSlot getFreeSlot(String group, String createOnProvider, String instanceId) {
         if (instanceId != null) {
             instance = paasDmrActions.getInstance(instanceId);
         } else {
@@ -79,12 +58,12 @@ public class InstanceSearch {
     }
 
     /**
-     * loop throught instances which doesn't serve this group jet
-     * @return null if none available
+     * loop thought instances which doesn't serve this group jet
      */
     private void getInstanceWithFreeSlot(String group, String createOnProvider) {
+        Set<Instance> instances = paasDmrActions.getInstances();
 
-        for (Instance instance : paasDmrActions.getInstances()) {
+        for (Instance instance : instances) {
             boolean hasFreeSlot = true;
             String providerName = instance.getProviderName();
             // if defined createOnProvider, allow only defined provider
@@ -93,28 +72,28 @@ public class InstanceSearch {
                 continue;
             }
 
-            Set<ServerGroup> serverGroups = instance.getServerGroups();
+            Set<ServerConfig> serverGroups = instance.getServerGroups();
 
             if (serverGroups.size() > MAX_AS_PER_HOST) {
-                log.debugf("All slots ocupied on instance [%s].", instance.getInstanceId());
+                log.debugf("All slots ocupied on instance [%s].", instance.toString());
                 hasFreeSlot = false;
             }
 
             if (hasFreeSlot) {
-                log.debugf("Instance [%s] has free slot.", instance.getInstanceId());
+                log.debugf("Instance [%s] has free slot.", instance.toString());
                 if (!isServerGroupOnInstance(group, serverGroups)) {
-                    log.debugf("Instance [%s] defined.", instance.getInstanceId());
+                    log.debugf("Instance [%s] defined.", instance.toString());
                     this.instance = instance;
                     return;
                 } else {
-                    log.debugf("Instance [%s] already has group [%s].", instance.getInstanceId(), group);
+                    log.debugf("Instance [%s] already has group [%s].", instance.toString(), group);
                 }
             }
         }
     }
 
-    private boolean isServerGroupOnInstance(String group, Set<ServerGroup> instanceGroups) {
-        for (ServerGroup serverGroup : instanceGroups) {
+    private boolean isServerGroupOnInstance(String group, Set<ServerConfig> instanceGroups) {
+        for (ServerConfig serverGroup : instanceGroups) {
             //if server group is already on this instance don't allow another. Use first found
             if (group.equals(serverGroup.getName())) {
                 return true;

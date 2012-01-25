@@ -8,10 +8,8 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQ
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REQUIRED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYPE;
 
-import java.net.MalformedURLException;
 import java.util.Locale;
 
-import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.jboss.as.controller.AbstractAddStepHandler;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
@@ -32,7 +30,6 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
 
     public static final IaasProviderAddHandler INSTANCE = new IaasProviderAddHandler();
 
-    private static final String ATTRIBUTE_PROVIDER = "provider";
     private static final String ATTRIBUTE_DRIVER = "driver";
     private static final String ATTRIBUTE_URL = "url";
     private static final String ATTRIBUTE_USERNAME = "username";
@@ -48,11 +45,6 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         super.execute(context, operation);
         log.trace("IaasProviderAddHandler.execute");
 
-        // <iaas-provider provider="myprovider" driver="mock"
-        // url="http://localhost:3001/api" username="mockuser"
-        // password="mockpassword" image-id="i-12345"/>
-
-        // String providerName = operation.get(ATTRIBUTE_PROVIDER).asString();
         String providerName = PathAddress.pathAddress(operation.get(ModelDescriptionConstants.ADDRESS)).getLastElement().getValue();
         String driver = operation.get(ATTRIBUTE_DRIVER).asString();
         String url = operation.get(ATTRIBUTE_URL).asString();
@@ -60,25 +52,10 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         String password = operation.get(ATTRIBUTE_PASSWORD).asString();
         String imageId = operation.get(ATTRIBUTE_IMAGE_ID).asString();
 
-        try {
-            IaasController.getInstance().addProvider(providerName, driver, url, username, password, imageId, context);
-        } catch (MalformedURLException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        } catch (DeltaCloudClientException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
+        IaasController.getInstance().addProvider(providerName, driver, url, username, password, imageId);
 
     }
 
-    /**
-     * (non-Javadoc)
-     *
-     * @see
-     * org.jboss.as.controller.descriptions.DescriptionProvider#getModelDescription
-     * (java.util.Locale)
-     */
     @Override
     public ModelNode getModelDescription(Locale locale) {
         log.trace("IaasProviderAddHandler.getModelDescription.");
@@ -109,13 +86,6 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         return node;
     }
 
-    /**
-     * (non-Javadoc)
-     *
-     * @see
-     * org.jboss.as.controller.AbstractAddStepHandler#populateModel(org.jboss
-     * .dmr.ModelNode, org.jboss.dmr.ModelNode)
-     */
     @Override
     protected void populateModel(ModelNode operation, ModelNode model) throws OperationFailedException {
 
@@ -153,36 +123,4 @@ public class IaasProviderAddHandler extends AbstractAddStepHandler implements De
         model.get(ATTRIBUTE_IMAGE_ID).set(imageId);
 
     }
-
-    //
-    // /* (non-Javadoc)
-    // * @see
-    // org.jboss.as.controller.AbstractAddStepHandler#performRuntime(org.jboss.as.controller.OperationContext,
-    // org.jboss.dmr.ModelNode, org.jboss.dmr.ModelNode,
-    // org.jboss.as.controller.ServiceVerificationHandler, java.util.List)
-    // */
-    // @Override
-    // protected void performRuntime(OperationContext context, ModelNode
-    // operation, ModelNode model, ServiceVerificationHandler
-    // verificationHandler, List<ServiceController<?>> newControllers) throws
-    // OperationFailedException {
-    // System.out.println(">>>>>>>>>>>>>> IaasProviderAddHandler.performRuntime");
-    // // TODO Auto-generated method stub
-    // //super.performRuntime(context, operation, model, verificationHandler,
-    // newControllers);
-    // String provider =
-    // PathAddress.pathAddress(operation.get(ModelDescriptionConstants.ADDRESS)).getLastElement().getValue();
-    // //TODO add all parameters
-    // PaasService service = new PaasService(provider,
-    // model.get("driver").asString());
-    // ServiceName name = PaasService.createServiceName(provider);
-    // ServiceController<PaasService> controller = context.getServiceTarget()
-    // .addService(name, service)
-    // .addListener(verificationHandler)
-    // .setInitialMode(ServiceController.Mode.ACTIVE)
-    // .install();
-    // newControllers.add(controller);
-    //
-    // }
-
 }

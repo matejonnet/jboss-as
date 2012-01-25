@@ -26,106 +26,91 @@ import org.jboss.dmr.ModelType;
  */
 class PaasProviders {
 
-   /**
-    * Used to create the description of the subsystem
-    */
-   public static DescriptionProvider SUBSYSTEM = new DescriptionProvider() {
-      @Override
-      public ModelNode getModelDescription(Locale locale) {
-         final ModelNode subsystem = new ModelNode();
-         subsystem.get(DESCRIPTION).set("PaaS controller subsystem.");
-         subsystem.get(HEAD_COMMENT_ALLOWED).set(true);
-         subsystem.get(TAIL_COMMENT_ALLOWED).set(true);
-         subsystem.get(NAMESPACE).set(PaasExtension.NAMESPACE);
+    /**
+     * Used to create the description of the subsystem
+     */
+    public static DescriptionProvider SUBSYSTEM = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(Locale locale) {
+            final ModelNode subsystem = new ModelNode();
+            subsystem.get(DESCRIPTION).set("PaaS controller subsystem.");
+            subsystem.get(HEAD_COMMENT_ALLOWED).set(true);
+            subsystem.get(TAIL_COMMENT_ALLOWED).set(true);
+            subsystem.get(NAMESPACE).set(PaasExtension.NAMESPACE);
 
-         //Add information about the children
-         subsystem.get(CHILDREN, "provider", DESCRIPTION).set("List of IaaS providers.");
-         subsystem.get(CHILDREN, "provider", MIN_OCCURS).set(0);
-         subsystem.get(CHILDREN, "provider", MAX_OCCURS).set(Integer.MAX_VALUE);
-         subsystem.get(CHILDREN, "provider", MODEL_DESCRIPTION);
+            //Add information about the children
+            subsystem.get(CHILDREN, "provider", DESCRIPTION).set("List of IaaS providers.");
+            subsystem.get(CHILDREN, "provider", MIN_OCCURS).set(0);
+            subsystem.get(CHILDREN, "provider", MAX_OCCURS).set(Integer.MAX_VALUE);
+            subsystem.get(CHILDREN, "provider", MODEL_DESCRIPTION);
 
-         subsystem.get(CHILDREN, "instance", DESCRIPTION).set("List of server instances.");
-         subsystem.get(CHILDREN, "instance", MIN_OCCURS).set(0);
-         subsystem.get(CHILDREN, "instance", MAX_OCCURS).set(Integer.MAX_VALUE);
-         subsystem.get(CHILDREN, "instance", MODEL_DESCRIPTION);
+            subsystem.get(CHILDREN, "instance", DESCRIPTION).set("List of server instances.");
+            subsystem.get(CHILDREN, "instance", MIN_OCCURS).set(0);
+            subsystem.get(CHILDREN, "instance", MAX_OCCURS).set(Integer.MAX_VALUE);
+            subsystem.get(CHILDREN, "instance", MODEL_DESCRIPTION);
 
-         return subsystem;
-      }
-   };
+            return subsystem;
+        }
+    };
 
-   /**
-    * Used to create the description of the subsystem add method
-    */
-   public static DescriptionProvider SUBSYSTEM_ADD = new DescriptionProvider() {
-      @Override
-      public ModelNode getModelDescription(Locale locale) {
+    /**
+     * Used to create the description of the subsystem add method
+     */
+    public static DescriptionProvider SUBSYSTEM_ADD = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(Locale locale) {
 
-         final ModelNode subsystem = new ModelNode();
-         subsystem.get(DESCRIPTION).set("Adds PaaS controller subsystem");
+            final ModelNode subsystem = new ModelNode();
+            subsystem.get(DESCRIPTION).set("Adds PaaS controller subsystem");
 
-         return subsystem;
-      }
-   };
+            return subsystem;
+        }
+    };
 
-   public static DescriptionProvider PROVIDER_CHILD = new DescriptionProvider() {
-      @Override
-      public ModelNode getModelDescription(Locale locale) {
-         final ModelNode node = new ModelNode();
-         node.get(DESCRIPTION).set("Iaas provider.");
+    public static DescriptionProvider PROVIDER_CHILD = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(Locale locale) {
+            final ModelNode node = new ModelNode();
+            node.get(DESCRIPTION).set("Iaas provider.");
 
-         //Add information about the child
-         node.get(ATTRIBUTES, "driver", DESCRIPTION).set("Deltacloud IaaS driver.");
-         node.get(ATTRIBUTES, "driver", TYPE).set(ModelType.STRING);
-         node.get(ATTRIBUTES, "driver", REQUIRED).set(true);
+            //Add information about the child
+            node.get(ATTRIBUTES, "driver", DESCRIPTION).set("Deltacloud IaaS driver.");
+            node.get(ATTRIBUTES, "driver", TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, "driver", REQUIRED).set(true);
 
-         node.get(ATTRIBUTES, "url", DESCRIPTION).set("Deltacloud IaaS driver.");
-         node.get(ATTRIBUTES, "url", TYPE).set(ModelType.STRING);
-         node.get(ATTRIBUTES, "url", REQUIRED).set(true);
+            node.get(ATTRIBUTES, "url", DESCRIPTION).set("Deltacloud IaaS driver.");
+            node.get(ATTRIBUTES, "url", TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, "url", REQUIRED).set(true);
 
-         node.get(ATTRIBUTES, "username", DESCRIPTION).set("Deltacloud IaaS driver.");
-         node.get(ATTRIBUTES, "username", TYPE).set(ModelType.STRING);
-         node.get(ATTRIBUTES, "username", REQUIRED).set(true);
+            node.get(ATTRIBUTES, "username", DESCRIPTION).set("Deltacloud IaaS driver.");
+            node.get(ATTRIBUTES, "username", TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, "username", REQUIRED).set(true);
 
-         node.get(ATTRIBUTES, "password", DESCRIPTION).set("Deltacloud IaaS driver.");
-         node.get(ATTRIBUTES, "password", TYPE).set(ModelType.STRING);
-         node.get(ATTRIBUTES, "password", REQUIRED).set(true);
+            node.get(ATTRIBUTES, "password", DESCRIPTION).set("Deltacloud IaaS driver.");
+            node.get(ATTRIBUTES, "password", TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, "password", REQUIRED).set(true);
 
-         node.get(ATTRIBUTES, "image-id", DESCRIPTION).set("Deltacloud IaaS driver.");
-         node.get(ATTRIBUTES, "image-id", TYPE).set(ModelType.STRING);
-         node.get(ATTRIBUTES, "image-id", REQUIRED).set(true);
+            node.get(ATTRIBUTES, "image-id", DESCRIPTION).set("Deltacloud IaaS driver.");
+            node.get(ATTRIBUTES, "image-id", TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, "image-id", REQUIRED).set(true);
 
-         return node;
-      }
-   };
+            return node;
+        }
+    };
 
-   public static DescriptionProvider INSTANCE_CHILD = new DescriptionProvider() {
-      @Override
-      public ModelNode getModelDescription(Locale locale) {
-         final ModelNode node = new ModelNode();
-         node.get(DESCRIPTION).set("Server instance.");
+    public static DescriptionProvider INSTANCE_CHILD = new DescriptionProvider() {
+        @Override
+        public ModelNode getModelDescription(Locale locale) {
+            final ModelNode node = new ModelNode();
+            node.get(DESCRIPTION).set("Server instance.");
 
-         //Add information about the child
-         node.get(ATTRIBUTES, "provider", DESCRIPTION).set("IaaS provider.");
-         node.get(ATTRIBUTES, "provider", TYPE).set(ModelType.STRING);
-         node.get(ATTRIBUTES, "provider", REQUIRED).set(true);
+            //Add information about the child
+            node.get(ATTRIBUTES, "provider", DESCRIPTION).set("IaaS provider.");
+            node.get(ATTRIBUTES, "provider", TYPE).set(ModelType.STRING);
+            node.get(ATTRIBUTES, "provider", REQUIRED).set(true);
 
-         return node;
-      }
-   };
-
-   public static DescriptionProvider SERVER_GROUP_CHILD = new DescriptionProvider() {
-       @Override
-       public ModelNode getModelDescription(Locale locale) {
-           final ModelNode node = new ModelNode();
-           node.get(DESCRIPTION).set("Server group.");
-
-           //Add information about the child
-           node.get(ATTRIBUTES, "position", DESCRIPTION).set("server group.");
-           node.get(ATTRIBUTES, "position", TYPE).set(ModelType.INT);
-           node.get(ATTRIBUTES, "position", REQUIRED).set(true);
-
-           return node;
-       }
-   };
+            return node;
+        }
+    };
 
 }

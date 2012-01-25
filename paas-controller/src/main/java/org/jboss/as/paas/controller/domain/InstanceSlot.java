@@ -1,9 +1,8 @@
 /**
  *
  */
-package org.jboss.as.paas.controller.iaas;
+package org.jboss.as.paas.controller.domain;
 
-import org.jboss.as.paas.controller.domain.Instance;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -53,6 +52,20 @@ public class InstanceSlot {
         }
     }
 
+    public static int getSlotPosition(int portOffset) {
+        switch (portOffset) {
+        case 0:
+            return 0;
+        case 150:
+            return 1;
+        case 250:
+            return 2;
+            //TODO define other offsets
+        default:
+            throw new IllegalArgumentException("invalid port offset [" + portOffset + "].");
+        }
+    }
+
     /**
      * @return the hostIP
      */
@@ -81,5 +94,17 @@ public class InstanceSlot {
     private class Dirty {
         String instanceId;
         String hostIp;
+    }
+
+    @Override
+    public String toString() {
+        StringBuffer buffer = new StringBuffer();
+        buffer.append(getInstanceId());
+        buffer.append("-");
+        buffer.append(getHostIP());
+        buffer.append("-");
+        buffer.append(getSlotPosition());
+
+        return buffer.toString();
     }
 }

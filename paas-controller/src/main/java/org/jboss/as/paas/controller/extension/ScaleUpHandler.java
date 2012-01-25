@@ -14,10 +14,9 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
-import org.jboss.as.paas.controller.PaasProcessor;
+import org.jboss.as.paas.controller.operations.DeployOperation;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
-import org.jboss.logging.Logger;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -30,34 +29,25 @@ public class ScaleUpHandler extends BaseHandler implements OperationStepHandler 
     private static final String ATTRIBUTE_NEW_INSTANCE = "new-instance";
     private static final String ATTRIBUTE_INSTANCE_ID = "instance-id";
 
-    private final Logger log = Logger.getLogger(ScaleUpHandler.class);
-
     private ScaleUpHandler() {}
 
     @Override
-    public void execute(OperationContext context, ModelNode operation) throws OperationFailedException {
+    public void execute(OperationContext context, ModelNode request) throws OperationFailedException {
         if (!super.execute(context)) {
             return;
         }
 
-        final String appName = operation.get(ATTRIBUTE_APP_NAME).asString();
-        final String provider = operation.get(ATTRIBUTE_PROVIDER).isDefined() ? operation.get(ATTRIBUTE_PROVIDER).asString() : null;
-        final boolean newInstance = operation.get(ATTRIBUTE_NEW_INSTANCE).isDefined() ? operation.get(ATTRIBUTE_NEW_INSTANCE).asBoolean() : false;
-        final String instanceId = operation.get(ATTRIBUTE_INSTANCE_ID).isDefined() ? operation.get(ATTRIBUTE_INSTANCE_ID).asString() : null;
+        final String appName = request.get(ATTRIBUTE_APP_NAME).asString();
+        final String provider = request.get(ATTRIBUTE_PROVIDER).isDefined() ? request.get(ATTRIBUTE_PROVIDER).asString() : null;
+        final boolean newInstance = request.get(ATTRIBUTE_NEW_INSTANCE).isDefined() ? request.get(ATTRIBUTE_NEW_INSTANCE).asBoolean() : false;
+        final String instanceId = request.get(ATTRIBUTE_INSTANCE_ID).isDefined() ? request.get(ATTRIBUTE_INSTANCE_ID).asString() : null;
 
-        PaasProcessor paasProcessor = new PaasProcessor(context, jbossDmrActions, paasDmrActions, compositeDmrActions);
+        DeployOperation operation = new DeployOperation(appName, provider, newInstance, instanceId);
 
-        String serverGroupName = getServerGroupName(appName);
+        context.getResult().add("Operation submitted. See status for datils.");
+        context.completeStep();
 
-        paasProcessor.addHostToExisingServerGroup(serverGroupName, provider, newInstance, instanceId);
-
-        completeStep(context);
-
-        if (stepRegistry.areExecuted(new String[] { "validateHostRegistration" })) {
-            jbossDmrActions.reloadHost(paasProcessor.getSlot().getHostIP());
-        }
-
-        onReturn();
+        scheduleOperation(operation);
     }
 
     public static DescriptionProvider DESC = new DescriptionProvider() {

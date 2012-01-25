@@ -1,4 +1,4 @@
-package org.jboss.as.paas.controller.operationqueue;
+package org.jboss.as.paas.controller.operations;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>

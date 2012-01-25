@@ -1,7 +1,7 @@
 /**
  *
  */
-package org.jboss.as.paas.controller;
+package org.jboss.as.paas.controller.dmr.executor;
 
 import static org.jboss.as.controller.client.helpers.ClientConstants.OP;
 
@@ -18,24 +18,25 @@ import org.jboss.security.auth.callback.UsernamePasswordHandler;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class ControllerClient {
+class ControllerClient {
 
     private static final Logger log = Logger.getLogger(ControllerClient.class);
 
     private ModelControllerClient client;
 
-    public ControllerClient() throws UnknownHostException {
+    ControllerClient() throws UnknownHostException {
         client = ModelControllerClient.Factory.create("127.0.0.1", 9999);
     }
 
-    public ControllerClient(String hostIp, int port, String username, String password) throws UnknownHostException {
+    ControllerClient(String hostIp, int port, String username, String password) throws UnknownHostException {
         CallbackHandler cbh = new UsernamePasswordHandler(username, password.toCharArray());
         client = ModelControllerClient.Factory.create(hostIp, port, cbh);
     }
 
-    public ModelControllerClient getClient() throws UnknownHostException {
+    ModelControllerClient getClient() throws UnknownHostException {
         if (!isRemoteHostUp(client))
             waitRemoteHostBoot(client);
+        //TODO try to reconnect if no connection
 
         return client;
     }
@@ -52,11 +53,10 @@ public class ControllerClient {
                 throw new RuntimeException("Could not connect in " + maxWaitTime / 1000 + " seconds.");
             }
             try {
-                log.debug("Waiting to connect to remote client. Going to sleep for 500ms.");
+                log.debug("Waiting to connect. Going to sleep for 500ms.");
                 Thread.sleep(500);
             } catch (InterruptedException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+                log.warn("Waiting to connect interrupted.", e);
             }
             if (isRemoteHostUp(client)) {
                 serverUp = true;
@@ -64,14 +64,9 @@ public class ControllerClient {
         }
     }
 
-    /**
-     * @param hostIp
-     * @return
-     */
     private boolean isRemoteHostUp(ModelControllerClient client) {
         ModelNode operation = new ModelNode();
         operation.get(OP).set("ls");
-        //operation.get(OP_ADDR).add("profile", "paas-controller");
 
         try {
             client.execute(operation);

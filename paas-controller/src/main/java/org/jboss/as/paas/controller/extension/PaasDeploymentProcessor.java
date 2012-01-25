@@ -1,6 +1,5 @@
-package org.jboss.as.paas.controller.extension.deployment;
+package org.jboss.as.paas.controller.extension;
 
-import org.jboss.as.paas.controller.extension.PaasAddHandler;
 import org.jboss.as.server.AbstractDeploymentChainStep;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
@@ -18,7 +17,7 @@ import org.jboss.logging.Logger;
  */
 public class PaasDeploymentProcessor implements DeploymentUnitProcessor {
 
-    Logger log = Logger.getLogger(PaasDeploymentProcessor.class);
+    private Logger log = Logger.getLogger(PaasDeploymentProcessor.class);
 
     /**
      * See {@link Phase} for a description of the different phases
@@ -39,7 +38,6 @@ public class PaasDeploymentProcessor implements DeploymentUnitProcessor {
     }
 
     @Override
-    public void undeploy(DeploymentUnit context) {
-    }
+    public void undeploy(DeploymentUnit context) {}
 
 }

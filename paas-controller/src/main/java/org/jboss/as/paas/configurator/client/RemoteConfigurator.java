@@ -13,7 +13,7 @@ import java.net.SocketAddress;
 import java.net.UnknownHostException;
 
 import org.jboss.as.paas.configurator.Main;
-import org.jboss.as.paas.configurator.sys.SysUtil;
+import org.jboss.as.paas.util.Util;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -30,10 +30,8 @@ public class RemoteConfigurator {
         BufferedReader in = null;
 
         try {
-            //remoteConfigurator = new Socket(remoteIp, Main.CONFIGURATOR_PORT);
             remoteConfigurator = new Socket();
-            SocketAddress endpointAddress = new InetSocketAddress(remoteIp, Main.CONFIGURATOR_PORT);
-            remoteConfigurator.connect(endpointAddress, 30000);
+            connect(remoteConfigurator, remoteIp);
             out = new PrintWriter(remoteConfigurator.getOutputStream(), true);
             in = new BufferedReader(new InputStreamReader(remoteConfigurator.getInputStream()));
         } catch (UnknownHostException e) {
@@ -43,24 +41,39 @@ public class RemoteConfigurator {
         }
 
         try {
-            // String hostControllerIp =
-            // InetAddress.getLocalHost().getHostAddress();
-            String hostControllerIp = SysUtil.getLocalIp();
+            String hostControllerIp = Util.getLocalIp();
             out.println(hostControllerIp);
             System.out.println("response: " + in.readLine());
         } catch (IOException e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         } finally {
-            out.close();
+            Util.safeClose(out);
+            Util.safeClose(in);
+            Util.safeClose(remoteConfigurator);
+        }
+    }
+
+    private void connect(Socket remoteConfigurator, String remoteIp) throws IOException {
+        SocketAddress endpointAddress = new InetSocketAddress(remoteIp, Main.CONFIGURATOR_PORT);
+
+        int retry = 10;
+
+        while (retry > 0) {
             try {
-                in.close();
-                remoteConfigurator.close();
+                System.out.println("Connecting to: " + remoteIp + " Retries left: " + retry);
+                remoteConfigurator.connect(endpointAddress, 3000);
+                System.out.println("Connected to: " + remoteIp);
+                return;
             } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e1) {
+                    System.err.println("Waiting to retry connecting interupted.");
+                }
+                retry--;
             }
         }
+        throw new IOException("");
     }
 
 }

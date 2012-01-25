@@ -527,12 +527,34 @@
                 </default-workmanager>
             </subsystem>
             <subsystem xmlns="urn:jboss:domain:jdr:1.0"/>
-            <subsystem xmlns="urn:jboss:domain:jgroups:1.0" default-stack="udp">
+            <subsystem xmlns="urn:jboss:domain:jgroups:1.0" default-stack="tcp">
                 <stack name="udp">
                     <transport type="UDP" socket-binding="jgroups-udp" diagnostics-socket-binding="jgroups-diagnostics"/>
                     <protocol type="PING"/>
                     <protocol type="MERGE2"/>
                     <protocol type="FD_SOCK" socket-binding="jgroups-udp-fd"/>
+                    <protocol type="FD"/>
+                    <protocol type="VERIFY_SUSPECT"/>
+                    <protocol type="BARRIER"/>
+                    <protocol type="pbcast.NAKACK"/>
+                    <protocol type="UNICAST2"/>
+                    <protocol type="pbcast.STABLE"/>
+                    <protocol type="pbcast.GMS"/>
+                    <protocol type="UFC"/>
+                    <protocol type="MFC"/>
+                    <protocol type="FRAG2"/>
+                    <protocol type="pbcast.STATE_TRANSFER"/>
+                    <protocol type="pbcast.FLUSH"/>
+                </stack>
+                <stack name="tcp">
+                    <transport type="TCP" socket-binding="jgroups-tcp" diagnostics-socket-binding="jgroups-diagnostics"/>
+                    <!-- protocol type="MPING" socket-binding="jgroups-mping"/ -->
+                    <TCPPING timeout="3000"
+                        initial_hosts="${jgroups.tcpping.initial_hosts:localhost[7800],localhost[7801]}"
+                        port_range="1"
+                        num_initial_members="3"/>
+                    <protocol type="MERGE2"/>
+                    <protocol type="FD_SOCK" socket-binding="jgroups-tcp-fd"/>
                     <protocol type="FD"/>
                     <protocol type="VERIFY_SUSPECT"/>
                     <protocol type="BARRIER"/>

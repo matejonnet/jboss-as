@@ -7,6 +7,8 @@ import java.util.NoSuchElementException;
 import java.util.Properties;
 import java.util.Set;
 
+import org.jboss.as.paas.controller.domain.IaasProvider;
+import org.jboss.logging.Logger;
 import org.jclouds.compute.ComputeServiceContext;
 import org.jclouds.compute.ComputeServiceContextFactory;
 import org.jclouds.compute.RunNodesException;
@@ -20,38 +22,34 @@ import com.google.inject.Module;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class JCloudIaasDriver implements IaasDriver {
+class JCloudIaasDriver implements IaasDriver {
 
-    ComputeServiceContext context;
+    private static final Logger log = Logger.getLogger(JCloudIaasDriver.class);
 
-    /**
-     *
-     * @param url eucalyptus url eg. "http://173.205.188.130:8773/services/Eucalyptus"
-     * @param username
-     * @param password
-     */
-    public JCloudIaasDriver(String provider, String url, String accesskeyid, String secretkey) {
-     // get a context with eucalyptus that offers the portable ComputeService api
+    private ComputeServiceContext context;
+    private IaasProvider iaasProvider;
+
+    JCloudIaasDriver(IaasProvider iaasProvider) {
+        // TODO validate required params
+
+        this.iaasProvider = iaasProvider;
+
+        String driverName = iaasProvider.getDriver();
+        String provider = driverName.split("-")[1];
+
+        // get a context with eucalyptus that offers the portable ComputeService api
         Properties overrides = new Properties();
-        overrides.setProperty("eucalyptus.endpoint", url);
-        context = new ComputeServiceContextFactory()
-                //.createContext("eucalyptus", accesskeyid ,secretkey,ImmutableSet.<Module> of(new Log4JLoggingModule(), new JschSshClientModule()), overrides);
-                .createContext(provider, accesskeyid ,secretkey, ImmutableSet.<Module> of(), overrides);
+        overrides.setProperty("eucalyptus.endpoint", iaasProvider.getUrl());
+
+        context = new ComputeServiceContextFactory().createContext(provider, iaasProvider.getUsername(), iaasProvider.getPassword(), ImmutableSet.<Module> of(), overrides);
     }
 
-
-    /* (non-Javadoc)
-     * @see org.jboss.as.paas.controller.iaas.IaasDriver#getInstance(java.lang.String)
-     */
     @Override
     public IaasInstance getInstance(String instanceId) {
         NodeMetadata node = context.getComputeService().getNodeMetadata(instanceId);
-        return IaasInstance.Factory.createInstance(node);
+        return IaasInstanceFactory.createInstance(node);
     }
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.paas.controller.iaas.IaasDriver#createInstance(java.lang.String)
-     */
     @Override
     public IaasInstance createInstance(String imageId) {
         // pick the highest version of the RightScale CentOs template
@@ -62,43 +60,33 @@ public class JCloudIaasDriver implements IaasDriver {
             //TODO define instance type (m1.small etc.)
             template = context.getComputeService().templateBuilder().imageId(imageId).minRam(250).build();
         } catch (NoSuchElementException e) {
-            // TODO: handle exception; return message ( _imageId_ not found) to CLI
-            // TODO: handle exception; org.jclouds.aws.AWSResponseException: request POST http://10.30.1.3:8773/services/Eucalyptus/ HTTP/1.1 failed with code 400, error: AWSError{requestId='3df2cdb1-efce-4259-8585-beabc0d7d16c', requestToken='null', code='FinishedVerify', message='Not enough resources (0 < 1: vm instances.
-            // [Host Controller] 14:51:57,856 ERROR [stderr] (Remoting "192.168.37.66:MANAGEMENT" task-1) Not enough resources (0 < 1: vm instances.', context='{Response=, Errors=}'}
-
+            log.errorf(e, "Cannot build instance templete from image id %s.", imageId);
             return null;
         }
 
-
-        // specify your own groups which already have the correct rules applied
-        //TODO-ML specify security group
         template.getOptions().as(EC2TemplateOptions.class).securityGroups("default");
+        //TODO use external setting for keypair name
+        template.getOptions().as(EC2TemplateOptions.class).keyPair("test");
 
         try {
             Set<? extends NodeMetadata> nodes = context.getComputeService().createNodesInGroup("jboss-as", 1, template);
             //get first as we always create only one
             NodeMetadata node = nodes.iterator().next();
-            return IaasInstance.Factory.createInstance(node);
+            return IaasInstanceFactory.createInstance(node);
         } catch (RunNodesException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+            log.errorf("Cannot create instance from templete.", e);
         }
         return null;
     }
 
-    /* (non-Javadoc)
-     * @see org.jboss.as.paas.controller.iaas.IaasDriver#terminateInstance(java.lang.String)
-     */
     @Override
-    public boolean terminateInstance(String instanceId) {
+    public void terminateInstance(String instanceId) {
         context.getComputeService().destroyNode(instanceId);
-        //TODO-ML validate ?
-        return true;
     }
 
     @Override
-    public void close() {
-        context.close();
+    public IaasProvider getIaasProvider() {
+        return iaasProvider;
     }
 
 }
