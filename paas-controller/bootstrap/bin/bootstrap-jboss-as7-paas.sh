@@ -4,8 +4,7 @@
 # /opt/jboss-as/jboss-as-7/bin/bootstrap-jboss-as7-paas.sh
 # chmod +x /opt/jboss-as/jboss-as-7/bin/*.sh
 #
-# create all jboss scripts executable
-# chmod +x $jboss_path/bin/*.sh
+
 
 echo "bootstraping jboss AS 7 paas"
 echo "booting ... " > /var/log/jboss-paas-config.log
