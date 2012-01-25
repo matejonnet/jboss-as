@@ -16,13 +16,13 @@ import org.jboss.logging.Logger;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-class VmIaasDriver implements IaasDriver {
+class StaticDriver implements IaasDriver {
 
-    private final Logger log = Logger.getLogger(VmIaasDriver.class);
+    private final Logger log = Logger.getLogger(StaticDriver.class);
     private DmrActionExecutor dmrActionExecutor;
     private IaasProvider iaasProvider;
 
-    public VmIaasDriver(IaasProvider iaasProvider) {
+    public StaticDriver(IaasProvider iaasProvider) {
         // TODO validate required params
 
         this.dmrActionExecutor = DmrActionExecutorInstance.get();

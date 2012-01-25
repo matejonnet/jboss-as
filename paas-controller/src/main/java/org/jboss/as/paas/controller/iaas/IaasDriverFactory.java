@@ -19,10 +19,8 @@ class IaasDriverFactory {
     static IaasDriver createDriver(IaasProvider iaasProvider) {
         String driverName = iaasProvider.getDriver();
         IaasDriver driver = null;
-        if ("local".equals(driverName)) {
-            driver = new LocalIaasDriver(iaasProvider);
-        } else if ("vm".equals(driverName)) {
-            driver = new VmIaasDriver(iaasProvider);
+        if ("static".equals(driverName)) {
+            driver = new StaticDriver(iaasProvider);
         } else if (driverName.startsWith("jcloud-")) {
             driver = new JCloudIaasDriver(iaasProvider);
         } else if (driverName.startsWith("delta-")) {
