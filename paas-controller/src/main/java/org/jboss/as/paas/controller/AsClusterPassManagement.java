@@ -50,6 +50,7 @@ public class AsClusterPassManagement {
         File propFile = getPropertiesFile();
         try {
             removePassFromFile(remoteHostIp, propFile);
+            log.debugf("User '%s' removed from file '%s'\n", remoteHostIp, propFile.getCanonicalPath());
         } catch (IOException e) {
             log.error("Unable to remove user from " + propFile.getAbsolutePath() + " due to error " + e.getMessage());
         }

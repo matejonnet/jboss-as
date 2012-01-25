@@ -71,7 +71,8 @@ public class PaasExtension implements Extension {
         final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME);
         final ManagementResourceRegistration registration = subsystem.registerSubsystemModel(PaasProviders.SUBSYSTEM);
 
-        //registration.registerOperationHandler(ADD, PaasAddHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
+        // We always need to add an 'add' operation
+        registration.registerOperationHandler(ADD, PaasAddHandler.INSTANCE, PaasProviders.SUBSYSTEM_ADD, false);
 
         // add module specific operations
         registration.registerOperationHandler(StatusHandler.OPERATION_NAME, StatusHandler.INSTANCE, StatusHandler.DESC, false);

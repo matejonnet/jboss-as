@@ -13,7 +13,7 @@ import org.jboss.logging.Logger;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class UnDeployOperation extends OperationBase implements PaasOperation {
+public class UnDeployOperation extends OperationBase implements Operation {
 
     private static final Logger log = Logger.getLogger(UnDeployOperation.class);
 
@@ -35,9 +35,8 @@ public class UnDeployOperation extends OperationBase implements PaasOperation {
         dmrActionExecutor.execute(opRemoveSG);
     }
 
-    public void removeHostsFromServerGroup(String groupName, boolean removeFromAll) {
+    void removeHostsFromServerGroup(String groupName, boolean removeFromAll) {
 
-        //        for (Instance instance : paasDmrActions.getInstances()) {
         Set<Instance> instances = getPaasDmrActions().getInstances();
         outer:
         for (int i = instances.size() - 1; i > -1; i--) {
@@ -60,17 +59,29 @@ public class UnDeployOperation extends OperationBase implements PaasOperation {
                     int slotsInOwningGroup = serverGroups.size();
                     //if this is the only group on instance
                     if (slotsInOwningGroup < 2) {
-                        try {
-                            IaasController.getInstance().terminateInstance(providerName, instance.getInstanceId());
-                        } catch (Exception e) {
-                            log.errorf("Cannot terminate instance [%s]", instance);
-                        }
+                        removeInstance(instance);
                     }
                     if (!removeFromAll) {
                         break outer;
                     }
                 }
             }
+        }
+    }
+
+    protected void removeInstance(Instance instance) {
+        try {
+            String instanceId = instance.getInstanceId();
+
+            ModelNode opShutdown = DmrOperations.getShutdown(instance.getHostIP());
+            dmrActionExecutor.execute(opShutdown);
+
+            IaasController.getInstance().terminateInstance(instance.getProviderName(), instanceId);
+
+            ModelNode opRemove = DmrOperations.removeInstance(instanceId);
+            dmrActionExecutor.execute(opRemove);
+        } catch (Exception e) {
+            log.errorf("Cannot terminate instance [%s]", instance);
         }
     }
 

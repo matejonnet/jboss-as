@@ -14,7 +14,7 @@ import org.jboss.logging.Logger;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public class DeployOperation extends OperationBase implements PaasOperation {
+public class DeployOperation extends OperationBase implements Operation {
 
     private static final Logger log = Logger.getLogger(DeployOperation.class);
 
@@ -158,7 +158,7 @@ public class DeployOperation extends OperationBase implements PaasOperation {
     private void waitRemoteHostToRegister(String hostIP) {
 
         // TODO make configurable
-        int maxWaitTime = 30000; // 30sec
+        int maxWaitTime = 45000; // 45sec
         long started = System.currentTimeMillis();
 
         log.debugf("Waiting host %s to register ...", hostIP);
@@ -167,8 +167,8 @@ public class DeployOperation extends OperationBase implements PaasOperation {
                 throw new RuntimeException("Host hasn't registered in " + maxWaitTime / 1000 + "seconds.");
             }
             try {
-                log.debugf("Waiting host %s to register. Going to sleep for 500.", hostIP);
-                Thread.sleep(500);
+                log.debugf("Waiting host %s to register. Going to sleep for 1000.", hostIP);
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
                 // TODO Auto-generated catch block
                 e.printStackTrace();

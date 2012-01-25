@@ -7,7 +7,7 @@ import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutorInstance;
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
  */
-public abstract class OperationBase {
+abstract class OperationBase {
 
     protected String appName;
 

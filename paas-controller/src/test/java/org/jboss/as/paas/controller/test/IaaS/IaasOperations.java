@@ -4,11 +4,6 @@
 package org.jboss.as.paas.controller.test.IaaS;
 
 import org.jboss.as.paas.controller.domain.IaasProvider;
-import org.jboss.as.paas.controller.iaas.IaasController;
-import org.jboss.as.paas.controller.iaas.IaasDriver;
-import org.jboss.as.paas.controller.iaas.IaasDriverFactory;
-import org.jboss.as.paas.controller.iaas.IaasInstance;
-import org.junit.Assert;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -28,9 +23,9 @@ public class IaasOperations {
 
     // @Test
     public void createInstance() throws Exception {
-        IaasProvider provider = getProvider();
-
-        IaasInstance instance = IaasController.getInstance().createNewInstance(provider);
+        //        IaasProvider provider = getProvider();
+        //
+        //        IaasInstance instance = IaasController.getInstance().createNewInstance(provider);
 
         // long startTime = System.currentTimeMillis();
         // while (!instance.isRunning()) {
@@ -45,19 +40,19 @@ public class IaasOperations {
         // }
         // }
 
-        Assert.assertNotNull(instance.getId());
-        System.out.println("instance id: " + instance.getId());
-
-        Assert.assertTrue("instance.getPrivateAddresses().size() > 0", instance.getPrivateAddresses().size() > 0);
-        System.out.println("private ip: " + instance.getPrivateAddresses().get(0));
+        //        Assert.assertNotNull(instance.getId());
+        //        System.out.println("instance id: " + instance.getId());
+        //
+        //        Assert.assertTrue("instance.getPrivateAddresses().size() > 0", instance.getPrivateAddresses().size() > 0);
+        //        System.out.println("private ip: " + instance.getPrivateAddresses().get(0));
     }
 
     // @Test
     public void getLocalAddress() {
-        IaasProvider provider = getProvider();
-        IaasDriver driver = IaasDriverFactory.createDriver(provider);
-        IaasInstance instance = driver.getInstance(instanceId);
-        Assert.assertTrue(instance.getPrivateAddresses().size() > 0);
-        System.out.println("privateIp: " + instance.getPrivateAddresses().get(0));
+        //        IaasProvider provider = getProvider();
+        //        IaasDriver driver = IaasDriverFactory.createDriver(provider);
+        //        IaasInstance instance = driver.getInstance(instanceId);
+        //        Assert.assertTrue(instance.getPrivateAddresses().size() > 0);
+        //        System.out.println("privateIp: " + instance.getPrivateAddresses().get(0));
     }
 }

@@ -193,6 +193,14 @@ public class DmrOperations {
         return op;
     }
 
+    public static ModelNode getShutdown(String hostIp) {
+        // /host=172.16.254.173:shutdown
+        ModelNode op = new ModelNode();
+        op.get(OP).set("shutdown");
+        op.get(OP_ADDR).add("host", hostIp);
+        return op;
+    }
+
     public static ModelNode getIaasProviders() {
         ///profile=paas-controller/subsystem=paas-controller:read-children-resources(child-type=provider)
         ModelNode op = new ModelNode();
@@ -213,6 +221,15 @@ public class DmrOperations {
         opAddInstance.get(OP_ADDR).add("instance", instanceId);
         opAddInstance.get("provider").set(provider);
         opAddInstance.get("ip").set(ip);
+        return opAddInstance;
+    }
+
+    public static ModelNode removeInstance(String instanceId) {
+        ModelNode opAddInstance = new ModelNode();
+        opAddInstance.get(OP).set("remove");
+        opAddInstance.get(OP_ADDR).add("profile", "paas-controller");
+        opAddInstance.get(OP_ADDR).add("subsystem", "paas-controller");
+        opAddInstance.get(OP_ADDR).add("instance", instanceId);
         return opAddInstance;
     }
 }

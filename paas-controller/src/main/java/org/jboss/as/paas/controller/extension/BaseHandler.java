@@ -7,7 +7,7 @@ import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.registry.Resource;
-import org.jboss.as.paas.controller.operations.PaasOperation;
+import org.jboss.as.paas.controller.operations.Operation;
 import org.jboss.as.paas.util.Util;
 import org.jboss.logging.Logger;
 
@@ -33,7 +33,7 @@ abstract class BaseHandler {
         return true;
     }
 
-    protected void scheduleOperation(final PaasOperation operation) {
+    protected void scheduleOperation(final Operation operation) {
         //TODO replace with  serviceBuilder.addDependency(ThreadsServices.executorName(executorRef), Executor.class, service.getExecutor());
         new Thread(new Runnable() {
 

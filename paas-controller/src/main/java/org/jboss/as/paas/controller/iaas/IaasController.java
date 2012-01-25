@@ -99,10 +99,10 @@ public class IaasController {
 
         String hostIp = driver.getInstance(instanceId).getPrivateAddresses().get(0);
 
+        driver.terminateInstance(instanceId);
+
         AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
         clusterPaasMngmt.removeRemoteSerer(hostIp);
-
-        driver.terminateInstance(instanceId);
     }
 
     public String getInstanceIp(String providerName, String instanceId) throws Exception {
