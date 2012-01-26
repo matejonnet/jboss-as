@@ -9,6 +9,7 @@ import java.util.Set;
 
 import org.jboss.as.paas.controller.domain.IaasProvider;
 import org.jboss.logging.Logger;
+import org.jboss.security.javaee.exceptions.MissingArgumentsException;
 import org.jclouds.compute.ComputeServiceContext;
 import org.jclouds.compute.ComputeServiceContextFactory;
 import org.jclouds.compute.RunNodesException;
@@ -55,6 +56,11 @@ class JCloudIaasDriver implements IaasDriver {
         // pick the highest version of the RightScale CentOs template
         //Template template = context.getComputeService().templateBuilder().osFamily(OsFamily.CENTOS).build();
 
+        String keyPairName = System.getProperty("iaas.keypair.name");
+        if (keyPairName == null || "".equals(keyPairName)) {
+            throw new MissingArgumentsException("iaas.keypair.name'.");
+        }
+
         Template template;
         try {
             //TODO define instance type (m1.small etc.)
@@ -65,8 +71,8 @@ class JCloudIaasDriver implements IaasDriver {
         }
 
         template.getOptions().as(EC2TemplateOptions.class).securityGroups("default");
-        //TODO use external setting for keypair name
-        template.getOptions().as(EC2TemplateOptions.class).keyPair("test");
+
+        template.getOptions().as(EC2TemplateOptions.class).keyPair(keyPairName);
 
         try {
             Set<? extends NodeMetadata> nodes = context.getComputeService().createNodesInGroup("jboss-as", 1, template);

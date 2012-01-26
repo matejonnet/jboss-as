@@ -14,6 +14,7 @@ import java.security.NoSuchAlgorithmException;
 import org.jboss.as.paas.util.Util;
 import org.jboss.logging.Logger;
 import org.jboss.sasl.util.UsernamePasswordHashUtil;
+import org.jboss.security.javaee.exceptions.MissingArgumentsException;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -24,13 +25,21 @@ public class AsClusterPassManagement {
     private static final Logger log = Logger.getLogger(AsClusterPassManagement.class);
 
     private static final String MANAGEMENT_REALM = "ManagementRealm";
-    //TODO do not use hard coded pass, use system specific string
-    private char[] SECRET_PASS = "test".toCharArray();
+
+    private char[] secretPass;
+
+    public AsClusterPassManagement() {
+        String pass = System.getProperty("serverIdentities.secret");
+        if (pass == null || "".equals(pass)) {
+            throw new MissingArgumentsException("Missing system property 'serverIdentities.secret'.");
+        }
+        this.secretPass = pass.toCharArray();
+    }
 
     public void addRemoteServer(String remoteHostIp) {
         String entry;
         try {
-            String hash = new UsernamePasswordHashUtil().generateHashedHexURP(remoteHostIp, MANAGEMENT_REALM, SECRET_PASS);
+            String hash = new UsernamePasswordHashUtil().generateHashedHexURP(remoteHostIp, MANAGEMENT_REALM, secretPass);
             entry = remoteHostIp + "=" + hash;
         } catch (NoSuchAlgorithmException e) {
             log.error("Cannot hash user password.", e);
@@ -87,6 +96,7 @@ public class AsClusterPassManagement {
                 if (trimmedLine.startsWith(user))
                     continue;
                 writer.write(currentLine);
+                writer.newLine();
             }
         } finally {
             Util.safeClose(reader);
