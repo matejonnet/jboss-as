@@ -33,11 +33,14 @@ import javax.transaction.TransactionSynchronizationRegistry;
 import org.jboss.as.ee.component.Component;
 import org.jboss.as.ee.component.ComponentView;
 import org.jboss.as.ee.component.ViewInstanceFactory;
+import org.jboss.as.ee.component.interceptors.InvocationType;
 import org.jboss.as.ejb3.component.entity.interceptors.EntityBeanHomeCreateInterceptorFactory;
+import org.jboss.as.ejb3.context.CurrentInvocationContext;
 import org.jboss.as.naming.ManagedReference;
 import org.jboss.as.naming.ValueManagedReference;
 import org.jboss.ejb.client.EJBClient;
 import org.jboss.ejb.client.EntityEJBLocator;
+import org.jboss.invocation.InterceptorContext;
 import org.jboss.invocation.Interceptors;
 import org.jboss.msc.value.ImmediateValue;
 
@@ -79,7 +82,7 @@ public class EntityBeanRemoteViewInstanceFactory implements ViewInstanceFactory 
         }
         final EntityBeanComponent entityBeanComponent = (EntityBeanComponent) component;
         //grab an unasociated entity bean from the pool
-        final EntityBeanComponentInstance instance = entityBeanComponent.getPool().get();
+        final EntityBeanComponentInstance instance = entityBeanComponent.acquireUnAssociatedInstance();
 
         //call the ejbCreate method
         final Object primaryKey;
@@ -90,13 +93,17 @@ public class EntityBeanRemoteViewInstanceFactory implements ViewInstanceFactory 
         //note that we do not release it back to the pool
         //the cache will do that when it is expired or removed
         entityBeanComponent.getCache().create(instance);
+        boolean synchronizationRegistered = false;
+        boolean exception = false;
 
+        try {
         invokeEjbPostCreate(contextData, ejbPostCreate, instance, params);
 
         //if a transaction is active we register a sync
         //and if the transaction is rolled back we release the instance back into the pool
 
         final TransactionSynchronizationRegistry transactionSynchronizationRegistry = entityBeanComponent.getTransactionSynchronizationRegistry();
+
         if (transactionSynchronizationRegistry.getTransactionKey() != null) {
             transactionSynchronizationRegistry.registerInterposedSynchronization(new Synchronization() {
                 @Override
@@ -106,12 +113,19 @@ public class EntityBeanRemoteViewInstanceFactory implements ViewInstanceFactory 
 
                 @Override
                 public void afterCompletion(final int status) {
-                    if (status != Status.STATUS_COMMITTED) {
-                        //if the transaction is rolled back we release the instance back into the pool
-                        entityBeanComponent.getPool().release(instance);
-                    }
+                    entityBeanComponent.getCache().release(instance, status == Status.STATUS_COMMITTED);
                 }
             });
+            synchronizationRegistered = true;
+        }
+        } catch (Exception e) {
+            entityBeanComponent.getCache().release(instance, false);
+            exception = true;
+            throw e;
+        } finally {
+            if (!synchronizationRegistered && !exception) {
+                entityBeanComponent.getCache().release(instance, true);
+            }
         }
         return primaryKey;
     }
@@ -125,10 +139,18 @@ public class EntityBeanRemoteViewInstanceFactory implements ViewInstanceFactory 
     }
 
     protected Object invokeEjbCreate(final Map<Object, Object> contextData, final Method ejbCreate, final EntityBeanComponentInstance instance, final Object[] params) throws Exception {
+
+        //there will always be an invocation
+        //as this is only used from home invocations
+        final InterceptorContext context = CurrentInvocationContext.get();
+        final InvocationType invocationType = context.getPrivateData(InvocationType.class);
         try {
+            context.putPrivateData(InvocationType.class, InvocationType.ENTITY_EJB_CREATE);
             return ejbCreate.invoke(instance.getInstance(), params);
         } catch (InvocationTargetException e) {
             throw Interceptors.rethrow(e.getCause());
+        }finally {
+            context.putPrivateData(InvocationType.class, invocationType);
         }
     }
 }

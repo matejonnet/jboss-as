@@ -35,5 +35,4 @@ public class MockCliConfig implements CliConfig {
     public SSLConfig getSslConfig() {
         return null;
     }
-
 }

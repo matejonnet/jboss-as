@@ -29,7 +29,7 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-parent</artifactId>
-        <version>7.1.0.CR1-SNAPSHOT</version>
+        <version>7.1.0.Final-SNAPSHOT</version>
     </parent>
 
     <artifactId>jboss-as-arquillian</artifactId>
@@ -43,7 +43,6 @@
         <module>protocol-jmx</module>
         <module>testenricher-msc</module>
         <module>testng-integration</module>
-        <module>container-managed-domain</module>
         <!--
         <module>container-embedded</module>
         <module>protocol-servlet</module>

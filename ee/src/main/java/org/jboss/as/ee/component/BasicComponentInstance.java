@@ -22,7 +22,6 @@
 
 package org.jboss.as.ee.component;
 
-import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Collections;
@@ -31,14 +30,10 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.jboss.as.ee.component.interceptors.InvocationType;
 import org.jboss.as.naming.ManagedReference;
-import org.jboss.as.naming.ValueManagedReference;
-import org.jboss.as.server.CurrentServiceContainer;
 import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
-import org.jboss.msc.service.ServiceController;
-import org.jboss.msc.service.ServiceName;
-import org.jboss.msc.value.ImmediateValue;
 
 import static org.jboss.as.ee.EeLogger.ROOT_LOGGER;
 import static org.jboss.as.ee.EeMessages.MESSAGES;
@@ -54,9 +49,9 @@ public class BasicComponentInstance implements ComponentInstance {
 
     public static final Object INSTANCE_KEY = new Object();
 
-    private transient BasicComponent component;
-    private transient AtomicReference<ManagedReference> instanceReference;
-    private transient Interceptor preDestroy;
+    private final BasicComponent component;
+    private final AtomicReference<ManagedReference> instanceReference;
+    private final Interceptor preDestroy;
     @SuppressWarnings("unused")
     private volatile int done;
 
@@ -113,12 +108,14 @@ public class BasicComponentInstance implements ComponentInstance {
     /**
      * {@inheritDoc}
      */
-    public void destroy() {
+    public final void destroy() {
         if (doneUpdater.compareAndSet(this, 0, 1)) try {
+            preDestroy();
             final ManagedReference reference = instanceReference.get();
             if (reference != null) {
                 final InterceptorContext interceptorContext = prepareInterceptorContext();
                 interceptorContext.setTarget(reference.getInstance());
+                interceptorContext.putPrivateData(InvocationType.class, InvocationType.PRE_DESTROY);
                 preDestroy.processInvocation(interceptorContext);
             }
         } catch (Exception e) {
@@ -128,32 +125,19 @@ public class BasicComponentInstance implements ComponentInstance {
         }
     }
 
+    /**
+     * Method that sub classes can use to override destroy logic.
+     *
+     */
+    protected void preDestroy() {
+
+    }
+
     protected InterceptorContext prepareInterceptorContext() {
         final InterceptorContext interceptorContext = new InterceptorContext();
         interceptorContext.putPrivateData(Component.class, component);
         interceptorContext.putPrivateData(ComponentInstance.class, this);
         interceptorContext.setContextData(new HashMap<String, Object>());
         return interceptorContext;
-    }
-
-    protected void finalize() {
-        destroy();
-    }
-
-    private void writeObject(java.io.ObjectOutputStream out) throws IOException {
-        out.defaultWriteObject();
-        out.writeUTF(this.component.getCreateServiceName().getCanonicalName());
-        out.writeObject(this.instanceReference.get().getInstance());
-    }
-
-    private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
-        in.defaultReadObject();
-        ServiceName name = ServiceName.parse(in.readUTF());
-        ServiceController<?> service = CurrentServiceContainer.getServiceContainer().getRequiredService(name);
-        this.component = (BasicComponent) service.getValue();
-        BasicComponentInstance basic = this.component.constructComponentInstance(new ValueManagedReference(new ImmediateValue<Object>(in.readObject())), false);
-        this.instanceReference = basic.instanceReference;
-        this.methodMap = basic.methodMap;
-        this.preDestroy = basic.preDestroy;
     }
 }

@@ -22,50 +22,42 @@
 
 package org.jboss.as.test.smoke.embedded.mgmt.datasource;
 
-import static org.jboss.as.arquillian.container.Authentication.getCallbackHandler;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OUTCOME;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RECURSIVE;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESULT;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUCCESS;
-import static org.jboss.as.test.smoke.embedded.mgmt.datasource.DataSourceOperationTestUtil.testConnection;
-import static org.jboss.as.test.smoke.embedded.mgmt.datasource.DataSourceOperationTestUtil.testConnectionXA;
-import static org.jboss.as.test.smoke.embedded.mgmt.datasource.DataSourceOperationTestUtil.marshalAndReparseDsResources;
-import static org.jboss.as.test.integration.management.util.ComplexPropertiesParseUtils.setOperationParams;
-import static org.jboss.as.test.integration.management.util.ComplexPropertiesParseUtils.nonXaDsProperties;
-import static org.jboss.as.test.integration.management.util.ComplexPropertiesParseUtils.xaDsProperties;
-import static org.jboss.as.test.integration.management.util.ComplexPropertiesParseUtils.addExtensionProperties;
-import static org.jboss.as.test.integration.management.util.ComplexPropertiesParseUtils.checkModelParams;
-
-import org.jboss.as.test.integration.management.base.AbstractMgmtTestBase;
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Properties;
-import java.util.Iterator;
 import java.util.List;
+import java.util.Properties;
 
-import org.jboss.as.connector.subsystems.datasources.ModifiableXaDataSource;
 import javax.management.MBeanServerConnection;
 import javax.management.ObjectName;
+import javax.management.remote.JMXConnectorFactory;
+import javax.management.remote.JMXServiceURL;
 
-import org.jboss.as.controller.client.ModelControllerClient;
 import junit.framework.Assert;
 import org.jboss.arquillian.container.test.api.Deployment;
 import org.jboss.arquillian.container.test.api.RunAsClient;
 import org.jboss.arquillian.junit.Arquillian;
-import org.jboss.as.arquillian.container.TunneledMBeanServerConnection;
+import org.jboss.as.connector.subsystems.datasources.ModifiableXaDataSource;
+import org.jboss.as.controller.client.ModelControllerClient;
+import org.jboss.as.test.integration.management.base.AbstractMgmtTestBase;
 import org.jboss.as.test.smoke.embedded.demos.fakejndi.FakeJndi;
 import org.jboss.as.test.smoke.modular.utils.PollingUtils;
 import org.jboss.as.test.smoke.modular.utils.ShrinkWrapUtils;
 import org.jboss.dmr.ModelNode;
 import org.jboss.shrinkwrap.api.Archive;
 import org.junit.AfterClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
+import static org.jboss.as.test.integration.management.util.ComplexPropertiesParseUtils.addExtensionProperties;
+import static org.jboss.as.test.integration.management.util.ComplexPropertiesParseUtils.checkModelParams;
+import static org.jboss.as.test.integration.management.util.ComplexPropertiesParseUtils.nonXaDsProperties;
+import static org.jboss.as.test.integration.management.util.ComplexPropertiesParseUtils.setOperationParams;
+import static org.jboss.as.test.integration.management.util.ComplexPropertiesParseUtils.xaDsProperties;
+import static org.jboss.as.test.smoke.embedded.mgmt.datasource.DataSourceOperationTestUtil.marshalAndReparseDsResources;
+import static org.jboss.as.test.smoke.embedded.mgmt.datasource.DataSourceOperationTestUtil.testConnection;
+import static org.jboss.as.test.smoke.embedded.mgmt.datasource.DataSourceOperationTestUtil.testConnectionXA;
 
 
 /**
@@ -77,6 +69,7 @@ import org.junit.runner.RunWith;
  */
 @RunWith(Arquillian.class)
 @RunAsClient
+
 public class DataSourceOperationsUnitTestCase extends AbstractMgmtTestBase{
 
     @Deployment
@@ -175,7 +168,7 @@ public class DataSourceOperationsUnitTestCase extends AbstractMgmtTestBase{
         remove(address);
 
         Assert.assertNotNull("Reparsing failed:",newList);
-        
+
         Assert.assertNotNull(findNodeWithProperty(newList,"jndi-name","java:jboss/datasources/MyNewDs"));
     }
 
@@ -230,7 +223,7 @@ public class DataSourceOperationsUnitTestCase extends AbstractMgmtTestBase{
         remove(address);
 
         Assert.assertNotNull("Reparsing failed:",newList);
-        
+
         Assert.assertNotNull(findNodeWithProperty(newList,"jndi-name","java:jboss/datasources/MyNewDs"));
     }
 
@@ -403,21 +396,26 @@ public class DataSourceOperationsUnitTestCase extends AbstractMgmtTestBase{
         remove(address);
 
         Assert.assertNotNull("Reparsing failed:",newList);
-        
+
         // remove from xml too
         marshalAndReparseDsResources("xa-data-source",getModelControllerClient());
-        
+
         Assert.assertNotNull(findNodeWithProperty(newList,"jndi-name","java:jboss/datasources/" + jndiDsName));
- 
+
     }
 
     /**
      * AS7-1201 test for en/diable xa datasources
      *
+     * DO NOT RE-ENABLE THIS TEST WITHOUT ACTUALLY FIXING THE PROBLEM
+     *
+     * It fails INTERMITTENTLY. This means that it is not enough to just run it once, decide it passes and submit it.
+     *
      * @throws Exception
      */
     @Test
-    public void DisableAndReEnableXaDs() throws Exception {
+    @Ignore("AS7-3173")
+    public void disableAndReEnableXaDs() throws Exception {
         final String dsName = "XaDsNameDisEn";
         final String jndiDsName = "XaJndiDsNameDisEn";
 
@@ -547,7 +545,7 @@ public class DataSourceOperationsUnitTestCase extends AbstractMgmtTestBase{
         Assert.assertNotNull("Reparsing failed:",newList);
 
         ModifiableXaDataSource jxaDS = null;
-        
+
         try{
             jxaDS = lookup(getModelControllerClient(), xaDsJndi ,ModifiableXaDataSource .class);
 
@@ -557,7 +555,7 @@ public class DataSourceOperationsUnitTestCase extends AbstractMgmtTestBase{
             // must be thrown NameNotFound exception - datasource is unbounded
 
         }
-        
+
         Assert.assertNotNull(findNodeWithProperty(newList,"jndi-name",xaDsJndi));
 
     }
@@ -604,8 +602,16 @@ public class DataSourceOperationsUnitTestCase extends AbstractMgmtTestBase{
         Assert.assertNotNull("Reparsing failed:",newList);
 
         ModelNode rightChild=findNodeWithProperty(newList,"jndi-name",complexDsJndi);
-        
-        Assert.assertTrue(checkModelParams(rightChild, params));
+
+        Assert.assertTrue("node:"+rightChild.asString()+";\nparams"+params,checkModelParams(rightChild, params));
+
+        Assert.assertEquals(rightChild.asString(),"Property2",rightChild.get("valid-connection-checker-properties","name").asString());
+        Assert.assertEquals(rightChild.asString(),"Property4",rightChild.get("exception-sorter-properties","name").asString());
+        Assert.assertEquals(rightChild.asString(),"Property3",rightChild.get("stale-connection-checker-properties","name").asString());
+        Assert.assertEquals(rightChild.asString(),"Property1",rightChild.get("reauth-plugin-properties","name").asString());
+
+        Assert.assertNotNull("connection-properties not propagated ",findNodeWithProperty(newList,"value","UTF-8"));
+
     }
     /**
      * AS7-2720 tests for parsing particular XA-datasource in standalone mode
@@ -630,10 +636,10 @@ public class DataSourceOperationsUnitTestCase extends AbstractMgmtTestBase{
         Properties params=xaDsProperties(complexXaDsJndi);
         setOperationParams(operation, params);
         addExtensionProperties(operation);
+        operation.get("recovery-plugin-properties","name").set("Property5");
+        operation.get("recovery-plugin-properties","name1").set("Property6");
 
-        /* TODO: Properties for Extension type parameters not implemented in DRM
-         * operation.get("recovery-plugin-properties","Property").set("A");
-         */
+
         executeOperation(operation);
 
         final ModelNode xaDatasourcePropertiesAddress = address.clone();
@@ -653,15 +659,139 @@ public class DataSourceOperationsUnitTestCase extends AbstractMgmtTestBase{
         Assert.assertNotNull("Reparsing failed:",newList);
 
         ModelNode rightChild=findNodeWithProperty(newList,"jndi-name",complexXaDsJndi);
-        
-        Assert.assertTrue(checkModelParams(rightChild, params));
+
+        Assert.assertTrue("node:"+rightChild.asString()+";\nparams"+params,checkModelParams(rightChild, params));
+
+        Assert.assertEquals(rightChild.asString(),"Property2",rightChild.get("valid-connection-checker-properties","name").asString());
+        Assert.assertEquals(rightChild.asString(),"Property4",rightChild.get("exception-sorter-properties","name").asString());
+        Assert.assertEquals(rightChild.asString(),"Property3",rightChild.get("stale-connection-checker-properties","name").asString());
+        Assert.assertEquals(rightChild.asString(),"Property1",rightChild.get("reauth-plugin-properties","name").asString());
+        Assert.assertEquals(rightChild.asString(),"Property5",rightChild.get("recovery-plugin-properties","name").asString());
+        Assert.assertEquals(rightChild.asString(),"Property6",rightChild.get("recovery-plugin-properties","name1").asString());
+
+        Assert.assertNotNull("xa-datasource-properties not propagated ",findNodeWithProperty(newList,"value","jdbc:h2:mem:test"));
     }
-    
-    
+
+    @Test
+    @Ignore("AS7-3316")
+    public void testXaDsWithSystemProperties() throws Exception {
+
+    	final ModelNode propAddress=new ModelNode();
+    	propAddress.add("system-property","sql.parameter");
+    	propAddress.protect();
+
+    	final ModelNode propOperation=new ModelNode();
+    	propOperation.get(OP).set("add");
+    	propOperation.get(OP_ADDR).set(propAddress);
+    	propOperation.get("value").set("sa");
+    	executeOperation(propOperation);
+
+        final String dsName = "XaDsName2";
+        final String jndiDsName = "XaJndiDsName2";
+
+        final ModelNode address = new ModelNode();
+        address.add("subsystem", "datasources");
+        address.add("xa-data-source", dsName);
+        address.protect();
+
+        final ModelNode operation = new ModelNode();
+        operation.get(OP).set("add");
+        operation.get(OP_ADDR).set(address);
+
+        operation.get("name").set(dsName);
+        operation.get("jndi-name").set("java:jboss/datasources/" + jndiDsName);
+
+
+        operation.get("driver-name").set("h2");
+        operation.get("pool-name").set(dsName + "_Pool");
+
+        operation.get("user-name").set("${sql.parameter}");
+        operation.get("password").set("${sql.parameter}");
+
+        executeOperation(operation);
+
+        final ModelNode xaDatasourcePropertiesAddress = address.clone();
+        xaDatasourcePropertiesAddress.add("xa-datasource-properties", "URL");
+        xaDatasourcePropertiesAddress.protect();
+        final ModelNode xaDatasourcePropertyOperation = new ModelNode();
+        xaDatasourcePropertyOperation.get(OP).set("add");
+        xaDatasourcePropertyOperation.get(OP_ADDR).set(xaDatasourcePropertiesAddress);
+        xaDatasourcePropertyOperation.get("value").set("jdbc:h2:mem:test");
+
+        executeOperation(xaDatasourcePropertyOperation);
+
+        final ModelNode operation2 = new ModelNode();
+        operation2.get(OP).set("enable");
+        operation2.get(OP_ADDR).set(address);
+
+        executeOperation(operation2);
+
+        testConnectionXA(dsName, getModelControllerClient());
+
+        remove(address);
+        remove(propAddress);
+
+    }
+    /**
+     *  test case for AS7-3316 issue -  datasource with system properties
+     *
+     * @throws Exception
+     */
+    @Test
+    @Ignore("AS7-3316")
+    public void testDsWithSystemProperties() throws Exception {
+    	//System.setProperty("sql.parameter", "sa");
+
+    	final ModelNode propAddress=new ModelNode();
+    	propAddress.add("system-property","sql.parameter");
+    	propAddress.protect();
+
+    	final ModelNode propOperation=new ModelNode();
+    	propOperation.get(OP).set("add");
+    	propOperation.get(OP_ADDR).set(propAddress);
+    	propOperation.get("value").set("sa");
+    	executeOperation(propOperation);
+    	//System.out.println("sql.parameter="+System.getProperty("sql.parameter"));
+
+    	final ModelNode address = new ModelNode();
+        address.add("subsystem", "datasources");
+        address.add("data-source", "MyNewDs");
+        address.protect();
+
+        final ModelNode operation = new ModelNode();
+        operation.get(OP).set("add");
+        operation.get(OP_ADDR).set(address);
+
+        operation.get("name").set("MyNewDs");
+        operation.get("jndi-name").set("java:jboss/datasources/MyNewDs");
+
+
+        operation.get("driver-name").set("h2");
+        operation.get("pool-name").set("MyNewDs_Pool");
+
+        operation.get("connection-url").set("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1");
+        operation.get("user-name").set("${sql.parameter}");
+        operation.get("password").set("${sql.parameter}");
+
+        executeOperation(operation);
+
+        final ModelNode operation2 = new ModelNode();
+        operation2.get(OP).set("enable");
+        operation2.get(OP_ADDR).set(address);
+
+        executeOperation(operation2);
+
+        testConnection("MyNewDs", getModelControllerClient());
+
+        remove(address);
+        remove(propAddress);
+
+    }
+
     private static <T> T lookup(ModelControllerClient client, String name, Class<T> expected) throws Exception {
         //TODO Don't do this FakeJndi stuff once we have remote JNDI working
 
-        MBeanServerConnection mbeanServer = new TunneledMBeanServerConnection(client);
+        MBeanServerConnection mbeanServer = JMXConnectorFactory.connect(new JMXServiceURL("service:jmx:remoting-jmx://127.0.0.1:9999")).getMBeanServerConnection();
         ObjectName objectName = new ObjectName("jboss:name=test,type=fakejndi");
         PollingUtils.retryWithTimeout(10000, new PollingUtils.WaitForMBeanTask(mbeanServer, objectName));
         Object o = mbeanServer.invoke(objectName, "lookup", new Object[] {name}, new String[] {"java.lang.String"});

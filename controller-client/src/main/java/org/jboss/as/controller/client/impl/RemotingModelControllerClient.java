@@ -29,8 +29,10 @@ import java.io.IOException;
 import org.jboss.as.controller.client.ModelControllerClient;
 import org.jboss.as.controller.client.ModelControllerClientConfiguration;
 import org.jboss.as.protocol.ProtocolChannelClient;
+import org.jboss.as.protocol.StreamUtils;
 import org.jboss.as.protocol.mgmt.ManagementClientChannelStrategy;
 import org.jboss.remoting3.Channel;
+import org.jboss.remoting3.CloseHandler;
 import org.jboss.remoting3.Endpoint;
 import org.jboss.remoting3.Remoting;
 import org.jboss.remoting3.remote.RemoteConnectionProviderFactory;
@@ -59,14 +61,18 @@ public class RemotingModelControllerClient extends AbstractModelControllerClient
         synchronized (this) {
             closed = true;
             if (endpoint != null) {
-                endpoint.close();
+                StreamUtils.safeClose(endpoint);
                 endpoint = null;
             }
             if (strategy != null) {
-                strategy.close();
+                StreamUtils.safeClose(strategy);
                 strategy = null;
             }
-            super.shutdownNow();
+            try {
+                super.shutdownNow();
+            } finally {
+                StreamUtils.safeClose(clientConfiguration);
+            }
         }
     }
 
@@ -86,7 +92,14 @@ public class RemotingModelControllerClient extends AbstractModelControllerClient
                 configuration.setEndpointName("management-client");
 
                 final ProtocolChannelClient setup = ProtocolChannelClient.create(configuration);
-                strategy = ManagementClientChannelStrategy.create(setup, this, clientConfiguration.getCallbackHandler(), clientConfiguration.getSaslOptions(), clientConfiguration.getSSLContext());
+                strategy = ManagementClientChannelStrategy.create(setup, this, clientConfiguration.getCallbackHandler(),
+                        clientConfiguration.getSaslOptions(), clientConfiguration.getSSLContext(),
+                        new CloseHandler<Channel>() {
+                    @Override
+                    public void handleClose(final Channel closed, final IOException exception) {
+                        handleChannelClosed(closed, exception);
+                    }
+                });
             } catch (IOException e) {
                 throw e;
             } catch (RuntimeException e) {

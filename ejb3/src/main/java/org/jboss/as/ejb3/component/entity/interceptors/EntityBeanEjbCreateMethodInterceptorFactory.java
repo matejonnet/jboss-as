@@ -30,6 +30,7 @@ import javax.transaction.Synchronization;
 import javax.transaction.TransactionSynchronizationRegistry;
 
 import org.jboss.as.ee.component.Component;
+import org.jboss.as.ee.component.interceptors.InvocationType;
 import org.jboss.as.ejb3.component.entity.EntityBeanComponent;
 import org.jboss.as.ejb3.component.entity.EntityBeanComponentInstance;
 import org.jboss.invocation.Interceptor;
@@ -79,7 +80,7 @@ public class EntityBeanEjbCreateMethodInterceptorFactory implements InterceptorF
                 }
                 final EntityBeanComponent entityBeanComponent = (EntityBeanComponent) component;
                 //grab an unasociated entity bean from the pool
-                final EntityBeanComponentInstance instance = entityBeanComponent.getPool().get();
+                final EntityBeanComponentInstance instance = entityBeanComponent.acquireUnAssociatedInstance();
 
                 //call the ejbCreate method
                 final Object primaryKey = invokeEjbCreate(context, ejbCreate, instance, params);
@@ -94,9 +95,6 @@ public class EntityBeanEjbCreateMethodInterceptorFactory implements InterceptorF
                 boolean exception = false;
                 entityBeanComponent.getCache().create(instance);
 
-                //we reference the entity immedietly
-                //and release our reference once the create method or the current tx finishes
-                entityBeanComponent.getCache().reference(instance);
                 try {
 
                     invokeEjbPostCreate(context, ejbPostCreate, instance, params);
@@ -115,9 +113,6 @@ public class EntityBeanEjbCreateMethodInterceptorFactory implements InterceptorF
                             @Override
                             public void afterCompletion(final int status) {
                                 entityBeanComponent.getCache().release(instance, status == Status.STATUS_COMMITTED);
-                                if (status != Status.STATUS_COMMITTED) {
-                                    entityBeanComponent.getPool().release(instance);
-                                }
                             }
                         });
                         synchronizationRegistered = true;
@@ -125,6 +120,7 @@ public class EntityBeanEjbCreateMethodInterceptorFactory implements InterceptorF
                     return context.proceed();
                 } catch (Exception e) {
                     entityBeanComponent.getCache().release(instance, false);
+                    exception = true;
                     throw e;
                 } finally {
                     if (!synchronizationRegistered && !exception) {
@@ -147,10 +143,14 @@ public class EntityBeanEjbCreateMethodInterceptorFactory implements InterceptorF
     }
 
     protected Object invokeEjbCreate(final InterceptorContext context, final Method ejbCreate, final EntityBeanComponentInstance instance, final Object[] params) throws Exception {
+        final InvocationType invocationType = context.getPrivateData(InvocationType.class);
         try {
+            context.putPrivateData(InvocationType.class, InvocationType.ENTITY_EJB_CREATE);
             return ejbCreate.invoke(instance.getInstance(), params);
         } catch (InvocationTargetException e) {
             throw Interceptors.rethrow(e.getCause());
+        } finally {
+            context.putPrivateData(InvocationType.class, invocationType);
         }
     }
 }

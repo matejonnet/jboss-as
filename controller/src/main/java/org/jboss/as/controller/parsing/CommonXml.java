@@ -23,16 +23,17 @@
 package org.jboss.as.controller.parsing;
 
 import static javax.xml.stream.XMLStreamConstants.END_ELEMENT;
-import static org.jboss.as.controller.ControllerLogger.ROOT_LOGGER;
 import static org.jboss.as.controller.ControllerMessages.MESSAGES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ANY;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ARCHIVE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.BOOT_TIME;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CLIENT_MAPPINGS;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CORE_SERVICE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DEPLOYMENT;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESTINATION_ADDRESS;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESTINATION_PORT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ENABLED;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.EXTENSION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.FIXED_PORT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.FIXED_SOURCE_PORT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HASH;
@@ -58,11 +59,11 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOC
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOCKET_BINDING_PORT_OFFSET;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOCKET_BINDING_REF;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOURCE_INTERFACE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOURCE_NETWORK;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOURCE_PORT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SYSTEM_PROPERTY;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VAULT;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VAULT_OPTION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VAULT_OPTIONS;
 import static org.jboss.as.controller.parsing.ParseUtils.duplicateNamedElement;
 import static org.jboss.as.controller.parsing.ParseUtils.invalidAttributeValue;
@@ -71,7 +72,6 @@ import static org.jboss.as.controller.parsing.ParseUtils.missingRequired;
 import static org.jboss.as.controller.parsing.ParseUtils.missingRequiredElement;
 import static org.jboss.as.controller.parsing.ParseUtils.parseBoundedIntegerAttribute;
 import static org.jboss.as.controller.parsing.ParseUtils.parsePossibleExpression;
-import static org.jboss.as.controller.parsing.ParseUtils.readStringAttributeElement;
 import static org.jboss.as.controller.parsing.ParseUtils.requireAttributes;
 import static org.jboss.as.controller.parsing.ParseUtils.requireNamespace;
 import static org.jboss.as.controller.parsing.ParseUtils.requireNoAttributes;
@@ -89,21 +89,16 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 
+import javax.xml.stream.Location;
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
 
-import org.jboss.as.controller.Extension;
 import org.jboss.as.controller.HashUtil;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
+import org.jboss.as.controller.interfaces.InetAddressUtil;
 import org.jboss.as.controller.operations.common.JVMHandlers;
 import org.jboss.as.controller.operations.common.NamespaceAddHandler;
 import org.jboss.as.controller.operations.common.SchemaLocationAddHandler;
@@ -114,10 +109,6 @@ import org.jboss.as.controller.resource.SocketBindingGroupResourceDefinition;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 import org.jboss.dmr.Property;
-import org.jboss.modules.Module;
-import org.jboss.modules.ModuleIdentifier;
-import org.jboss.modules.ModuleLoadException;
-import org.jboss.modules.ModuleLoader;
 import org.jboss.staxmapper.XMLElementReader;
 import org.jboss.staxmapper.XMLElementWriter;
 import org.jboss.staxmapper.XMLExtendedStreamReader;
@@ -157,20 +148,11 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
 
     private static final char[] NEW_LINE = new char[]{'\n'};
 
-    protected final ModuleLoader moduleLoader;
-    private final ExecutorService bootExecutor;
-
-    protected CommonXml(final ModuleLoader loader, ExecutorService executorService) {
-        moduleLoader = loader;
-        bootExecutor = executorService;
+    protected CommonXml() {
     }
 
     protected String getDefaultName() {
-        try {
-            return InetAddress.getLocalHost().getHostName();
-        } catch (UnknownHostException e) {
-            throw MESSAGES.cannotDetermineDefaultName(e);
-        }
+        return InetAddressUtil.getLocalHostName();
     }
 
     protected void parseNamespaces(final XMLExtendedStreamReader reader, final ModelNode address, final List<ModelNode> nodes) {
@@ -264,18 +246,6 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
         writer.writeStartElement(element.getLocalName());
     }
 
-    protected void writeExtensions(final XMLExtendedStreamWriter writer, final ModelNode modelNode) throws XMLStreamException {
-        Set<String> keys = modelNode.keys();
-        if (keys.size() > 0) {
-            writer.writeStartElement(Element.EXTENSIONS.getLocalName());
-            for (final String extension : keys) {
-                writer.writeEmptyElement(Element.EXTENSION.getLocalName());
-                writer.writeAttribute(Attribute.MODULE.getLocalName(), extension);
-            }
-            writer.writeEndElement();
-        }
-    }
-
     protected void writePaths(final XMLExtendedStreamWriter writer, final ModelNode node) throws XMLStreamException {
         List<Property> paths = node.asPropertyList();
         if (paths.size() > 0) {
@@ -292,114 +262,6 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
             }
             writer.writeEndElement();
         }
-    }
-
-    protected void parseExtensions(final XMLExtendedStreamReader reader, final ModelNode address, final Namespace expectedNs, final List<ModelNode> list)
-            throws XMLStreamException {
-
-        long start = System.currentTimeMillis();
-
-        requireNoAttributes(reader);
-
-        final Set<String> found = new HashSet<String>();
-
-        final ExtensionParsingContextImpl context = new ExtensionParsingContextImpl(reader.getXMLMapper());
-
-        final Map<String, Future<XMLStreamException>> loadFutures = bootExecutor != null
-                ? new LinkedHashMap<String, Future<XMLStreamException>>() : null;
-
-        while (reader.hasNext() && reader.nextTag() != END_ELEMENT) {
-            requireNamespace(reader, expectedNs);
-            final Element element = Element.forName(reader.getLocalName());
-            if (element != Element.EXTENSION) {
-                throw unexpectedElement(reader);
-            }
-
-            // One attribute && require no content
-            final String moduleName = readStringAttributeElement(reader, Attribute.MODULE.getLocalName());
-
-            if (!found.add(moduleName)) {
-                // duplicate module name
-                throw invalidAttributeValue(reader, 0);
-            }
-
-            if (loadFutures != null) {
-                // Load the module asynchronously
-                Callable<XMLStreamException> callable = new Callable<XMLStreamException>() {
-                    @Override
-                    public XMLStreamException call() throws Exception {
-                        return loadModule(moduleName, context);
-                    }
-                };
-                Future<XMLStreamException> future = bootExecutor.submit(callable);
-                loadFutures.put(moduleName, future);
-            } else {
-                // Load the module from this thread
-                XMLStreamException xse = loadModule(moduleName, context);
-                if (xse != null) {
-                    throw xse;
-                }
-                addExtensionAddOperation(address, list, moduleName);
-            }
-
-        }
-
-        if (loadFutures != null) {
-            for (Map.Entry<String, Future<XMLStreamException>> entry : loadFutures.entrySet()) {
-
-                try {
-                    XMLStreamException xse = entry.getValue().get();
-                    if (xse != null) {
-                        throw xse;
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw MESSAGES.moduleLoadingInterrupted(entry.getKey());
-                } catch (ExecutionException e) {
-                    throw MESSAGES.failedToLoadModule(e, entry.getKey());
-                }
-
-                addExtensionAddOperation(address, list, entry.getKey());
-            }
-        }
-
-        long elapsed = System.currentTimeMillis() - start;
-        if (ROOT_LOGGER.isDebugEnabled()) {
-            ROOT_LOGGER.debugf("Parsed extensions in [%d] ms", elapsed);
-        }
-    }
-
-    private void addExtensionAddOperation(ModelNode address, List<ModelNode> list, String moduleName) {
-        final ModelNode add = new ModelNode();
-        add.get(OP_ADDR).set(address).add(EXTENSION, moduleName);
-        add.get(OP).set(ADD);
-        list.add(add);
-    }
-
-    private XMLStreamException loadModule(final String moduleName, final ExtensionParsingContext context) throws XMLStreamException {
-        // Register element handlers for this extension
-        try {
-            final Module module = moduleLoader.loadModule(ModuleIdentifier.fromString(moduleName));
-            boolean initialized = false;
-            for (final Extension extension : module.loadService(Extension.class)) {
-                ClassLoader oldTccl = SecurityActions.setThreadContextClassLoader(extension.getClass());
-                try {
-                    extension.initializeParsers(context);
-                } finally {
-                    SecurityActions.setThreadContextClassLoader(oldTccl);
-                }
-                if (!initialized) {
-                    initialized = true;
-                }
-            }
-            if (!initialized) {
-                throw MESSAGES.notFound("META-INF/services/", Extension.class.getName(), module.getIdentifier());
-            }
-            return null;
-        } catch (final ModuleLoadException e) {
-            throw MESSAGES.failedToLoadModule(e);
-        }
-
     }
 
     protected void parseFSBaseType(final XMLExtendedStreamReader reader, final ModelNode parent, final boolean isArchive)
@@ -1161,32 +1023,38 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
                 final String value = reader.getAttributeValue(0);
                 requireNoContent(reader);
 
-                final String[] split = value.split("/");
-                try {
-                    if (split.length != 2) {
-                        throw new XMLStreamException(MESSAGES.invalidAddressMaskValue(value), reader.getLocation());
-                    }
-                    // todo - possible DNS hit here
-                    final InetAddress addr = InetAddress.getByName(split[0]);
-                    // Validate both parts of the split
-                    addr.getAddress();
-                    Integer.parseInt(split[1]);
-                    if(nested) {
-                        subModel.get(localName).add(value);
-                    } else {
-                        subModel.get(localName).set(value);
-                    }
-                    break;
-                } catch (final NumberFormatException e) {
-                    throw new XMLStreamException(MESSAGES.invalidAddressMask(split[0], e.getLocalizedMessage()),
-                            reader.getLocation(), e);
-                } catch (final UnknownHostException e) {
-                    throw new XMLStreamException(MESSAGES.invalidAddressValue(split[1], e.getLocalizedMessage()),
-                            reader.getLocation(), e);
+                validateAddressMask(value, reader.getLocation());
+
+                if(nested) {
+                    subModel.get(localName).add(value);
+                } else {
+                    subModel.get(localName).set(value);
                 }
+                break;
             }
             default:
                 throw unexpectedElement(reader);
+        }
+    }
+
+    private void validateAddressMask(String value, Location location) throws XMLStreamException {
+        final String[] split = value.split("/");
+        try {
+            if (split.length != 2) {
+                throw new XMLStreamException(MESSAGES.invalidAddressMaskValue(value), location);
+            }
+            // todo - possible DNS hit here
+            final InetAddress addr = InetAddress.getByName(split[0]);
+            // Validate both parts of the split
+            addr.getAddress();
+            Integer.parseInt(split[1]);
+
+        } catch (final NumberFormatException e) {
+            throw new XMLStreamException(MESSAGES.invalidAddressMask(split[1], e.getLocalizedMessage()),
+                    location, e);
+        } catch (final UnknownHostException e) {
+            throw new XMLStreamException(MESSAGES.invalidAddressValue(split[0], e.getLocalizedMessage()),
+                    location, e);
         }
     }
 
@@ -1351,10 +1219,62 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
             throw missingRequired(reader, required);
         }
         // Handle elements
-        requireNoContent(reader);
+            // Handle elements
+        while (reader.nextTag() != END_ELEMENT) {
+            final Element element = Element.forName(reader.getLocalName());
+            switch (element) {
+                case CLIENT_MAPPING:
+                    binding.get(CLIENT_MAPPINGS).add(parseClientMapping(reader));
+                    break;
+                default:
+                    throw unexpectedElement(reader);
+            }
+        }
 
         updates.add(binding);
         return name;
+    }
+
+    private ModelNode parseClientMapping(XMLExtendedStreamReader reader) throws XMLStreamException {
+        final ModelNode mapping = new ModelNode();
+
+        // Ensure all fields exist, even if not defined
+        final ModelNode sourceNetwork = mapping.get(SOURCE_NETWORK);
+        final ModelNode destination = mapping.get(DESTINATION_ADDRESS);
+        final ModelNode destinationPort = mapping.get(DESTINATION_PORT);
+        final int count = reader.getAttributeCount();
+        for (int i = 0; i < count; i++) {
+            final String value = reader.getAttributeValue(i);
+            if (!isNoNamespaceAttribute(reader, i)) {
+                throw unexpectedAttribute(reader, i);
+            }
+
+            final Attribute attribute = Attribute.forName(reader.getAttributeLocalName(i));
+            switch (attribute) {
+                case SOURCE_NETWORK:
+                    validateAddressMask(value, reader.getLocation());
+                    sourceNetwork.set(value);
+                    break;
+                case DESTINATION_ADDRESS:
+                    if (value == null || value.isEmpty()) {
+                        throw invalidAttributeValue(reader, i);
+                    }
+                    // We can't validate the address since the client is allowed to resolve private DNS names
+                    destination.set(value);
+                    break;
+                case DESTINATION_PORT: {
+                    destinationPort.set(parseBoundedIntegerAttribute(reader, i, 0, 65535, true));
+                    break;
+                }
+            }
+        }
+        if (!destination.isDefined()) {
+            throw MESSAGES.missingRequiredAttributes(new StringBuilder(DESTINATION_ADDRESS), reader.getLocation());
+        }
+
+        requireNoContent(reader);
+
+        return mapping;
     }
 
     protected String parseOutboundSocketBinding(final XMLExtendedStreamReader reader, final Set<String> interfaces,
@@ -1843,7 +1763,32 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
                 if (attr.isDefined()) {
                     writeAttribute(writer, Attribute.MULTICAST_PORT, attr.asString());
                 }
+
+
+                attr = binding.get(CLIENT_MAPPINGS);
+                if (attr.isDefined()) {
+                    for (ModelNode mapping : attr.asList()) {
+                        writer.writeEmptyElement(Element.CLIENT_MAPPING.getLocalName());
+
+                        attr = mapping.get(SOURCE_NETWORK);
+                        if (attr.isDefined()) {
+                            writeAttribute(writer, Attribute.SOURCE_NETWORK, attr.asString());
+                        }
+
+                        attr = mapping.get(DESTINATION_ADDRESS);
+                        if (attr.isDefined()) {
+                            writeAttribute(writer, Attribute.DESTINATION_ADDRESS, attr.asString());
+                        }
+
+                        attr = mapping.get(DESTINATION_PORT);
+                        if (attr.isDefined()) {
+                            writeAttribute(writer, Attribute.DESTINATION_PORT, attr.asString());
+                        }
+                    }
+                }
+
                 writer.writeEndElement();
+
             }
         }
         // outbound-socket-binding (for local destination)
@@ -2055,8 +2000,8 @@ public abstract class CommonXml implements XMLElementReader<List<ModelNode>>, XM
             writer.writeAttribute(Attribute.CODE.getLocalName(), code);
         }
 
-        if (vault.hasDefined(VAULT_OPTION)) {
-            ModelNode properties = vault.get(VAULT_OPTION);
+        if (vault.hasDefined(VAULT_OPTIONS)) {
+            ModelNode properties = vault.get(VAULT_OPTIONS);
             for (Property prop : properties.asPropertyList()) {
                 writer.writeEmptyElement(Element.VAULT_OPTION.getLocalName());
                 writer.writeAttribute(Attribute.NAME.getLocalName(), prop.getName());

@@ -4,6 +4,7 @@
 
     <extensions>
         <extension module="org.jboss.as.clustering.infinispan"/>
+        <extension module="org.jboss.as.configadmin"/>
         <extension module="org.jboss.as.connector"/>
         <extension module="org.jboss.as.deployment-scanner"/>
         <extension module="org.jboss.as.ee"/>
@@ -85,6 +86,7 @@
                 </handlers>
             </root-logger>
         </subsystem>
+        <subsystem xmlns="urn:jboss:domain:configadmin:1.0"/>
         <subsystem xmlns="urn:jboss:domain:datasources:1.0">
             <datasources>
                 <datasource jndi-name="java:jboss/datasources/ExampleDS" enabled="true" use-java-context="true"
@@ -139,20 +141,26 @@
             </timer-service>
             <remote connector-ref="remoting-connector" thread-pool-name="default"/>
             <thread-pools>
-                <thread-pool name="default" max-threads="10" keepalive-time="100"/>
+                <thread-pool name="default">
+                    <max-threads count="10"/>
+                    <keepalive-time time="100" unit="milliseconds"/>
+                </thread-pool>
             </thread-pools>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:infinispan:1.1" default-cache-container="hibernate">
             <cache-container name="hibernate" default-cache="local-query">
                 <local-cache name="entity">
+                    <transaction mode="NON_XA"/>
                     <eviction strategy="LRU" max-entries="10000"/>
                     <expiration max-idle="100000"/>
                 </local-cache>
                 <local-cache name="local-query">
+                    <transaction mode="NONE"/>
                     <eviction strategy="LRU" max-entries="10000"/>
                     <expiration max-idle="100000"/>
                 </local-cache>
                 <local-cache name="timestamps">
+                    <transaction mode="NONE"/>
                     <eviction strategy="NONE"/>
                 </local-cache>
             </cache-container>
@@ -172,16 +180,16 @@
             <archive-validation enabled="false"/>
             <bean-validation enabled="false"/>
             <default-workmanager>
-                <short-running-threads blocking="true">
-                    <core-threads count="10" per-cpu="20"/>
-                    <queue-length count="10" per-cpu="20"/>
-                    <max-threads count="10" per-cpu="20"/>
+                <short-running-threads>
+                    <core-threads count="50"/>
+                    <queue-length count="50"/>
+                    <max-threads count="50"/>
                     <keepalive-time time="10" unit="seconds"/>
                 </short-running-threads>
-                <long-running-threads blocking="true">
-                    <core-threads count="10" per-cpu="20"/>
-                    <queue-length count="10" per-cpu="20"/>
-                    <max-threads count="10" per-cpu="20"/>
+                <long-running-threads>
+                    <core-threads count="50"/>
+                    <queue-length count="50"/>
+                    <max-threads count="50"/>
                     <keepalive-time time="10" unit="seconds"/>
                 </long-running-threads>
             </default-workmanager>
@@ -200,12 +208,12 @@
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:messaging:1.1">
             <hornetq-server>
-                <!-- disable messaging persistence -->
-                <persistence-enabled>false</persistence-enabled>
-                <!-- Default journal file size is 10Mb, reduced here to 100k for faster first boot -->
+   		       <clustered>true</clustered>
+                <shared-store>true</shared-store>
+                <persistence-enabled>true</persistence-enabled>
                 <journal-file-size>102400</journal-file-size>
                 <journal-min-files>2</journal-min-files>
-                <journal-type>NIO</journal-type>
+                <journal-type>ASYNCIO</journal-type>
 
                 <connectors>
                     <netty-connector name="netty" socket-binding="messaging"/>
@@ -223,6 +231,31 @@
                     </netty-acceptor>
                     <in-vm-acceptor name="in-vm" server-id="0"/>
                 </acceptors>
+
+               <broadcast-groups>
+                  <broadcast-group name="bg-group1">
+                     <group-address>231.7.7.7</group-address>
+                     <group-port>9876</group-port>
+                     <broadcast-period>5000</broadcast-period>
+                     <connector-ref>netty</connector-ref>
+                  </broadcast-group>
+               </broadcast-groups>
+
+               <discovery-groups>
+                  <discovery-group name="dg-group1">
+                     <group-address>231.7.7.7</group-address>
+                     <group-port>9876</group-port>
+                     <refresh-timeout>10000</refresh-timeout>
+                  </discovery-group>
+               </discovery-groups>
+
+               <cluster-connections>
+                  <cluster-connection name="my-cluster">
+                     <address>jms</address>
+                     <connector-ref>netty</connector-ref>
+                     <discovery-group-ref discovery-group-name="dg-group1"/>
+                  </cluster-connection>
+               </cluster-connections>
 
                 <security-settings>
                     <security-setting match="#">
@@ -284,80 +317,66 @@
                 </jms-destinations>
             </hornetq-server>
             <hornetq-server name="backup-server">
+   		       <clustered>true</clustered>
                 <backup>true</backup>
                 <shared-store>true</shared-store>
+                <persistence-enabled>true</persistence-enabled>
+                <journal-file-size>102400</journal-file-size>
+                <journal-min-files>2</journal-min-files>
+                <journal-type>ASYNCIO</journal-type>
                 <journal-directory path="messagingjournal2"/>
                 <bindings-directory path="messagingbindings2"/>
                 <paging-directory path="messagingpaging2"/>
                 <large-messages-directory path="messaginglargemessages2"/>
+                <connectors>
+                    <netty-connector name="netty" socket-binding="messaging-backup"/>
+                    <in-vm-connector name="in-vm" server-id="0"/>
+                </connectors>
                 <acceptors>
                     <netty-acceptor name="netty" socket-binding="messaging-backup"/>
                 </acceptors>
+	        <broadcast-groups>
+		      <broadcast-group name="bg-group1">
+			 <group-address>231.7.7.7</group-address>
+			 <group-port>9876</group-port>
+			 <broadcast-period>5000</broadcast-period>
+			 <connector-ref>netty</connector-ref>
+		      </broadcast-group>
+		   </broadcast-groups>
+
+		   <discovery-groups>
+		      <discovery-group name="dg-group1">
+			 <group-address>231.7.7.7</group-address>
+			 <group-port>9876</group-port>
+			 <refresh-timeout>10000</refresh-timeout>
+		      </discovery-group>
+		   </discovery-groups>
+
+		   <cluster-connections>
+		      <cluster-connection name="my-cluster">
+			 <address>jms</address>
+			 <connector-ref>netty</connector-ref>
+			      <discovery-group-ref discovery-group-name="dg-group1"/>
+		      </cluster-connection>
+		   </cluster-connections>
             </hornetq-server>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:naming:1.1"/>
-        <subsystem xmlns="urn:jboss:domain:osgi:1.1" activation="lazy">
-            <configuration pid="org.apache.felix.webconsole.internal.servlet.OsgiManager">
-                <property name="manager.root" value="jboss-osgi"/>
-            </configuration>
+        <subsystem xmlns="urn:jboss:domain:osgi:1.2" activation="lazy">
             <properties>
-                <!--
-                    A comma seperated list of module identifiers. Each system module
-                    is added as a dependency to the OSGi framework module. The packages
-                    from these system modules can be made visible as framework system packages.
-                    http://www.osgi.org/javadoc/r4v42/org/osgi/framework/Constants.html#FRAMEWORK_SYSTEMPACKAGES_EXTRA
-                -->
-                <property name="org.jboss.osgi.system.modules">
-                org.apache.commons.logging,
-                org.apache.log4j,
-                org.jboss.as.osgi,
-                org.slf4j,
-                </property>
-                <!--
-                    Framework environment property identifying extra packages which the system bundle
-                    must export from the current execution environment
-                -->
-                <property name="org.osgi.framework.system.packages.extra">
-                org.apache.commons.logging;version=1.1.1,
-                org.apache.log4j;version=1.2,
-                org.jboss.as.osgi.service;version=7.0,
-                org.jboss.osgi.deployment.interceptor;version=1.0,
-                org.jboss.osgi.spi.capability;version=1.0,
-                org.jboss.osgi.spi.util;version=1.0,
-                org.jboss.osgi.testing;version=1.0,
-                org.jboss.osgi.vfs;version=1.0,
-                org.slf4j;version=1.5.10,
-                </property>
                 <!-- Specifies the beginning start level of the framework -->
                 <property name="org.osgi.framework.startlevel.beginning">1</property>
             </properties>
             <capabilities>
                 <!-- modules registered with the OSGi layer on startup -->
-                <capability name="javaee.api"/>
-                <capability name="org.jboss.logging"/>
-                <!-- bundles installed on startup -->
-                <capability name="org.apache.aries.util"/>
-                <capability name="org.jboss.osgi.webconsole"/>
-                <capability name="org.osgi.compendium"/>
+                <capability name="javax.servlet.api"/>
+                <capability name="javax.transaction.api"/>
                 <!-- bundles started in startlevel 1 -->
                 <capability name="org.apache.felix.log" startlevel="1"/>
                 <capability name="org.jboss.osgi.logging" startlevel="1"/>
                 <capability name="org.apache.felix.configadmin" startlevel="1"/>
                 <capability name="org.jboss.as.osgi.configadmin" startlevel="1"/>
-                <!-- bundles started in startlevel 2 -->
-                <capability name="org.apache.aries.jmx" startlevel="2"/>
-                <capability name="org.apache.felix.eventadmin" startlevel="2"/>
-                <capability name="org.apache.felix.metatype" startlevel="2"/>
-                <capability name="org.apache.felix.scr" startlevel="2"/>
-                <capability name="org.apache.felix.webconsole" startlevel="2"/>
-                <capability name="org.jboss.netty" startlevel="2"/>
-                <capability name="org.jboss.osgi.jmx" startlevel="2"/>
-                <capability name="org.jboss.osgi.http" startlevel="2"/>
-                <capability name="org.projectodd.stilts" startlevel="2"/>
-                <!-- bundles started in startlevel 3 -->
-                <capability name="org.jboss.osgi.blueprint" startlevel="3"/>
-                <capability name="org.jboss.osgi.webapp" startlevel="3"/>
-                <capability name="org.jboss.osgi.xerces" startlevel="3"/>
+                <capability name="org.jboss.osgi.repository" startlevel="1"/>
             </capabilities>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:remoting:1.0">
@@ -404,7 +423,7 @@
             <endpoint-config>
                 <jaxwsconfig:config-name>Recording-Endpoint-Config</jaxwsconfig:config-name>
                 <jaxwsconfig:pre-handler-chains>
-                    <javaee:handler-chain xmlns="http://java.sun.com/xml/ns/javaee">
+                    <javaee:handler-chain xmlns="http://java.sun.com/xml/ns/javaee" id="recording-handlers">
                             <javaee:protocol-bindings>##SOAP11_HTTP ##SOAP11_HTTP_MTOM ##SOAP12_HTTP ##SOAP12_HTTP_MTOM</javaee:protocol-bindings>
                         <javaee:handler>
                             <javaee:handler-name>RecordingHandler</javaee:handler-name>

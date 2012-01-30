@@ -37,13 +37,14 @@ import org.jboss.as.ejb3.EjbMessages;
 import org.jboss.as.ejb3.component.EJBComponentCreateService;
 import org.jboss.as.ejb3.component.EJBComponentCreateServiceFactory;
 import org.jboss.as.ejb3.component.InvokeMethodOnTargetInterceptor;
-import org.jboss.as.ejb3.component.entity.interceptors.DisableTimerServiceInterceptorFactory;
 import org.jboss.as.ejb3.component.interceptors.CurrentInvocationContextInterceptor;
+import org.jboss.as.ejb3.component.pool.PoolConfig;
 import org.jboss.as.ejb3.deployment.ApplicationExceptions;
 import org.jboss.invocation.ImmediateInterceptorFactory;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.Interceptors;
 import org.jboss.metadata.ejb.spec.EntityBeanMetaData;
+import org.jboss.msc.value.InjectedValue;
 
 /**
  * @author Stuart Douglas
@@ -65,6 +66,8 @@ public class EntityBeanComponentCreateService extends EJBComponentCreateService 
     private final InterceptorFactory ejbActivate;
     private final InterceptorFactory ejbPassivate;
     private final InterceptorFactory unsetEntityContext;
+    private final InjectedValue<PoolConfig> poolConfig = new InjectedValue<PoolConfig>();
+    private final InjectedValue<Boolean> defaultOptimisticLocking = new InjectedValue<Boolean>();
 
     public EntityBeanComponentCreateService(final ComponentConfiguration componentConfiguration, final ApplicationExceptions ejbJarConfiguration) {
         super(componentConfiguration, ejbJarConfiguration);
@@ -122,7 +125,7 @@ public class EntityBeanComponentCreateService extends EJBComponentCreateService 
         this.ejbLoad = Interceptors.getChainedInterceptorFactory(tcclInterceptorFactory, namespaceContextInterceptorFactory, CurrentInvocationContextInterceptor.FACTORY, invokeMethodOnTarget(ejbLoad));
         this.ejbStore = Interceptors.getChainedInterceptorFactory(tcclInterceptorFactory, namespaceContextInterceptorFactory, CurrentInvocationContextInterceptor.FACTORY, invokeMethodOnTarget(ejbStore));
         this.ejbPassivate = Interceptors.getChainedInterceptorFactory(tcclInterceptorFactory, namespaceContextInterceptorFactory, CurrentInvocationContextInterceptor.FACTORY, invokeMethodOnTarget(ejbPassivate));
-        this.unsetEntityContext = Interceptors.getChainedInterceptorFactory(tcclInterceptorFactory, namespaceContextInterceptorFactory, CurrentInvocationContextInterceptor.FACTORY, new DisableTimerServiceInterceptorFactory("unsetEntityContext"), invokeMethodOnTarget(unsetEntityContext));
+        this.unsetEntityContext = Interceptors.getChainedInterceptorFactory(tcclInterceptorFactory, namespaceContextInterceptorFactory, CurrentInvocationContextInterceptor.FACTORY, invokeMethodOnTarget(unsetEntityContext));
     }
 
     private Class<?> load(ClassLoader classLoader, String ejbClass) {
@@ -212,5 +215,21 @@ public class EntityBeanComponentCreateService extends EJBComponentCreateService 
 
     public InterceptorFactory getUnsetEntityContext() {
         return unsetEntityContext;
+    }
+
+    public PoolConfig getPoolConfig() {
+        return this.poolConfig.getOptionalValue();
+    }
+
+    public InjectedValue<PoolConfig> getPoolConfigInjector() {
+        return this.poolConfig;
+    }
+
+    public Boolean getOptimisticLocking() {
+        return defaultOptimisticLocking.getOptionalValue();
+    }
+
+    public InjectedValue<Boolean> getOptimisticLockingInjector() {
+        return defaultOptimisticLocking;
     }
 }

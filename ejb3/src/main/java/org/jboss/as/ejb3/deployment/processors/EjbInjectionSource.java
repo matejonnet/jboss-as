@@ -59,21 +59,24 @@ public class EjbInjectionSource extends InjectionSource {
     private final String typeName;
     private final String bindingName;
     private final DeploymentUnit deploymentUnit;
+    private final boolean appclient;
     private volatile String error = null;
     private volatile ServiceName resolvedViewName;
     private volatile RemoteViewManagedReferenceFactory remoteFactory;
     private volatile boolean resolved = false;
 
-    public EjbInjectionSource(final String beanName, final String typeName, final String bindingName, final DeploymentUnit deploymentUnit) {
+    public EjbInjectionSource(final String beanName, final String typeName, final String bindingName, final DeploymentUnit deploymentUnit, final boolean appclient) {
         this.beanName = beanName;
         this.typeName = typeName;
         this.bindingName = bindingName;
         this.deploymentUnit = deploymentUnit;
+        this.appclient = appclient;
     }
 
-    public EjbInjectionSource(final String typeName, final String bindingName, final DeploymentUnit deploymentUnit) {
+    public EjbInjectionSource(final String typeName, final String bindingName, final DeploymentUnit deploymentUnit, final boolean appclient) {
         this.bindingName = bindingName;
         this.deploymentUnit = deploymentUnit;
+        this.appclient = appclient;
         this.beanName = null;
         this.typeName = typeName;
     }
@@ -88,7 +91,9 @@ public class EjbInjectionSource extends InjectionSource {
         if (remoteFactory != null) {
             //because we are using the ejb: lookup namespace we do not need a dependency
             injector.inject(remoteFactory);
-        } else {
+        } else if (!appclient) {
+            //we do not add a dependency if this is the appclient
+            //as local injections are simply ignored
             serviceBuilder.addDependency(resolvedViewName, ComponentView.class, new ViewManagedReferenceFactory.Injector(injector));
         }
     }
@@ -152,7 +157,7 @@ public class EjbInjectionSource extends InjectionSource {
         if (beanName != null) {
             componentsForViewName = applicationDescription.getComponents(beanName, typeName, deploymentRoot.getRoot());
         } else {
-            componentsForViewName = applicationDescription.getComponentsForViewName(typeName);
+            componentsForViewName = applicationDescription.getComponentsForViewName(typeName, deploymentRoot.getRoot());
         }
         return componentsForViewName;
     }

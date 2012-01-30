@@ -26,12 +26,11 @@ package org.jboss.as.ejb3;
 
 import static org.jboss.logging.Logger.Level.ERROR;
 import static org.jboss.logging.Logger.Level.INFO;
-import static org.jboss.logging.Logger.Level.TRACE;
 import static org.jboss.logging.Logger.Level.WARN;
 
 import java.io.File;
-import java.io.Serializable;
 import java.lang.reflect.Method;
+import java.util.Date;
 
 import javax.ejb.Timer;
 
@@ -318,7 +317,7 @@ public interface EjbLogger extends BasicLogger {
     void discardingEntityComponent(EntityBeanComponentInstance instance, @Cause Throwable t);
 
     /**
-     * Logs an error message indicating that an invocation failred
+     * Logs an error message indicating that an invocation failed
      */
     @LogMessage(level = ERROR)
     @Message(id = 14134, value = "EJB Invocation failed on component %s for method %s")
@@ -385,4 +384,21 @@ public interface EjbLogger extends BasicLogger {
     @Message(id = 14141, value = "Channel end notification received, closing channel %s")
     void closingChannelOnChannelEnd(Channel channel);
 
+    /**
+     * Logs a message which includes the resource adapter name and the destination on which a message driven bean
+     * is listening
+     *
+     * @param mdbName     The message driven bean name
+     * @param raName      The resource adapter name
+     */
+    @LogMessage(level = INFO)
+    @Message(id = 14142, value = "Started message driven bean '%s' with '%s' resource adapter")
+    void logMDBStart(final String mdbName, final String raName);
+
+    /**
+     * Logs a waring message indicating an overlapped invoking timeout for timer
+     */
+    @LogMessage(level = WARN)
+    @Message(id = 14143, value = "Timer %s is still active, skipping overlapping scheduled execution at: %s")
+    void skipOverlappingInvokeTimeout(String id, Date scheduledTime);
 }

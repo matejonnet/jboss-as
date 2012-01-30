@@ -1861,13 +1861,6 @@ public interface EjbMessages {
     @Message(id=14526, value = "Cannot call method %s in afterCompletion callback")
     IllegalStateException cannotCallMethodInAfterCompletion(String methodName);
 
-    /**
-     * Exception thrown if the timer service is currently not accessible
-     * @param methodName The ejb callback that disabled it
-     */
-    @Message(id=14527, value = "Cannot call timer service methods in %s")
-    IllegalStateException cannotCallTimerServiceMethod(String methodName);
-
     @Message(id = 14528, value = "%s is already associated with serialization group %s")
     IllegalStateException existingSerializationGroup(Object key, Object group);
 
@@ -1973,4 +1966,64 @@ public interface EjbMessages {
     @Message(id = 14550, value = "%s failed since @Clustered annotation cannot be used for %s bean on class %s")
     DeploymentUnitProcessingException clusteredAnnotationIsNotApplicableForBean(final DeploymentUnit unit, final String componentName, final String componentClassName);
 
+
+    /**
+     * Exception thrown if a method cannot be invoked at the given time
+     */
+    @Message(id=14527, value = "Cannot call %s when state is %s")
+    IllegalStateException cannotCallMethod(String methodName, String state);
+
+
+    /**
+     * Exception thrown if the session-type of a session bean is not specified
+     */
+    @Message(id=14551, value = "<session-type> not specified for ejb %s. This must be present in ejb-jar.xml")
+    DeploymentUnitProcessingException sessionTypeNotSpecified(String bean);
+
+
+    /**
+     * Creates an exception indicating Default interceptors specify an absolute ordering
+     *
+     * @return a {@link DeploymentUnitProcessingException} for the error.
+     */
+    @Message(id = 14552, value = "Default interceptors cannot specify an <interceptor-order> element in ejb-jar.xml")
+    DeploymentUnitProcessingException defaultInterceptorsNotSpecifyOrder();
+
+    /**
+     * Creates an returns a {@link IllegalStateException} to indicate that a cache is not clustered
+     *
+     * @return
+     */
+    @Message(id = 14553, value = "Cache is not clustered")
+    IllegalStateException cacheIsNotClustered();
+
+    /**
+     * Creates and returns an exception indicating that the param named <code>paramName</code> cannot be null
+     *
+     * @param paramName The param name
+     * @return an {@link IllegalArgumentException} for the exception
+     */
+    @Message(id = 14554, value = "%s cannot be null")
+    IllegalArgumentException paramCannotBeNull(final String paramName);
+
+    @Message(id = 14555, value = "A GroupMembershipNotifier is already registered by the name of %s")
+    IllegalArgumentException groupMembershipNotifierAlreadyRegistered(final String groupName);
+
+    @Message(id = 14556, value = "No GroupMembershipNotifier registered by the name of %s")
+    IllegalArgumentException groupMembershipNotifierNotRegistered(final String groupName);
+
+    /**
+     * Creates and returns an exception indicating that the pool name configured for a bean cannot be an empty string
+     *
+     * @param ejbName The EJB name
+     * @return an {@link IllegalArgumentException} for the exception
+     */
+    @Message(id = 14557, value = "Pool name cannot be empty string for bean %s")
+    IllegalArgumentException poolNameCannotBeEmptyString(final String ejbName);
+
+    /**
+     * The user attempts to look up the ejb context in a war when no ejb context is active
+     */
+    @Message(id = 14558, value = "No EjbContext available as no EJB invocation is active")
+    IllegalStateException noEjbContextAvailable();
 }

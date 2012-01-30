@@ -44,6 +44,7 @@ public enum Element {
     ANY_IPV6_ADDRESS("any-ipv6-address"),
     AUTHENTICATION("authentication"),
 
+    CLIENT_MAPPING("client-mapping"),
     CONTENT("content"),
 
     DOMAIN("domain"),
@@ -70,6 +71,7 @@ public enum Element {
     INTERFACE_SPECS("interface-specs"),
     INTERFACES("interfaces"),
 
+    JAAS("jaas"),
     JAVA_AGENT("java-agent"),
     JVM("jvm"),
     JVMS("jvms"),

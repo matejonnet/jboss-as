@@ -1,20 +1,15 @@
 package org.jboss.as.clustering.infinispan.subsystem;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAME;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE;
 
 import java.util.List;
-import java.util.Locale;
 
-import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
-import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.operations.validation.ParametersValidator;
 import org.jboss.dmr.ModelNode;
-import org.jboss.logging.Logger;
 
 /**
  * Custom command to add an alias to a cache-container.
@@ -23,7 +18,6 @@ import org.jboss.logging.Logger;
  */
 public class AddAliasCommand implements OperationStepHandler {
 
-    private static final Logger log = Logger.getLogger(AddAliasCommand.class.getPackage().getName());
     public static final AddAliasCommand INSTANCE = new AddAliasCommand();
 
     private final ParametersValidator nameValidator = new ParametersValidator();
@@ -41,14 +35,14 @@ public class AddAliasCommand implements OperationStepHandler {
         nameValidator.validate(operation);
         final String newAlias = operation.require(NAME).asString();
         final ModelNode submodel = context.readResourceForUpdate(PathAddress.EMPTY_ADDRESS).getModel();
-        final ModelNode currentValue = submodel.get(CommonAttributes.ALIAS.getName()).clone();
+        final ModelNode currentValue = submodel.get(CommonAttributes.ALIASES.getName()).clone();
 
         ModelNode newValue = addNewAliasToList(currentValue, newAlias) ;
 
         // now set the new ALIAS attribute
         final ModelNode syntheticOp = new ModelNode();
-        syntheticOp.get(CommonAttributes.ALIAS.getName()).set(newValue);
-        CommonAttributes.ALIAS.validateAndSet(syntheticOp, submodel);
+        syntheticOp.get(CommonAttributes.ALIASES.getName()).set(newValue);
+        CommonAttributes.ALIASES.validateAndSet(syntheticOp, submodel);
 
         // since we modified the model, set reload required
         if (requiresRuntime(context)) {
@@ -72,7 +66,7 @@ public class AddAliasCommand implements OperationStepHandler {
      * @return {@code true} if a runtime stage handler should be added; {@code false} otherwise.
      */
     protected boolean requiresRuntime(OperationContext context) {
-        return context.getType() == OperationContext.Type.SERVER && !context.isBooting();
+        return context.getProcessType().isServer() && !context.isBooting();
     }
 
     /**
@@ -87,6 +81,11 @@ public class AddAliasCommand implements OperationStepHandler {
         // check for empty string
         if (alias == null || alias.equals(""))
             return list ;
+
+        // check for undefined list (AS7-3476)
+        if (!list.isDefined()) {
+            list.setEmptyList();
+        }
 
         ModelNode newList = list.clone() ;
         List<ModelNode> listElements = list.asList();

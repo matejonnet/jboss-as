@@ -21,36 +21,6 @@
  */
 package org.jboss.as.connector.subsystems.jca;
 
-import org.jboss.as.connector.subsystems.resourceadapters.ReloadRequiredRemoveStepHandler;
-import org.jboss.as.controller.Extension;
-import org.jboss.as.controller.ExtensionContext;
-import org.jboss.as.controller.PathElement;
-import org.jboss.as.controller.ReloadRequiredWriteAttributeHandler;
-import org.jboss.as.controller.SubsystemRegistration;
-import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
-import org.jboss.as.controller.operations.common.GenericSubsystemDescribeHandler;
-import org.jboss.as.controller.parsing.ExtensionParsingContext;
-import org.jboss.as.controller.persistence.SubsystemMarshallingContext;
-import org.jboss.as.controller.registry.AttributeAccess;
-import org.jboss.as.controller.registry.ManagementResourceRegistration;
-import org.jboss.as.controller.registry.OperationEntry;
-import org.jboss.as.threads.BoundedQueueThreadPoolAdd;
-import org.jboss.as.threads.BoundedQueueThreadPoolRemove;
-import org.jboss.as.threads.ThreadsParser;
-import org.jboss.as.threads.ThreadsSubsystemProviders;
-import org.jboss.dmr.ModelNode;
-import org.jboss.dmr.Property;
-import org.jboss.staxmapper.XMLElementReader;
-import org.jboss.staxmapper.XMLElementWriter;
-import org.jboss.staxmapper.XMLExtendedStreamReader;
-import org.jboss.staxmapper.XMLExtendedStreamWriter;
-
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import java.util.EnumSet;
-import java.util.List;
-
 import static org.jboss.as.connector.ConnectorLogger.ROOT_LOGGER;
 import static org.jboss.as.connector.subsystems.jca.ArchiveValidationAdd.ArchiveValidationParameters;
 import static org.jboss.as.connector.subsystems.jca.Constants.ARCHIVE_VALIDATION;
@@ -64,6 +34,7 @@ import static org.jboss.as.connector.subsystems.jca.Constants.WORKMANAGER_LONG_R
 import static org.jboss.as.connector.subsystems.jca.Constants.WORKMANAGER_SHORT_RUNNING;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DESCRIBE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOVE;
@@ -71,8 +42,35 @@ import static org.jboss.as.controller.parsing.ParseUtils.missingRequiredElement;
 import static org.jboss.as.controller.parsing.ParseUtils.requireNoContent;
 import static org.jboss.as.controller.parsing.ParseUtils.unexpectedAttribute;
 import static org.jboss.as.controller.parsing.ParseUtils.unexpectedElement;
-import static org.jboss.as.threads.CommonAttributes.BLOCKING;
-import static org.jboss.as.threads.CommonAttributes.NAME;
+
+import java.util.EnumSet;
+import java.util.List;
+
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
+
+import org.jboss.as.connector.subsystems.resourceadapters.ReloadRequiredRemoveStepHandler;
+import org.jboss.as.controller.Extension;
+import org.jboss.as.controller.ExtensionContext;
+import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.ReloadRequiredWriteAttributeHandler;
+import org.jboss.as.controller.SubsystemRegistration;
+import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
+import org.jboss.as.controller.operations.common.GenericSubsystemDescribeHandler;
+import org.jboss.as.controller.parsing.ExtensionParsingContext;
+import org.jboss.as.controller.persistence.SubsystemMarshallingContext;
+import org.jboss.as.controller.registry.AttributeAccess;
+import org.jboss.as.controller.registry.ManagementResourceRegistration;
+import org.jboss.as.controller.registry.OperationEntry;
+import org.jboss.as.threads.BoundedQueueThreadPoolResourceDefinition;
+import org.jboss.as.threads.ThreadsParser;
+import org.jboss.dmr.ModelNode;
+import org.jboss.dmr.Property;
+import org.jboss.staxmapper.XMLElementReader;
+import org.jboss.staxmapper.XMLElementWriter;
+import org.jboss.staxmapper.XMLExtendedStreamReader;
+import org.jboss.staxmapper.XMLExtendedStreamWriter;
 
 /**
  * @author <a href="mailto:stefano.maestri@redhat.com">Stefano Maestri</a>
@@ -87,7 +85,9 @@ public class JcaExtension implements Extension {
     public void initialize(final ExtensionContext context) {
         ROOT_LOGGER.debugf("Initializing Connector Extension");
 
-        final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME);
+        final boolean registerRuntimeOnly = context.isRuntimeOnlyRegistrationValid();
+
+        final SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME, 1, 0);
 
         final ManagementResourceRegistration registration = subsystem.registerSubsystemModel(JcaSubsystemProviders.SUBSYSTEM);
         registration.registerOperationHandler(ADD, JcaSubsystemAdd.INSTANCE, JcaSubsystemProviders.SUBSYSTEM_ADD_DESC, false);
@@ -131,12 +131,8 @@ public class JcaExtension implements Extension {
             workManager.registerReadWriteAttribute(parameter.getAttribute().getName(), null, new ReloadRequiredWriteAttributeHandler() , AttributeAccess.Storage.CONFIGURATION);
         }
 
-        final ManagementResourceRegistration shortRunning = workManager.registerSubModel(PathElement.pathElement(WORKMANAGER_SHORT_RUNNING), ThreadsSubsystemProviders.BOUNDED_QUEUE_THREAD_POOL_DESC);
-        shortRunning.registerOperationHandler(ADD, BoundedQueueThreadPoolAdd.INSTANCE, BoundedQueueThreadPoolAdd.INSTANCE, false);
-        shortRunning.registerOperationHandler(REMOVE, BoundedQueueThreadPoolRemove.INSTANCE, BoundedQueueThreadPoolRemove.INSTANCE, false);
-        final ManagementResourceRegistration longRunning = workManager.registerSubModel(PathElement.pathElement(WORKMANAGER_LONG_RUNNING), ThreadsSubsystemProviders.BOUNDED_QUEUE_THREAD_POOL_DESC);
-        longRunning.registerOperationHandler(ADD, BoundedQueueThreadPoolAdd.INSTANCE, BoundedQueueThreadPoolAdd.INSTANCE, false);
-        longRunning.registerOperationHandler(REMOVE, BoundedQueueThreadPoolRemove.INSTANCE, BoundedQueueThreadPoolRemove.INSTANCE, false);
+        workManager.registerSubModel(BoundedQueueThreadPoolResourceDefinition.create(true, WORKMANAGER_SHORT_RUNNING, registerRuntimeOnly));
+        workManager.registerSubModel(BoundedQueueThreadPoolResourceDefinition.create(true, WORKMANAGER_LONG_RUNNING, registerRuntimeOnly));
 
 
         final ManagementResourceRegistration bootstrapContext =
@@ -154,8 +150,8 @@ public class JcaExtension implements Extension {
 
     @Override
     public void initializeParsers(final ExtensionParsingContext context) {
-        context.setSubsystemXmlMapping(Namespace.JCA_1_0.getUriString(), ConnectorSubsystemParser.INSTANCE);
-        context.setSubsystemXmlMapping(Namespace.JCA_1_1.getUriString(), ConnectorSubsystemParser.INSTANCE);
+        context.setSubsystemXmlMapping(SUBSYSTEM_NAME, Namespace.JCA_1_0.getUriString(), ConnectorSubsystemParser.INSTANCE);
+        context.setSubsystemXmlMapping(SUBSYSTEM_NAME, Namespace.JCA_1_1.getUriString(), ConnectorSubsystemParser.INSTANCE);
     }
 
     private static ModelNode createEmptyAddOperation() {
@@ -218,8 +214,9 @@ public class JcaExtension implements Extension {
             if (parentNode.hasDefined(CACHED_CONNECTION_MANAGER)) {
                 ModelNode node = parentNode.get(CACHED_CONNECTION_MANAGER).get(CACHED_CONNECTION_MANAGER);
 
-                if (CachedConnectionManagerAdd.CcmParameters.DEBUG.getAttribute().isMarshallable(node) ||
-                        CachedConnectionManagerAdd.CcmParameters.ERROR.getAttribute().isMarshallable(node)) {
+                final String name = CachedConnectionManagerAdd.CcmParameters.INSTALL.getAttribute().getName();
+                if(node.hasDefined(name) &&
+                        node.get(name).asBoolean()) {
                     writer.writeEmptyElement(Element.CACHED_CONNECTION_MANAGER.getLocalName());
                     CachedConnectionManagerAdd.CcmParameters.DEBUG.getAttribute().marshallAsAttribute(node, writer);
                     CachedConnectionManagerAdd.CcmParameters.ERROR.getAttribute().marshallAsAttribute(node, writer);
@@ -274,25 +271,10 @@ public class JcaExtension implements Extension {
             }
         }
 
-        private boolean hasAnyOf(ModelNode node, String... names) {
-            for (String current : names) {
-                if (has(node, current)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         private boolean has(ModelNode node, String name) {
             return node.has(name) && node.get(name).isDefined();
         }
 
-
-
-        private void writeAttribute(final XMLExtendedStreamWriter writer, final Attribute attr, final ModelNode value)
-                throws XMLStreamException {
-            writer.writeAttribute(attr.getLocalName(), value.asString());
-        }
 
         @Override
         public void readElement(final XMLExtendedStreamReader reader, final List<ModelNode> list) throws XMLStreamException {
@@ -471,26 +453,45 @@ public class JcaExtension implements Extension {
             while (reader.hasNext() && reader.nextTag() != END_ELEMENT) {
 
                 final Element element = Element.forName(reader.getLocalName());
-
+                Namespace readerNS = Namespace.forUri(reader.getNamespaceURI());
                 switch (element) {
                     case LONG_RUNNING_THREADS: {
-                        ThreadsParser.getInstance().parseBoundedQueueThreadPool(reader, workManagerAddress, list, WORKMANAGER_LONG_RUNNING, name + "-" + WORKMANAGER_LONG_RUNNING);
+                        switch (readerNS) {
+                            case JCA_1_0: {
+                                org.jboss.as.threads.Namespace ns =  org.jboss.as.threads.Namespace.THREADS_1_0;
+                                ThreadsParser.getInstance().parseBlockingBoundedQueueThreadPool(reader, readerNS.getUriString(),
+                                        ns, workManagerAddress, list, WORKMANAGER_LONG_RUNNING, name + "-" + WORKMANAGER_LONG_RUNNING);
+                                break;
+                            }
+                            default: {
+                                org.jboss.as.threads.Namespace ns =  org.jboss.as.threads.Namespace.THREADS_1_1;
+                                ThreadsParser.getInstance().parseBlockingBoundedQueueThreadPool(reader, readerNS.getUriString(),
+                                        ns, workManagerAddress, list, WORKMANAGER_LONG_RUNNING, name + "-" + WORKMANAGER_LONG_RUNNING);
+                            }
+                        }
                         break;
                     }
                     case SHORT_RUNNING_THREADS: {
-                        ThreadsParser.getInstance().parseBoundedQueueThreadPool(reader, workManagerAddress, list, WORKMANAGER_SHORT_RUNNING,  name + "-" + WORKMANAGER_SHORT_RUNNING);
+                        switch (readerNS) {
+                            case JCA_1_0: {
+                                org.jboss.as.threads.Namespace ns =  org.jboss.as.threads.Namespace.THREADS_1_0;
+                                ThreadsParser.getInstance().parseBlockingBoundedQueueThreadPool(reader, readerNS.getUriString(),
+                                        ns, workManagerAddress, list, WORKMANAGER_SHORT_RUNNING, name + "-" + WORKMANAGER_SHORT_RUNNING);
+                                break;
+                            }
+                            default: {
+                                org.jboss.as.threads.Namespace ns =  org.jboss.as.threads.Namespace.THREADS_1_1;
+                                ThreadsParser.getInstance().parseBlockingBoundedQueueThreadPool(reader, readerNS.getUriString(),
+                                        ns, workManagerAddress, list, WORKMANAGER_SHORT_RUNNING, name + "-" + WORKMANAGER_SHORT_RUNNING);
+                                break;
+                            }
+                        }
                         break;
                     }
                     default:
                         throw unexpectedElement(reader);
                 }
 
-            }
-            //AS7-1352 The "blocking" attribute for the JCA thread pools should be ignored as it should always be true.
-            for (ModelNode op : list) {
-                if (op.hasDefined(BLOCKING)) {
-                    op.get(BLOCKING).set(Boolean.TRUE);
-                }
             }
 
         }
@@ -559,6 +560,7 @@ public class JcaExtension implements Extension {
                     }
                 }
             }
+            ccmOperation.get(CachedConnectionManagerAdd.CcmParameters.INSTALL.getAttribute().getName()).set(true);
             // Handle elements
             requireNoContent(reader);
 

@@ -23,6 +23,7 @@
 package org.jboss.as.host.controller;
 
 import org.jboss.as.controller.RunningMode;
+import org.jboss.as.controller.client.helpers.domain.ServerStatus;
 import org.jboss.as.controller.parsing.JvmType;
 import org.jboss.as.server.ServerState;
 import org.jboss.logging.BasicLogger;
@@ -35,7 +36,7 @@ import org.jboss.logging.MessageLogger;
 import org.jboss.remoting3.Channel;
 
 /**
- * This module is using message IDs in the range 10900-10999. This file is using the subset 10900-10924 for host
+ * This module is using message IDs in the range 10800-10999. This file is using the subset 10900-10939 for host
  * controller logger messages. See http://community.jboss.org/docs/DOC-16810 for the full list of currently reserved
  * JBAS message id blocks.
  * <p/>
@@ -114,8 +115,8 @@ public interface HostControllerLogger extends BasicLogger {
      * @param state      the current state.
      */
     @LogMessage(level = Level.WARN)
-    @Message(id = 10904, value = "Existing server [%s] with state: %s")
-    void existingServerWithState(String serverName, ServerState state);
+    @Message(id = 10904, value = "Existing server [%s] with status: %s")
+    void existingServerWithState(String serverName, ServerStatus state);
 
     /**
      * Logs an error message indicating a failure to create a server process.
@@ -326,4 +327,19 @@ public interface HostControllerLogger extends BasicLogger {
     @LogMessage(level = Level.INFO)
     @Message(id = 10926, value = "Unregistering server %s")
     void unregisteringServer(String name);
+
+    /**
+     * Informal log message indicating the local host registered at the remote domain controller.
+     */
+    @LogMessage(level = Level.INFO)
+    @Message(id = 10927, value =  "Registered at domain controller")
+    void registeredAtRemoteHostController();
+
+    /**
+     * Informal log message indicating the local host unregistered at the remote domain controller.
+     */
+    @LogMessage(level = Level.INFO)
+    @Message(id = 10928, value =  "Unregistered at domain controller")
+    void unregisteredAtRemoteHostController();
+
 }

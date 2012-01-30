@@ -52,6 +52,7 @@ import org.jboss.as.server.deployment.module.AdditionalModuleSpecification;
 import org.jboss.as.server.deployment.module.ModuleSpecification;
 import org.jboss.as.server.deployment.module.ResourceRoot;
 import org.jboss.as.server.moduleservice.ServiceModuleLoader;
+import org.jboss.modules.ModuleIdentifier;
 import org.jboss.modules.ModuleLoader;
 import org.jboss.staxmapper.XMLMapper;
 import org.jboss.vfs.VirtualFile;
@@ -162,6 +163,11 @@ public class DeploymentStructureDescriptorParser implements DeploymentUnitProces
 
             // handle additional modules
             for (final ModuleStructureSpec additionalModule : result.getAdditionalModules()) {
+                for(final ModuleIdentifier identifier : additionalModule.getAnnotationModules()) {
+                    //additional modules don't support annotation imports
+                    ServerLogger.DEPLOYMENT_LOGGER.annotationImportIgnored(identifier, additionalModule.getModuleIdentifier());
+                }
+
                 final AdditionalModuleSpecification additional = new AdditionalModuleSpecification(additionalModule .getModuleIdentifier(), additionalModule.getResourceRoots());
                 additional.addAliases(additionalModule.getAliases());
                 additional.addSystemDependencies(additionalModule.getModuleDependencies());
@@ -197,6 +203,10 @@ public class DeploymentStructureDescriptorParser implements DeploymentUnitProces
         }
         for (final String classFileTransformer : rootDeploymentSpecification.getClassFileTransformers()) {
             moduleSpec.addClassFileTransformer(classFileTransformer);
+        }
+        //handle annotations
+        for(final ModuleIdentifier dependency : rootDeploymentSpecification.getAnnotationModules()) {
+            deploymentUnit.addToAttachmentList(Attachments.ADDITIONAL_ANNOTATION_INDEXES, dependency);
         }
         moduleSpec.setLocalLast(rootDeploymentSpecification.isLocalLast());
     }

@@ -37,6 +37,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAM
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PORT_OFFSET;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PROFILE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PROFILE_NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELATIVE_TO;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REMOTE_DESTINATION_OUTBOUND_SOCKET_BINDING;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RUNTIME_NAME;
@@ -51,7 +52,6 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VAL
 import static org.jboss.as.host.controller.HostControllerMessages.MESSAGES;
 
 import java.io.File;
-import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -65,7 +65,7 @@ import java.util.Set;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
-import org.jboss.as.controller.operations.common.ExtensionAddHandler;
+import org.jboss.as.controller.extension.ExtensionAddHandler;
 import org.jboss.as.controller.operations.common.InterfaceAddHandler;
 import org.jboss.as.controller.operations.common.NamespaceAddHandler;
 import org.jboss.as.controller.operations.common.PathAddHandler;
@@ -74,10 +74,9 @@ import org.jboss.as.controller.operations.common.SocketBindingAddHandler;
 import org.jboss.as.controller.operations.common.SystemPropertyAddHandler;
 import org.jboss.as.controller.operations.common.Util;
 import org.jboss.as.domain.controller.DomainController;
-import org.jboss.as.domain.controller.FileRepository;
 import org.jboss.as.host.controller.ManagedServer.ManagedServerBootConfiguration;
 import org.jboss.as.process.DefaultJvmUtils;
-import org.jboss.as.server.jmx.PluggableMBeanServer;
+import org.jboss.as.repository.HostFileRepository;
 import org.jboss.as.server.services.net.BindingGroupAddHandler;
 import org.jboss.as.server.services.net.LocalDestinationOutboundSocketBindingAddHandler;
 import org.jboss.as.server.services.net.RemoteDestinationOutboundSocketBindingAddHandler;
@@ -182,7 +181,7 @@ class ModelCombiner implements ManagedServerBootConfiguration {
         List<ModelNode> updates = new ArrayList<ModelNode>();
 
         addNamespaces(updates);
-        addServerName(updates);
+        addProfileName(updates);
         addSchemaLocations(updates);
         addExtensions(updates);
         addPaths(updates);
@@ -201,12 +200,15 @@ class ModelCombiner implements ManagedServerBootConfiguration {
         return environment;
     }
 
-    /** {@inheritDoc} */
+    /** {@inheritDoc}
+     * @param processName*/
     @Override
-    public List<String> getServerLaunchCommand() {
+    public List<String> getServerLaunchCommand(String processName) {
         final List<String> command = new ArrayList<String>();
 
         command.add(getJavaCommand());
+
+        command.add("-D[" + processName + "]");
 
         JvmOptionsBuilderFactory.getInstance().addOptions(jvmElement, command);
 
@@ -225,25 +227,19 @@ class ModelCombiner implements ManagedServerBootConfiguration {
             command.add(sb.toString());
         }
 
-        command.add("-Dorg.jboss.boot.log.file=" + environment.getDomainBaseDir().getAbsolutePath() + "/servers/" + serverName + "/log/boot.log");
+        command.add("-Dorg.jboss.boot.log.file=" + getAbsolutePath(environment.getDomainServersDir(), serverName, "log", "boot.log"));
         // TODO: make this better
         String loggingConfiguration = System.getProperty("logging.configuration");
         if (loggingConfiguration == null) {
-            loggingConfiguration = "file:" + environment.getDomainConfigurationDir().getAbsolutePath() + "/logging.properties";
+            loggingConfiguration = "file:" + getAbsolutePath(environment.getDomainConfigurationDir(), "logging.properties");
         }
         command.add("-Dlogging.configuration=" + loggingConfiguration);
         command.add("-jar");
         command.add("jboss-modules.jar");
         command.add("-mp");
         command.add("modules");
-        command.add("-logmodule");
-        command.add("org.jboss.logmanager");
         command.add("-jaxpmodule");
         command.add("javax.xml.jaxp-provider");
-        if (ManagementFactory.getPlatformMBeanServer() instanceof PluggableMBeanServer){
-            command.add("-mbeanserverbuildermodule");
-            command.add("org.jboss.as.jmx");
-        }
         command.add("org.jboss.as.server");
 
         return command;
@@ -294,8 +290,8 @@ class ModelCombiner implements ManagedServerBootConfiguration {
         }
     }
 
-    private void addServerName(List<ModelNode> updates) {
-        updates.add(Util.getWriteAttributeOperation(EMPTY, NAME, serverName));
+    private void addProfileName(List<ModelNode> updates) {
+        updates.add(Util.getWriteAttributeOperation(EMPTY, PROFILE_NAME, profileName));
     }
 
     private void addSchemaLocations(List<ModelNode> updates) {
@@ -494,7 +490,7 @@ class ModelCombiner implements ManagedServerBootConfiguration {
     private void addDeployments(List<ModelNode> updates) {
         if (serverGroup.hasDefined(DEPLOYMENT)) {
 
-            FileRepository remoteRepository = null;
+            HostFileRepository remoteRepository = null;
             if (! domainController.getLocalHostInfo().isMasterDomainController()) {
                 remoteRepository = domainController.getRemoteFileRepository();
             }
@@ -533,4 +529,13 @@ class ModelCombiner implements ManagedServerBootConfiguration {
     private ModelNode pathAddress(PathElement...elements) {
         return PathAddress.pathAddress(elements).toModelNode();
     }
+
+    static String getAbsolutePath(final File root, final String... paths) {
+        File path = root;
+        for(String segment : paths) {
+            path = new File(path, segment);
+        }
+        return path.getAbsolutePath();
+    }
+
 }

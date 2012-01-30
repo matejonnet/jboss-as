@@ -30,6 +30,7 @@ import static org.jboss.as.security.Constants.ACL_MODULES;
 import static org.jboss.as.security.Constants.ADDITIONAL_PROPERTIES;
 import static org.jboss.as.security.Constants.ALGORITHM;
 import static org.jboss.as.security.Constants.AUDIT;
+import static org.jboss.as.security.Constants.AUTHORIZATION;
 import static org.jboss.as.security.Constants.AUTH_MODULES;
 import static org.jboss.as.security.Constants.CACHE_TYPE;
 import static org.jboss.as.security.Constants.CIPHER_SUITES;
@@ -49,8 +50,8 @@ import static org.jboss.as.security.Constants.MAPPING;
 import static org.jboss.as.security.Constants.MAPPING_MODULES;
 import static org.jboss.as.security.Constants.MODULE;
 import static org.jboss.as.security.Constants.MODULE_OPTIONS;
-import static org.jboss.as.security.Constants.NAME;
 import static org.jboss.as.security.Constants.PASSWORD;
+import static org.jboss.as.security.Constants.POLICY_MODULES;
 import static org.jboss.as.security.Constants.PROTOCOLS;
 import static org.jboss.as.security.Constants.PROVIDER;
 import static org.jboss.as.security.Constants.PROVIDER_ARGUMENT;
@@ -104,9 +105,11 @@ import org.jboss.security.auth.login.AuthenticationInfo;
 import org.jboss.security.auth.login.BaseAuthenticationInfo;
 import org.jboss.security.auth.login.JASPIAuthenticationInfo;
 import org.jboss.security.auth.login.LoginModuleStackHolder;
+import org.jboss.security.authorization.config.AuthorizationModuleEntry;
 import org.jboss.security.config.ACLInfo;
 import org.jboss.security.config.ApplicationPolicy;
 import org.jboss.security.config.AuditInfo;
+import org.jboss.security.config.AuthorizationInfo;
 import org.jboss.security.config.ControlFlag;
 import org.jboss.security.config.IdentityTrustInfo;
 import org.jboss.security.config.MappingInfo;
@@ -211,6 +214,7 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
 
         create  = processClassicAuth(securityDomain, model, applicationPolicy);
         create |= processJASPIAuth(securityDomain, model, applicationPolicy);
+        create |= processAuthorization(securityDomain, model,applicationPolicy);
         create |= processACL(securityDomain, model, applicationPolicy);
         create |= processAudit(securityDomain, model, applicationPolicy);
         create |= processIdentityTrust(securityDomain, model, applicationPolicy);
@@ -321,6 +325,31 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
         return true;
     }
 
+    private boolean processAuthorization(String securityDomain, ModelNode node, ApplicationPolicy applicationPolicy) {
+        node = peek(node, AUTHORIZATION, CLASSIC);
+        if (node == null)
+            return false;
+
+        AuthorizationInfo authzInfo = new AuthorizationInfo(securityDomain);
+        List<ModelNode> modules = node.get(POLICY_MODULES).asList();
+        for (ModelNode module : modules) {
+            String codeName = this.extractCode(module, ModulesMap.AUTHORIZATION_MAP);
+            ControlFlag controlFlag = ControlFlag.valueOf(module.require(FLAG).asString());
+            Map<String, Object> options = extractOptions(module);
+            AuthorizationModuleEntry authzModuleEntry = new AuthorizationModuleEntry(codeName, options);
+            authzModuleEntry.setControlFlag(controlFlag);
+            authzInfo.add(authzModuleEntry);
+
+            String moduleName = module.get(MODULE).asString();
+            if(module.hasDefined(MODULE) && moduleName != null &&  moduleName.length() > 0 ) {
+                authzInfo.setJBossModuleName(moduleName);
+            }
+        }
+
+        applicationPolicy.setAuthorizationInfo(authzInfo);
+        return true;
+    }
+
     private boolean processJASPIAuth(String securityDomain, ModelNode node, ApplicationPolicy applicationPolicy) {
         node = peek(node, AUTHENTICATION, JASPI);
         if (node == null)
@@ -331,13 +360,13 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
         List<Property> stacks = node.get(LOGIN_MODULE_STACK).asPropertyList();
         for (Property stack : stacks) {
             String name = stack.getName();
-            List<ModelNode> nodes = stack.getValue().get(LOGIN_MODULES).asList();
+            ModelNode stackNode = stack.getValue();
 
             final LoginModuleStackHolder holder = new LoginModuleStackHolder(name, null);
             holders.put(name, holder);
             authenticationInfo.add(holder);
-            for (ModelNode login : nodes) {
-                processLoginModules(login, authenticationInfo, new LoginModuleContainer() {
+            if (stackNode.hasDefined(LOGIN_MODULES)) {
+                processLoginModules(stackNode.get(LOGIN_MODULES), authenticationInfo, new LoginModuleContainer() {
                     public void addAppConfigurationEntry(AppConfigurationEntry entry) {
                         holder.addAppConfigurationEntry(entry);
                     }
@@ -354,8 +383,7 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
             AuthModuleEntry entry = new AuthModuleEntry(code, options, loginStackRef);
             if (loginStackRef != null) {
                 if (!holders.containsKey(loginStackRef)) {
-                    throw new IllegalArgumentException("auth-module references a login module stack that doesn't exist: "
-                            + loginStackRef);
+                    throw SecurityMessages.MESSAGES.loginModuleStackIllegalArgument(loginStackRef);
                 }
                 entry.setLoginModuleStackHolder(holders.get(loginStackRef));
             }
@@ -512,7 +540,7 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
             try {
                 jsseSecurityDomain.setServiceAuthToken(value);
             } catch (Exception e) {
-                throw new IllegalArgumentException(e);
+                throw SecurityMessages.MESSAGES.runtimeException(e);
             }
         }
         if (node.hasDefined(CIPHER_SUITES)) {
@@ -553,7 +581,7 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
             try {
                 config.setKeyStorePassword(value.asString());
             } catch (Exception e) {
-                throw new IllegalArgumentException(e);
+                throw SecurityMessages.MESSAGES.runtimeException(e);
             }
         }
         if (type != null) {
@@ -563,7 +591,7 @@ class SecurityDomainAdd extends AbstractAddStepHandler {
             try {
                 config.setKeyStoreURL(url.asString());
             } catch (IOException e) {
-                throw new IllegalArgumentException(e);
+                throw SecurityMessages.MESSAGES.runtimeException(e);
             }
         }
 

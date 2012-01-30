@@ -22,14 +22,12 @@
 
 package org.jboss.as.controller;
 
-import org.jboss.as.controller.registry.Resource;
-
-
 /**
  * The context for registering a new extension.
  *
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  * @author David Bosschaert
+ * @author Brian Stansberry (c) 2011 Red Hat Inc.
  */
 public interface ExtensionContext {
 
@@ -40,39 +38,74 @@ public interface ExtensionContext {
      * extension registration is complete, the subsystem registration will be ignored, and an
      * error message will be logged.
      * <p>
-     * The new subsystem registration <em>should</em> register a handler and description for the
-     * {@code add} operation at its root address.  The new subsystem registration <em>may</em> register a
-     * {@code remove} operation at its root address.  If either of these operations are not registered, a
-     * simple generic version of the missing operation will be produced.
+     * The new subsystem registration <em>must</em> register a handler and description for the
+     * {@code add} operation at its root address.  The new subsystem registration <em>must</em> register a
+     * {@code remove} operation at its root address.
      *
      * @param name the name of the subsystem
-     * @throws IllegalArgumentException if the subsystem name has already been registered
-     */
-    SubsystemRegistration registerSubsystem(String name) throws IllegalArgumentException, IllegalStateException;
-
-    /**
-     * Used internally by the application server to create a tracking wrapper to record what subsystems
-     * are created by the extension to be able to clean up when the extension is removed.
      *
-     * @param moduleName the name of the module
-     * @return a tracking extension context or the current extension context if we already are a tracking extension context
-     */
-    ExtensionContext createTracking(String moduleName);
-
-    /**
-     * Cleans up a module's subsystems from the resource registration model. This is for internal use by the application
-     * server.
+     * @return the {@link SubsystemRegistration}
+     * @throws IllegalStateException if the subsystem name has already been registered
      *
-     * @param the model root resource
-     * @param moduleName the name of the extension module
-     * @throws IllegalStateException if the extension still has subsystems registered
+     * @deprecated use {@link #registerSubsystem(String, int, int)}
      */
-    void cleanup(Resource rootResource, String moduleName) throws IllegalStateException;
+    @Deprecated
+    SubsystemRegistration registerSubsystem(String name);
 
     /**
-     * Provide the current Process Type.
-     * @return The current Process Type.
+     * Register a new subsystem type.  The returned registration object should be used
+     * to configure XML parsers, operation handlers, and other subsystem-specific constructs
+     * for the new subsystem.  If the subsystem registration is deemed invalid by the time the
+     * extension registration is complete, the subsystem registration will be ignored, and an
+     * error message will be logged.
+     * <p>
+     * The new subsystem registration <em>must</em> register a handler and description for the
+     * {@code add} operation at its root address.  The new subsystem registration <em>must</em> register a
+     * {@code remove} operation at its root address.
+     *
+     * @param name the name of the subsystem
+     * @param majorVersion the major version of the subsystem's management interface
+     * @param minorVersion the minor version of the subsystem's management interface
+     *
+     * @return the {@link SubsystemRegistration}
+     *
+     * @throws IllegalStateException if the subsystem name has already been registered
+     */
+    SubsystemRegistration registerSubsystem(String name, int majorVersion, int minorVersion);
+
+    /**
+     * Gets the type of the current process.
+     * @return the current process type. Will not be {@code null}
      */
     ProcessType getProcessType();
+
+    /**
+     * Gets the current running mode of the process.
+     * @return the current running mode. Will not be {@code null}
+     */
+    RunningMode getRunningMode();
+
+    /**
+     * Gets whether it is valid for the extension to register resources, attributes or operations that do not
+     * involve the persistent configuration, but rather only involve runtime services. Extensions should use this
+     * method before registering such "runtime only" resources, attributes or operations. The specific uses case this
+     * method is intended to support is avoiding registering resources, attributes or operations:
+     *
+     * <ul>
+     *     <li>on a Host Controller (which is only concerned with subsystem configuration) and typically doesn't
+     *     install runtime services associated with a subsystem</li>
+     *     <li>on a server whose running mode is {@link RunningMode#ADMIN_ONLY ADMIN_ONLY}, where again the
+     *     runtime services associated with a subsystem typically would not be installed</li>
+     * </ul>
+     * <p>
+     * This method is a shorthand for:
+     * <pre>
+     *     boolean valid = context.getProcessType().isServer() && context.getRunningMode() != RunningMode.ADMIN_ONLY;
+     * </pre>
+     * </p>
+     *
+     * @return whether the current process type is a server and the server running mode is not ADMIN_ONLY
+     */
+    boolean isRuntimeOnlyRegistrationValid();
 
 }

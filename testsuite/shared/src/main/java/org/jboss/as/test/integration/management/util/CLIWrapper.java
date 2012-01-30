@@ -21,9 +21,6 @@
  */
 package org.jboss.as.test.integration.management.util;
 
-import static org.jboss.as.arquillian.container.Authentication.PASSWORD;
-import static org.jboss.as.arquillian.container.Authentication.USERNAME;
-
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -42,6 +39,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import org.jboss.as.test.http.Authentication;
+
 /**
  *
  * @author Dominik Pospisil <dpospisi@redhat.com>
@@ -56,6 +55,7 @@ public class CLIWrapper implements Runnable {
     private BufferedReader outputReader;
     private BufferedReader errorReader;
     private BlockingQueue<String> outputQueue = new LinkedBlockingQueue<String>();
+    private boolean running = false;
 
     /**
      * Creates new CLI wrapper.
@@ -74,7 +74,19 @@ public class CLIWrapper implements Runnable {
      * @throws Exception
      */
     public CLIWrapper(boolean connect) throws Exception {
-        init();
+        this(connect, null);
+    }
+
+    /**
+     * Creates new CLI wrapper. If the connect parameter is set to true the CLI will connect to the server using
+     * <code>connect</code> command.
+     *
+     * @param connect indicates if the CLI should connect to server automatically.
+     * @param cliArgs specifies additional CLI command line arguments
+     * @throws Exception
+     */
+    public CLIWrapper(boolean connect, String[] cliArgs) throws Exception {
+        init(cliArgs);
         if (!connect) {
             return;
         }
@@ -96,7 +108,7 @@ public class CLIWrapper implements Runnable {
         }
         sendLine("version", false);
         line = readLine(5000);
-        if (!(line.indexOf("[standalone@") >= 0)) {
+        if (! ((line.indexOf("[standalone@") >= 0) || (line.indexOf("[domain@") >= 0)) ) {
             throw new CLIException("Connect failed. Line received: " + line);
         }
     }
@@ -105,15 +117,15 @@ public class CLIWrapper implements Runnable {
      * Sends command line to CLI.
      *
      * @param line specifies the command line.
-     * @param waitForEcho if set to true reads the echo response form the CLI.
+     * @param readEcho if set to true reads the echo response form the CLI.
      * @throws Exception
      */
-    public void sendLine(String line, boolean waitForEcho) throws Exception {
+    public void sendLine(String line, boolean readEcho) throws Exception {
         System.out.println("[CLI-inp] " + line);
         writer.println(line);
         writer.flush();
 
-        if (!waitForEcho) {
+        if (!readEcho) {
             return;
         }
 
@@ -140,6 +152,14 @@ public class CLIWrapper implements Runnable {
      */
     public void sendLine(String line) throws Exception {
         sendLine(line, true);
+    }
+
+    public void waitForPrompt(long timeout) throws Exception {
+        sendLine("", false);
+        String line = readLine(timeout);
+        if (! ((line.indexOf("[standalone@") >= 0) || (line.indexOf("[domain@") >= 0)) ) {
+            throw new CLIException("Wait for prompt failed." + line);
+        }
     }
 
     /**
@@ -302,22 +322,44 @@ public class CLIWrapper implements Runnable {
      */
     public synchronized void quit() throws Exception {
         sendLine("quit", false);
-        while ((outputReader != null) || (errorReader != null)) {
+        long timeout = System.currentTimeMillis() + 10000;
+        while ( running && (System.currentTimeMillis() < timeout) ) {
             try {
-                wait();
+                wait(1000);
             } catch (InterruptedException ie) {
             }
         }
-
+        if ((outputReader != null) || (errorReader != null))
+            throw new CLIException ("CLI did not quit properly.");
     }
 
-    private void init() throws Exception {
-        System.out.println("CLI command:" + getCliCommand());
+    /**
+     * Returns CLI status.
+     *
+     * @return true if and only if the CLI has finished.
+     */
+    public boolean hasQuit() {
+        return !running;
+    }
 
-        cliProcess = Runtime.getRuntime().exec(getCliCommand());
+    private void init(String[] cliArgs) throws Exception {
+
+        StringBuilder cmd = new StringBuilder(getCliCommand());
+        if (cliArgs != null)
+            for (String arg : cliArgs) {
+                cmd.append(" ");
+                cmd.append(arg);
+            }
+        String cmdString = cmd.toString();
+
+        System.out.println("CLI command:" + cmdString);
+
+        cliProcess = Runtime.getRuntime().exec(cmdString);
         writer = new PrintWriter(cliProcess.getOutputStream());
         outputReader = new BufferedReader(new InputStreamReader(cliProcess.getInputStream()));
         errorReader = new BufferedReader(new InputStreamReader(cliProcess.getErrorStream()));
+
+        running = true;
 
         Thread readOutputThread = new Thread(this, outThreadHame);
         readOutputThread.start();
@@ -344,9 +386,9 @@ public class CLIWrapper implements Runnable {
                 + " -Djline.WindowsTerminal.directConsole=false"
                 + " -jar " + asDist + "/jboss-modules.jar"
                 + " -mp " + asDist + "/modules"
-                + " -logmodule org.jboss.logmanager org.jboss.as.cli"
-                + " --user=" + USERNAME
-                + " --password=" + PASSWORD;
+                + " org.jboss.as.cli"
+                + " --user=" + Authentication.USERNAME
+                + " --password=" + Authentication.PASSWORD;
         return cliCommand;
     }
 
@@ -374,6 +416,7 @@ public class CLIWrapper implements Runnable {
                 } else {
                     errorReader = null;
                 }
+                running = ((outputReader != null) || (errorReader != null));
                 notifyAll();
             }
         }

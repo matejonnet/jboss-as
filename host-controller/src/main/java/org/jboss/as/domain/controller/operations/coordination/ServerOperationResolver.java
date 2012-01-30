@@ -20,6 +20,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RUN
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SERVER_CONFIG;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SERVER_GROUP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOCKET_BINDING_GROUP;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOCKET_BINDING_PORT_OFFSET;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SYSTEM_PROPERTY;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.WRITE_ATTRIBUTE_OPERATION;
@@ -37,6 +38,8 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
+import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationContext.AttachmentKey;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.ProxyController;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
@@ -48,6 +51,7 @@ import org.jboss.as.controller.operations.common.Util;
 import org.jboss.as.domain.controller.ServerIdentity;
 import org.jboss.as.domain.controller.operations.ResolveExpressionOnDomainHandler;
 import org.jboss.as.domain.controller.operations.deployment.DeploymentFullReplaceHandler;
+import org.jboss.as.server.operations.ServerRestartRequiredHandler;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.Property;
 
@@ -58,6 +62,8 @@ import org.jboss.dmr.Property;
  * @author Brian Stansberry (c) 2011 Red Hat Inc.
  */
 public class ServerOperationResolver {
+
+    public static AttachmentKey<Set<ModelNode>> DONT_PROPAGATE_TO_SERVERS_ATTACHMENT = AttachmentKey.create(Set.class);
 
     private enum DomainKey {
 
@@ -139,16 +145,30 @@ public class ServerOperationResolver {
     private final String localHostName;
     private final Map<String,ProxyController> serverProxies;
 
-    public ServerOperationResolver(final String localHostName, final Map<String,ProxyController> serverProxies) {
+    public ServerOperationResolver(final String localHostName, final Map<String, ProxyController> serverProxies) {
         this.localHostName = localHostName;
         this.serverProxies = serverProxies;
     }
 
-    public Map<Set<ServerIdentity>, ModelNode> getServerOperations(ModelNode operation, PathAddress address, ModelNode domain, ModelNode host) {
+    public static synchronized void addToDontPropagateToServersAttachment(OperationContext context, ModelNode op) {
+        Set<ModelNode> ops = context.getAttachment(DONT_PROPAGATE_TO_SERVERS_ATTACHMENT);
+        if (ops == null) {
+            ops = new HashSet<ModelNode>();
+            context.attach(DONT_PROPAGATE_TO_SERVERS_ATTACHMENT, ops);
+        }
+        ops.add(op);
+    }
 
+    public Map<Set<ServerIdentity>, ModelNode> getServerOperations(OperationContext context, ModelNode operation, PathAddress address, ModelNode domain, ModelNode host) {
         if (HOST_CONTROLLER_LOGGER.isTraceEnabled()) {
             HOST_CONTROLLER_LOGGER.tracef("Resolving %s", operation);
         }
+
+        Set<ModelNode> dontPropagate = context.getAttachment(DONT_PROPAGATE_TO_SERVERS_ATTACHMENT);
+        if (dontPropagate != null && dontPropagate.contains(operation)) {
+            return Collections.emptyMap();
+        }
+
         if (address.size() == 0) {
             return resolveDomainRootOperation(operation, domain, host);
         }
@@ -351,6 +371,12 @@ public class ServerOperationResolver {
             serverOp.get(RUNTIME_NAME).set(domainDeployment.get(RUNTIME_NAME));
             serverOp.get(CONTENT).set(domainDeployment.require(CONTENT));
             result = Collections.singletonMap(servers, serverOp);
+        } else if (ModelDescriptionConstants.WRITE_ATTRIBUTE_OPERATION.equals(operation.require(OP).asString())) {
+            if (PROFILE.equals(operation.get(NAME).asString())) {
+                String groupName = address.getElement(0).getValue();
+                Set<ServerIdentity> servers = getServersForGroup(groupName, host, localHostName, serverProxies);
+                return getServerRestartRequiredOperations(servers);
+            }
         }
 
         if (result == null) {
@@ -377,7 +403,6 @@ public class ServerOperationResolver {
             final Set<ServerIdentity> allServers = getAllRunningServers(host, localHostName, serverProxies);
             result = Collections.singletonMap(allServers, serverOp);
         }
-
         if (result == null) {
             result = Collections.emptyMap();
         }
@@ -633,9 +658,20 @@ public class ServerOperationResolver {
                 ServerIdentity serverId = getServerIdentity(serverName, host);
                 serverOp = getServerSystemPropertyOperation(operation, propName, serverId, Level.SERVER, domain,  host);
             }
+
         }
-        else {
+        else if (address.size() == 1) {
             // TODO - deal with "add", "remove" and changing "auto-start" attribute
+            if (ModelDescriptionConstants.WRITE_ATTRIBUTE_OPERATION.equals(operation.require(OP).asString())) {
+                final String attr = operation.get(NAME).asString();
+                if (GROUP.equals(attr) || SOCKET_BINDING_GROUP.equals(attr) || SOCKET_BINDING_PORT_OFFSET.equals(attr)) {
+                    final String serverName = address.getElement(0).getValue();
+                    final String group = host.get(address.getLastElement().getKey(), address.getLastElement().getValue(), GROUP).toString();
+                    final ServerIdentity id = new ServerIdentity(localHostName, group, serverName);
+                    result = getServerRestartRequiredOperations(Collections.singleton(id));
+                    return result;
+                }
+           }
         }
 
         if (serverOp == null) {
@@ -650,6 +686,14 @@ public class ServerOperationResolver {
         return result;
     }
 
+    private Map<Set<ServerIdentity>, ModelNode> getServerRestartRequiredOperations(Set<ServerIdentity> servers){
+        ModelNode op = new ModelNode();
+        op.get(OP).set(ServerRestartRequiredHandler.OPERATION_NAME);
+        op.get(OP_ADDR).setEmptyList();
+        return Collections.singletonMap(servers, op);
+    }
+
+
     private ServerIdentity getServerIdentity(String serverName, ModelNode host) {
         ModelNode serverNode = host.get(SERVER_CONFIG, serverName);
         return new ServerIdentity(localHostName, serverNode.require(GROUP).asString(), serverName);
@@ -661,4 +705,5 @@ public class ServerOperationResolver {
                 || SystemPropertyRemoveHandler.OPERATION_NAME.equals(opName)
                 || (ModelDescriptionConstants.WRITE_ATTRIBUTE_OPERATION.equals(opName) && VALUE.equals(operation.require(NAME).asString())));
     }
+
 }

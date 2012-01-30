@@ -26,6 +26,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,6 +64,8 @@ public class ComponentConfiguration {
     // Interceptor config
     private final OrderedItemContainer<InterceptorFactory> postConstructInterceptors = new OrderedItemContainer<InterceptorFactory>();
     private final OrderedItemContainer<InterceptorFactory> preDestroyInterceptors = new OrderedItemContainer<InterceptorFactory>();
+    private final OrderedItemContainer<InterceptorFactory> prePassivateInterceptors = new OrderedItemContainer<InterceptorFactory>();
+    private final OrderedItemContainer<InterceptorFactory> postActivateInterceptors = new OrderedItemContainer<InterceptorFactory>();
     private final Map<Method, OrderedItemContainer<InterceptorFactory>> componentInterceptors = new IdentityHashMap<Method, OrderedItemContainer<InterceptorFactory>>();
 
     //TODO: move this into an EJB specific configuration
@@ -80,6 +83,8 @@ public class ComponentConfiguration {
     private InterceptorFactory namespaceContextInterceptorFactory;
 
     private NamespaceContextSelector namespaceContextSelector;
+
+    private final Set<Object> interceptorContextKeys = new HashSet<Object>();
 
     public ComponentConfiguration(final ComponentDescription componentDescription, final ClassIndex classIndex, final ClassLoader moduleClassLoder) {
         this.componentDescription = componentDescription;
@@ -294,6 +299,48 @@ public class ComponentConfiguration {
     }
 
     /**
+     * Get the pre-passivate interceptors.
+     * <p/>
+     * This method should only be called after all interceptors have been added
+     *
+     * @return the sorted interceptors
+     */
+    public List<InterceptorFactory> getPrePassivateInterceptors() {
+        return prePassivateInterceptors.getSortedItems();
+    }
+
+    /**
+     * Adds a pre passivate interceptor
+     *
+     * @param interceptorFactory The interceptor to add
+     * @param priority           The priority
+     */
+    public void addPrePassivateInterceptor(InterceptorFactory interceptorFactory, int priority) {
+        prePassivateInterceptors.add(interceptorFactory, priority);
+    }
+
+    /**
+     * Get the post-activate interceptors.
+     * <p/>
+     * This method should only be called after all interceptors have been added
+     *
+     * @return the sorted interceptors
+     */
+    public List<InterceptorFactory> getPostActivateInterceptors() {
+        return postActivateInterceptors.getSortedItems();
+    }
+
+    /**
+     * Adds a post activate interceptor
+     *
+     * @param interceptorFactory The interceptor to add
+     * @param priority           The priority
+     */
+    public void addPostActivateInterceptor(InterceptorFactory interceptorFactory, int priority) {
+        postActivateInterceptors.add(interceptorFactory, priority);
+    }
+
+    /**
      * Get the application name.
      *
      * @return the application name
@@ -379,5 +426,9 @@ public class ComponentConfiguration {
 
     public void setNamespaceContextSelector(final NamespaceContextSelector namespaceContextSelector) {
         this.namespaceContextSelector = namespaceContextSelector;
+    }
+
+    public Set<Object> getInterceptorContextKeys() {
+        return interceptorContextKeys;
     }
 }

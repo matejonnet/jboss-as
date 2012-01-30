@@ -34,8 +34,20 @@ import org.jboss.dmr.ModelNode;
  */
 public class SingleRolloutPlanGroup implements RolloutPlanGroup {
 
+    private static final int SEPARATOR_PROPERTY_LIST_START = 1;
+    private static final int SEPARATOR_PROPERTY_LIST_END = 2;
+    private static final int SEPARATOR_PROPERTY_VALUE = 3;
+    private static final int SEPARATOR_PROPERTY = 4;
+
     private String groupName;
     private Map<String,String> props;
+
+    private int lastSeparatorIndex;
+    private int separator;
+    private int lastChunkIndex;
+
+    private String lastPropertyName;
+    private String lastPropertyValue;
 
     public SingleRolloutPlanGroup() {
     }
@@ -51,12 +63,17 @@ public class SingleRolloutPlanGroup implements RolloutPlanGroup {
         return groupName;
     }
 
-    public void setGroupName(String groupName) {
+    public void setGroupName(String groupName, int index) {
         this.groupName = groupName;
+        this.lastChunkIndex = index;
+    }
+
+    public int getLastChunkIndex() {
+        return lastChunkIndex;
     }
 
     // TODO perhaps add a list of allowed properties and their values
-    public void addProperty(String name, String value) {
+    public void addProperty(String name, String value, int valueIndex) {
         if(name == null || name.isEmpty()) {
             throw new IllegalArgumentException("Invalid property name: " + name);
         }
@@ -67,6 +84,76 @@ public class SingleRolloutPlanGroup implements RolloutPlanGroup {
             props = new HashMap<String,String>();
         }
         props.put(name, value);
+        this.lastPropertyName = name;
+        this.lastPropertyValue = value;
+        this.lastChunkIndex = valueIndex;
+        separator = -1;
+    }
+
+    public void addProperty(String name, int index) {
+        this.lastPropertyName = name;
+        this.lastChunkIndex = index;
+        separator = -1;
+    }
+
+    public void propertyValueSeparator(int index) {
+        separator = SEPARATOR_PROPERTY_VALUE;
+        this.lastSeparatorIndex = index;
+    }
+
+    public void propertySeparator(int index) {
+        separator = SEPARATOR_PROPERTY;
+        this.lastSeparatorIndex = index;
+        this.lastPropertyName = null;
+        this.lastPropertyValue = null;
+    }
+
+    public boolean hasProperties() {
+        return lastPropertyName != null || props != null;
+    }
+
+    public void propertyListStart(int index) {
+        this.lastSeparatorIndex = index;
+        separator = SEPARATOR_PROPERTY_LIST_START;
+    }
+
+    public boolean endsOnPropertyListStart() {
+        return separator == SEPARATOR_PROPERTY_LIST_START;
+    }
+
+    public void propertyListEnd(int index) {
+        this.lastSeparatorIndex = index;
+        separator = SEPARATOR_PROPERTY_LIST_END;
+        this.lastPropertyName = null;
+        this.lastPropertyValue = null;
+    }
+
+    public boolean endsOnPropertyListEnd() {
+        return separator == SEPARATOR_PROPERTY_LIST_END;
+    }
+
+    public boolean endsOnPropertyValueSeparator() {
+        return separator == SEPARATOR_PROPERTY_VALUE;
+    }
+
+    public boolean endsOnPropertySeparator() {
+        return separator == SEPARATOR_PROPERTY;
+    }
+
+    public int getLastSeparatorIndex() {
+        return lastSeparatorIndex;
+    }
+
+    public String getLastPropertyName() {
+        return lastPropertyName;
+    }
+
+    public String getLastPropertyValue() {
+        return lastPropertyValue;
+    }
+
+    public boolean hasProperty(String name) {
+        return props == null ? false : props.containsKey(name);
     }
 
     /* (non-Javadoc)

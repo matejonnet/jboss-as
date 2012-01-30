@@ -43,6 +43,8 @@ public interface ParsedCommandLine {
 
     boolean endsOnPropertyListStart();
 
+    boolean endsOnPropertyListEnd();
+
     boolean endsOnAddressOperationNameSeparator();
 
     boolean endsOnNodeSeparator();
@@ -71,6 +73,8 @@ public interface ParsedCommandLine {
 
     boolean endsOnHeaderListStart();
 
+    boolean endsOnHeaderSeparator();
+
     int getLastSeparatorIndex();
 
     int getLastChunkIndex();
@@ -83,7 +87,9 @@ public interface ParsedCommandLine {
 
     boolean hasHeaders();
 
-    List<OperationRequestHeader> getHeaders();
+    List<ParsedOperationRequestHeader> getHeaders();
+
+    String getLastHeaderName();
 
     CommandLineFormat getFormat();
 }

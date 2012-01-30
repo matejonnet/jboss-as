@@ -37,13 +37,11 @@ import javax.transaction.Status;
 import javax.transaction.Synchronization;
 import javax.transaction.Transaction;
 
-import org.jboss.as.ee.component.Component;
-import org.jboss.as.ejb3.component.stateful.StatefulSessionComponent;
-import org.jboss.as.ejb3.context.CurrentInvocationContext;
+import org.jboss.as.ejb3.component.allowedmethods.AllowedMethodsInformation;
+import org.jboss.as.ejb3.component.allowedmethods.MethodType;
 import org.jboss.as.ejb3.timerservice.persistence.TimerEntity;
 import org.jboss.as.ejb3.timerservice.spi.TimedObjectInvoker;
 import org.jboss.as.ejb3.timerservice.task.TimerTask;
-import org.jboss.invocation.InterceptorContext;
 
 import static org.jboss.as.ejb3.EjbLogger.ROOT_LOGGER;
 import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
@@ -215,7 +213,7 @@ public class TimerImpl implements Timer {
             this.cancelTimeout();
         }
         // persist changes
-        timerService.persistTimer(this);
+        timerService.persistTimer(this, false);
     }
 
     /**
@@ -493,15 +491,7 @@ public class TimerImpl implements Timer {
             throw MESSAGES.timerHasExpired();
         if (timerState == TimerState.CANCELED)
             throw MESSAGES.timerWasCanceled();
-        final InterceptorContext ctx = CurrentInvocationContext.get();
-        if (ctx != null) {
-            if (ctx.getPrivateData(Component.class) instanceof StatefulSessionComponent) {
-                if (ctx.getMethod() == null) {
-                    throw new IllegalStateException("Timer methods may not be invoked from lifecycle methods of a stateful session bean");
-                }
-            }
-        }
-        TimerServiceDisabledTacker.assertEnabled();
+        AllowedMethodsInformation.checkAllowed(MethodType.TIMER_SERVICE_METHOD);
     }
 
     /**
@@ -511,7 +501,7 @@ public class TimerImpl implements Timer {
         ROOT_LOGGER.debug("expireTimer: " + this);
         setTimerState(TimerState.EXPIRED);
         // remove from timerservice
-        timerService.persistTimer(this);
+        timerService.persistTimer(this, false);
         // Cancel any scheduled timer task for this timer
         this.cancelTimeout();
     }
@@ -529,7 +519,7 @@ public class TimerImpl implements Timer {
      * Returns the current persistent state of this timer
      */
     public TimerEntity getPersistentState() {
-        if (this.persistent == false) {
+        if (!this.persistent) {
             throw MESSAGES.failToPersistTimer(this);
         }
 
@@ -555,10 +545,12 @@ public class TimerImpl implements Timer {
 
     /**
      * Creates and schedules a {@link TimerTask} for the next timeout of this timer
+     *
+     * @param newTimer <code>true</code> if this is a new timer being scheduled, and not a re-schedule due to a timeout
      */
-    public void scheduleTimeout() {
+    public void scheduleTimeout(boolean newTimer) {
         // just delegate to timerservice, for it to do the actual scheduling
-        this.timerService.scheduleTimeout(this);
+        this.timerService.scheduleTimeout(this, newTimer);
     }
 
     /**

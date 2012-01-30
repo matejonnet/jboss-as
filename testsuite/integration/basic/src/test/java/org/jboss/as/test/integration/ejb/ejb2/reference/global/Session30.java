@@ -22,21 +22,23 @@
 
 package org.jboss.as.test.integration.ejb.ejb2.reference.global;
 
+import java.rmi.RemoteException;
+
 import javax.ejb.EJBObject;
 
 /**
  * @author <a href="mailto:bdecoste@jboss.com">William DeCoste</a>
  */
 public interface Session30 extends EJBObject {
-    String access();
+    String access() throws RemoteException;
 
-    String access21();
+    String access21() throws RemoteException;
 
-    String globalAccess21();
+    String globalAccess21() throws RemoteException;
 
-    String accessLocalStateful();
+    String accessLocalStateful() throws RemoteException;
 
-    String accessLocalStateful(String value);
+    String accessLocalStateful(String value) throws RemoteException;
 
-    String accessLocalStateful(String value, Integer suffix);
+    String accessLocalStateful(String value, Integer suffix) throws RemoteException;
 }

@@ -23,6 +23,7 @@
 package org.jboss.as.domain.controller;
 
 import org.jboss.as.controller.ProxyController;
+import org.jboss.as.repository.HostFileRepository;
 import org.jboss.dmr.ModelNode;
 import org.jboss.msc.service.ServiceName;
 
@@ -94,7 +95,7 @@ public interface DomainController {
      *
      * @return the file repository
      */
-    FileRepository getLocalFileRepository();
+    HostFileRepository getLocalFileRepository();
 
     /**
      * Gets the file repository backing the master domain controller
@@ -105,10 +106,17 @@ public interface DomainController {
      *          {@link LocalHostControllerInfo#isMasterDomainController()} method would return {@code true}
      *
      */
-    FileRepository getRemoteFileRepository();
+    HostFileRepository getRemoteFileRepository();
 
     /**
      * Stops this host controller
      */
     void stopLocalHost();
+
+    /**
+     * Stop this host controller with a specific exit code.
+     *
+     * @param exitCode the exit code passed to the ProcessController
+     */
+    void stopLocalHost(int exitCode);
 }

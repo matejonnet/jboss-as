@@ -25,8 +25,10 @@ package org.jboss.as.host.controller;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+
 import javax.security.sasl.SaslException;
 
+import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.RunningMode;
 import org.jboss.as.controller.client.helpers.domain.ServerStatus;
 import org.jboss.as.protocol.mgmt.RequestProcessingException;
@@ -38,7 +40,7 @@ import org.jboss.logging.MessageBundle;
 import org.jboss.logging.Messages;
 
 /**
- * This module is using message IDs in the range 10900-10999. This file is using the subset 10925-10949 for host
+ * This module is using message IDs in the range 10800-10999. This file is using the subset 10940-10999 for host
  * controller non-logger messages. See http://community.jboss.org/docs/DOC-16810 for the full list of currently reserved
  * JBAS message id blocks.
  * <p/>
@@ -527,4 +529,34 @@ public interface HostControllerMessages {
      */
     @Message(id = 10985, value = "unrecognized type %s")
     IOException unrecognizedType(byte type);
+
+    /**
+     * Creates an exception indication that the host controller was already shutdown.
+     * @return an {@link Exception} for the error
+     */
+    @Message(id = 10986, value = "Host-Controller is already shutdown.")
+    IllegalStateException hostAlreadyShutdown();
+
+    /**
+     * Creates an exception indicating no server group could be found with the given name
+     *
+     * @param groupName the group name
+     *
+     * @return an {@link OperationFailedException} for the error.
+     */
+    @Message(id = 10987, value = "No server-group called: %s")
+    OperationFailedException noServerGroupCalled(String groupName);
+
+    /**
+     * Creates an exception indicating no server group could be found with the given name
+     *
+     * @param groupName the socket binding group name
+     *
+     * @return an {@link OperationFailedException} for the error.
+     */
+    @Message(id = 10988, value = "No socket-binding-group called: %s")
+    OperationFailedException noSocketBindingGroupCalled(String groupName);
+
+    @Message(id = 10989, value = "HostControllerEnvironment does not support system property updates")
+    UnsupportedOperationException hostControllerSystemPropertyUpdateNotSupported();
 }

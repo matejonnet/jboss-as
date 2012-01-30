@@ -22,23 +22,23 @@
 
 package org.jboss.as.messaging;
 
-import static org.jboss.logging.Message.INHERIT;
+import java.util.Collection;
 
+import javax.xml.stream.XMLStreamException;
+
+import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.PathAddress;
+import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.dmr.ModelType;
 import org.jboss.logging.Cause;
 import org.jboss.logging.Message;
 import org.jboss.logging.MessageBundle;
 import org.jboss.logging.Messages;
-import org.jboss.logging.Param;
 import org.jboss.msc.service.ServiceController.State;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.StartException;
 
-import javax.xml.namespace.QName;
-import javax.xml.stream.Location;
-import javax.xml.stream.XMLStreamException;
-import java.util.Collection;
-import java.util.Set;
+import static org.jboss.logging.Message.INHERIT;
 
 /**
  * Date: 10.06.2011
@@ -436,4 +436,25 @@ public interface MessagingMessages {
      */
     @Message(id = 11664, value = "Runtime handling for %s is not implemented")
     UnsupportedOperationException unsupportedRuntimeAttribute(String name);
+
+    /**
+     * Creates an exception indicating the HornetQService for the server with the given name is either not installed
+     * or not started.
+     *
+     * @param name the name of the Hornet Q server.
+     *
+     * @return an {@link OperationFailedException} for the error.
+     */
+    @Message(id = 11665, value = "No HornetQ Server is available under name %s")
+    OperationFailedException hornetQServerNotInstalled(String name);
+
+
+    @Message(id = 11666, value = "Could not parse file %s")
+    DeploymentUnitProcessingException couldNotParseDeployment(final String file, @Cause Throwable cause);
+
+    @Message(id = 11667, value = "Handler cannot handle operation %s")
+    IllegalStateException operationNotValid(final String operation);
+
+    @Message(id = 11668, value = "No message destination registered at address %s")
+    String noDestinationRegisteredForAddress(final PathAddress address);
 }

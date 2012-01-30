@@ -26,6 +26,7 @@ import static javax.xml.stream.XMLStreamConstants.END_ELEMENT;
 import static org.jboss.as.controller.ControllerMessages.MESSAGES;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.AUTO_START;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CONSOLE_ENABLED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.CORE_SERVICE;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DOMAIN_CONTROLLER;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.GROUP;
@@ -68,7 +69,6 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
 
 import javax.xml.stream.XMLStreamException;
 
@@ -83,8 +83,8 @@ import org.jboss.as.domain.management.parsing.ManagementXml;
 import org.jboss.as.host.controller.resources.HttpManagementResourceDefinition;
 import org.jboss.as.host.controller.resources.NativeManagementResourceDefinition;
 import org.jboss.dmr.ModelNode;
+import org.jboss.dmr.ModelType;
 import org.jboss.dmr.Property;
-import org.jboss.modules.ModuleLoader;
 import org.jboss.staxmapper.XMLExtendedStreamReader;
 import org.jboss.staxmapper.XMLExtendedStreamWriter;
 
@@ -96,8 +96,10 @@ import org.jboss.staxmapper.XMLExtendedStreamWriter;
  */
 public class HostXml extends CommonXml implements ManagementXml.Delegate {
 
-    public HostXml(final ModuleLoader loader, ExecutorService executorService) {
-        super(loader, executorService);
+    private final String defaultHostControllerName;
+
+    public HostXml(String defaultHostControllerName) {
+        this.defaultHostControllerName = defaultHostControllerName;
     }
 
     @Override
@@ -237,10 +239,7 @@ public class HostXml extends CommonXml implements ManagementXml.Delegate {
             }
         }
 
-        if (hostName == null) {
-            hostName = getDefaultName();
-        }
-        // The follownig also updates the address parameter so this address can be used for future operations
+        // The following also updates the address parameter so this address can be used for future operations
         // in the context of this host.
         addLocalHost(address, list, hostName);
         // The namespace operations were created before the host name was known, the address can now be updated
@@ -285,6 +284,9 @@ public class HostXml extends CommonXml implements ManagementXml.Delegate {
         if (element == Element.SERVERS) {
             parseServers(reader, address, DOMAIN_1_0, list);
             element = nextElement(reader, DOMAIN_1_0);
+        }
+        if (element != null) {
+            throw unexpectedElement(reader);
         }
 
     }
@@ -335,10 +337,7 @@ public class HostXml extends CommonXml implements ManagementXml.Delegate {
             }
         }
 
-        if (hostName == null) {
-            hostName = getDefaultName();
-        }
-        // The follownig also updates the address parameter so this address can be used for future operations
+        // The following also updates the address parameter so this address can be used for future operations
         // in the context of this host.
         addLocalHost(address, list, hostName);
         // The namespace operations were created before the host name was known, the address can now be updated
@@ -567,6 +566,12 @@ public class HostXml extends CommonXml implements ManagementXml.Delegate {
                         }
                         break;
                     }
+                    case CONSOLE_ENABLED:{
+                        if (http){
+                            org.jboss.as.server.mgmt.HttpManagementResourceDefinition.CONSOLE_ENABLED.parseAndSetParameter(value,addOp,reader);
+                        }
+                        break;
+                    }
                     default:
                         throw unexpectedAttribute(reader, i);
                 }
@@ -670,13 +675,15 @@ public class HostXml extends CommonXml implements ManagementXml.Delegate {
      */
     private void addLocalHost(final ModelNode address, final List<ModelNode> operationList, final String hostName) {
         // All further operations should modify the newly added host so the address passed in is updated.
-        address.add(HOST, hostName);
+        address.add(HOST, hostName != null ? hostName : defaultHostControllerName);
 
         final ModelNode host = new ModelNode();
         host.get(OP).set("add-host");
         host.get(OP_ADDR).set(address.clone());
 
-        host.get(NAME).set(hostName);
+        if (hostName != null) {
+            host.get(NAME).set(hostName);
+        }
 
         operationList.add(host);
     }
@@ -738,7 +745,7 @@ public class HostXml extends CommonXml implements ManagementXml.Delegate {
             final List<ModelNode> list) throws XMLStreamException {
         // Handle attributes
         String host = null;
-        Integer port = null;
+        ModelNode port = null;
         String securityRealm = null;
         final int count = reader.getAttributeCount();
         for (int i = 0; i < count; i++) {
@@ -753,9 +760,16 @@ public class HostXml extends CommonXml implements ManagementXml.Delegate {
                         break;
                     }
                     case PORT: {
-                        port = Integer.valueOf(value);
-                        if (port.intValue() < 1) {
-                            throw MESSAGES.invalidValueGreaterThan(attribute.getLocalName(), port, 0, reader.getLocation());
+                        port = parsePossibleExpression(value);
+                        if(port.getType() != ModelType.EXPRESSION) {
+                            try {
+                                Integer portNo = Integer.valueOf(value);
+                                if (portNo.intValue() < 1) {
+                                    throw MESSAGES.invalidPort(attribute.getLocalName(), value, reader.getLocation());
+                                }
+                            }catch(NumberFormatException e) {
+                                throw MESSAGES.invalidPort(attribute.getLocalName(), value, reader.getLocation());
+                            }
                         }
                         break;
                     }
@@ -1067,6 +1081,7 @@ public class HostXml extends CommonXml implements ManagementXml.Delegate {
 
         writer.writeStartElement(Element.HTTP_INTERFACE.getLocalName());
         HttpManagementResourceDefinition.SECURITY_REALM.marshallAsAttribute(protocol, writer);
+        HttpManagementResourceDefinition.CONSOLE_ENABLED.marshallAsAttribute(protocol, writer);
 
         writer.writeEmptyElement(Element.SOCKET.getLocalName());
         HttpManagementResourceDefinition.INTERFACE.marshallAsAttribute(protocol, writer);
@@ -1092,6 +1107,9 @@ public class HostXml extends CommonXml implements ManagementXml.Delegate {
             }
             if (remote.hasDefined(SECURITY_REALM)) {
                 writeAttribute(writer, Attribute.SECURITY_REALM, remote.require(SECURITY_REALM).asString());
+            }
+            if (remote.get(CONSOLE_ENABLED).asBoolean(false)){
+                writeAttribute(writer, Attribute.CONSOLE_ENABLED, remote.require(CONSOLE_ENABLED).asString());
             }
             writer.writeEndElement();
         }
@@ -1131,7 +1149,7 @@ public class HostXml extends CommonXml implements ManagementXml.Delegate {
             if (server.hasDefined(SOCKET_BINDING_GROUP) || server.hasDefined(SOCKET_BINDING_PORT_OFFSET)) {
                 writer.writeStartElement(Element.SOCKET_BINDINGS.getLocalName());
                 if (server.hasDefined(SOCKET_BINDING_GROUP)) {
-                    writeAttribute(writer, Attribute.REF, server.get(SOCKET_BINDING_GROUP).asString());
+                    writeAttribute(writer, Attribute.SOCKET_BINDING_GROUP, server.get(SOCKET_BINDING_GROUP).asString());
                 }
                 if (server.hasDefined(SOCKET_BINDING_PORT_OFFSET)) {
                     writeAttribute(writer, Attribute.PORT_OFFSET, server.get(SOCKET_BINDING_PORT_OFFSET).asString());

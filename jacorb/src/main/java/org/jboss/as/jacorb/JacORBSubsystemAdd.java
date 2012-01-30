@@ -28,10 +28,10 @@ import java.util.List;
 import java.util.Properties;
 
 import org.jboss.as.controller.AbstractAddStepHandler;
+import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.ServiceVerificationHandler;
-import org.jboss.as.controller.SimpleAttributeDefinition;
 import org.jboss.as.jacorb.deployment.JacORBDependencyProcessor;
 import org.jboss.as.jacorb.deployment.JacORBMarkerProcessor;
 import org.jboss.as.jacorb.naming.jndi.JBossCNCtxFactory;
@@ -91,7 +91,7 @@ public class JacORBSubsystemAdd extends AbstractAddStepHandler {
     @Override
     protected void populateModel(ModelNode operation, ModelNode model) throws OperationFailedException {
         // populate the submodel.
-        for (SimpleAttributeDefinition attrDefinition : JacORBSubsystemDefinitions.SUBSYSTEM_ATTRIBUTES) {
+        for (AttributeDefinition attrDefinition : JacORBSubsystemDefinitions.SUBSYSTEM_ATTRIBUTES) {
             attrDefinition.validateAndSet(operation, model);
         }
         // if generic properties have been specified, add them to the model as well.
@@ -204,7 +204,7 @@ public class JacORBSubsystemAdd extends AbstractAddStepHandler {
         Properties props = new Properties();
 
         // get the configuration properties from the attribute definitions.
-        for (SimpleAttributeDefinition attrDefinition : JacORBSubsystemDefinitions.SUBSYSTEM_ATTRIBUTES) {
+        for (AttributeDefinition attrDefinition : JacORBSubsystemDefinitions.SUBSYSTEM_ATTRIBUTES) {
             ModelNode resolvedModelAttribute = attrDefinition.validateResolvedOperation(node);
             if (resolvedModelAttribute.isDefined()) {
                 String name = attrDefinition.getName();
@@ -214,6 +214,14 @@ public class JacORBSubsystemAdd extends AbstractAddStepHandler {
                 String jacorbProperty = PropertiesMap.JACORB_PROPS_MAP.get(name);
                 if (jacorbProperty != null)
                     name = jacorbProperty;
+
+                // check if the property is an SSL config property, in which case the value must be mapped to the JacORB
+                // integer representation.
+                if (JacORBSubsystemDefinitions.SSL_CONFIG_ATTRIBUTES.contains(attrDefinition)) {
+                    SSLConfigValue sslConfigValue = SSLConfigValue.valueOf(value.toUpperCase());
+                    if (sslConfigValue != null)
+                        value = sslConfigValue.getJacorbValue();
+                }
                 props.setProperty(name, value);
             }
         }
@@ -233,7 +241,7 @@ public class JacORBSubsystemAdd extends AbstractAddStepHandler {
 
     /**
      * <p>
-     * Sets up the ORB initializers according to what hs been configured in the subsystem.
+     * Sets up the ORB initializers according to what has been configured in the subsystem.
      * </p>
      *
      * @param props the subsystem configuration properties.
@@ -271,7 +279,7 @@ public class JacORBSubsystemAdd extends AbstractAddStepHandler {
      */
     private void setupSSLFactories(Properties props) throws OperationFailedException {
         String supportSSLKey = PropertiesMap.JACORB_PROPS_MAP.get(JacORBSubsystemConstants.SECURITY_SUPPORT_SSL);
-        boolean supportSSL = "on".equals(props.getProperty(supportSSLKey));
+        boolean supportSSL = "on".equalsIgnoreCase(props.getProperty(supportSSLKey));
 
         if (supportSSL) {
             // if SSL is to be used, check if a security domain has been specified.

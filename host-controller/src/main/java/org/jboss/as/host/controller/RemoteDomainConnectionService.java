@@ -22,17 +22,12 @@
 
 package org.jboss.as.host.controller;
 
-import org.jboss.as.controller.remote.TransactionalModelControllerOperationHandler;
-import static org.jboss.as.process.protocol.ProtocolUtils.expectHeader;
 import static org.jboss.as.host.controller.HostControllerLogger.ROOT_LOGGER;
 import static org.jboss.as.host.controller.HostControllerMessages.MESSAGES;
 
-import java.io.BufferedOutputStream;
 import java.io.DataInput;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
@@ -52,13 +47,14 @@ import org.jboss.as.controller.client.ModelControllerClient;
 import org.jboss.as.controller.client.Operation;
 import org.jboss.as.controller.client.OperationMessageHandler;
 import org.jboss.as.controller.remote.ExistingChannelModelControllerClient;
-import org.jboss.as.domain.controller.FileRepository;
+import org.jboss.as.controller.remote.TransactionalModelControllerOperationHandler;
 import org.jboss.as.domain.controller.SlaveRegistrationException;
 import org.jboss.as.domain.controller.SlaveRegistrationException.ErrorCode;
 import org.jboss.as.domain.management.CallbackHandlerFactory;
 import org.jboss.as.domain.management.security.SecretIdentityService;
 import org.jboss.as.domain.management.security.SecurityRealmService;
 import org.jboss.as.host.controller.mgmt.DomainControllerProtocol;
+import org.jboss.as.host.controller.mgmt.DomainRemoteFileRequestAndHandler;
 import org.jboss.as.process.protocol.Connection.ClosedCallback;
 import org.jboss.as.protocol.ProtocolChannelClient;
 import org.jboss.as.protocol.mgmt.AbstractManagementRequest;
@@ -68,6 +64,9 @@ import org.jboss.as.protocol.mgmt.FlushableDataOutput;
 import org.jboss.as.protocol.mgmt.ManagementChannelReceiver;
 import org.jboss.as.protocol.mgmt.ManagementRequestContext;
 import org.jboss.as.remoting.management.ManagementRemotingServices;
+import org.jboss.as.repository.HostFileRepository;
+import org.jboss.as.repository.RemoteFileRequestAndHandler.CannotCreateLocalDirectoryException;
+import org.jboss.as.repository.RemoteFileRequestAndHandler.DidNotReadEntireFileException;
 import org.jboss.dmr.ModelNode;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceBuilder;
@@ -193,25 +192,12 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
     }
 
     private synchronized void connect() {
-//        if (this.channelClient != null) {
-//            try {
-//                new UnregisterModelControllerRequest().executeForResult(executor, ManagementClientChannelStrategy.create(channel));
-//            } catch (Exception e) {
-//            }
-//
-//            this.channelClient.close();
-//            this.channelClient = null;
-//        }
 
         // txOperationHandler = new TransactionalModelControllerOperationHandler(executor, controller);
         ProtocolChannelClient client;
         ProtocolChannelClient.Configuration configuration = new ProtocolChannelClient.Configuration();
-        //Reusing the endpoint here after a disconnect does not seem to work once something has gone down, so try our own
-        //configuration.setEndpoint(endpointInjector.getValue());
-        configuration.setEndpointName("endpoint");
-        configuration.setUriScheme("remote");
+        configuration.setEndpoint(endpointInjector.getValue());
 
-        this.handler = new TransactionalModelControllerOperationHandler(controller, executor);
         final Connection connection;
         try {
             configuration.setUri(new URI("remote://" + host.getHostAddress() + ":" + port));
@@ -219,6 +205,8 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+
+        this.handler = new TransactionalModelControllerOperationHandler(controller, executor);
 
         try {
             CallbackHandler handler = null;
@@ -257,7 +245,7 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
             }
             throw new IllegalStateException(error.getErrorMessage());
         }
-
+        HostControllerLogger.ROOT_LOGGER.registeredAtRemoteHostController();
     }
 
     /** {@inheritDoc} */
@@ -268,6 +256,7 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
         try {
             new UnregisterModelControllerRequest().executeForResult(handler, channel, null);
             registered.set(false);
+            HostControllerLogger.ROOT_LOGGER.unregisteredAtRemoteHostController();
         } catch (Exception e) {
             ROOT_LOGGER.debugf(e, "Error unregistering from master");
         }
@@ -277,7 +266,7 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
     }
 
     /** {@inheritDoc} */
-    public synchronized FileRepository getRemoteFileRepository() {
+    public synchronized HostFileRepository getRemoteFileRepository() {
         return remoteFileRepository;
     }
 
@@ -434,9 +423,9 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
     private class GetFileRequest extends RegistryRequest<File> {
         private final byte rootId;
         private final String filePath;
-        private final FileRepository localFileRepository;
+        private final HostFileRepository localFileRepository;
 
-        private GetFileRequest(final byte rootId, final String filePath, final FileRepository localFileRepository) {
+        private GetFileRequest(final byte rootId, final String filePath, final HostFileRepository localFileRepository) {
             this.rootId = rootId;
             this.filePath = filePath;
             this.localFileRepository = localFileRepository;
@@ -451,11 +440,7 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
         protected void sendRequest(ActiveOperation.ResultHandler<File> resultHandler, ManagementRequestContext<Void> context, FlushableDataOutput output) throws IOException {
             output.write(DomainControllerProtocol.PARAM_HOST_ID);
             output.writeUTF(name);
-            output.writeByte(DomainControllerProtocol.PARAM_ROOT_ID);
-            output.writeByte(rootId);
-            output.writeByte(DomainControllerProtocol.PARAM_FILE_PATH);
-            output.writeUTF(filePath);
-            ROOT_LOGGER.debugf("Requesting files for path %s", filePath);
+            DomainRemoteFileRequestAndHandler.INSTANCE.sendRequest(output, rootId, filePath);
         }
 
         @Override
@@ -479,65 +464,21 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
                     localPath = null;
                 }
             }
-            expectHeader(input, DomainControllerProtocol.PARAM_NUM_FILES);
-            int numFiles = input.readInt();
-            ROOT_LOGGER.debugf("Received %d files for %s", numFiles, localPath);
-            switch (numFiles) {
-                case -1: { // Not found on DC
-                    break;
-                }
-                case 0: { // Found on DC, but was an empty dir
-                    if (!localPath.mkdirs()) {
-                        throw MESSAGES.cannotCreateLocalDirectory(localPath);
-                    }
-                    break;
-                }
-                default: { // Found on DC
-                    for (int i = 0; i < numFiles; i++) {
-                        expectHeader(input, DomainControllerProtocol.FILE_START);
-                        expectHeader(input, DomainControllerProtocol.PARAM_FILE_PATH);
-                        final String path = input.readUTF();
-                        expectHeader(input, DomainControllerProtocol.PARAM_FILE_SIZE);
-                        final long length = input.readLong();
-                        ROOT_LOGGER.debugf("Received file [%s] of length %d", path, length);
-                        final File file = new File(localPath, path);
-                        if (!file.getParentFile().exists() && !file.getParentFile().mkdirs()) {
-                            throw MESSAGES.cannotCreateLocalDirectory(localPath.getParentFile());
-                        }
-                        long totalRead = 0;
-                        OutputStream fileOut = null;
-                        try {
-                            fileOut = new BufferedOutputStream(new FileOutputStream(file));
-                            final byte[] buffer = new byte[8192];
-                            while (totalRead < length) {
-                                int len = Math.min((int) (length - totalRead), buffer.length);
-                                input.readFully(buffer, 0, len);
-                                fileOut.write(buffer, 0, len);
-                                totalRead += len;
-                            }
-                        } finally {
-                            if (fileOut != null) {
-                                fileOut.close();
-                            }
-                        }
-                        if (totalRead != length) {
-                            throw MESSAGES.didNotReadEntireFile((length - totalRead));
-                        }
-
-                        expectHeader(input, DomainControllerProtocol.FILE_END);
-                    }
-                }
+            try {
+                DomainRemoteFileRequestAndHandler.INSTANCE.handleResponse(input, localPath, ROOT_LOGGER, resultHandler, context);
+            } catch (CannotCreateLocalDirectoryException e) {
+                throw MESSAGES.cannotCreateLocalDirectory(e.getDir());
+            } catch (DidNotReadEntireFileException e) {
+                throw MESSAGES.didNotReadEntireFile(e.getMissing());
             }
-            resultHandler.done(localPath);
         }
-
     }
 
-    static class RemoteFileRepository implements FileRepository {
-        private final FileRepository localFileRepository;
+    static class RemoteFileRepository implements HostFileRepository {
+        private final HostFileRepository localFileRepository;
         private volatile RemoteFileRepositoryExecutor remoteFileRepositoryExecutor;
 
-        RemoteFileRepository(final FileRepository localFileRepository) {
+        RemoteFileRepository(final HostFileRepository localFileRepository) {
             this.localFileRepository = localFileRepository;
         }
 
@@ -570,14 +511,19 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
         private void setRemoteFileRepositoryExecutor(RemoteFileRepositoryExecutor remoteFileRepositoryExecutor) {
             this.remoteFileRepositoryExecutor = remoteFileRepositoryExecutor;
         }
+
+        @Override
+        public void deleteDeployment(byte[] deploymentHash) {
+            localFileRepository.deleteDeployment(deploymentHash);
+        }
     }
 
     private static interface RemoteFileRepositoryExecutor {
-        File getFile(final String relativePath, final byte repoId, FileRepository localFileRepository);
+        File getFile(final String relativePath, final byte repoId, HostFileRepository localFileRepository);
     }
 
     private RemoteFileRepositoryExecutor remoteFileRepositoryExecutor = new RemoteFileRepositoryExecutor() {
-        public File getFile(final String relativePath, final byte repoId, FileRepository localFileRepository) {
+        public File getFile(final String relativePath, final byte repoId, HostFileRepository localFileRepository) {
             try {
                 return new GetFileRequest(repoId, relativePath, localFileRepository).executeForResult(handler, channel, null);
             } catch (Exception e) {
@@ -598,6 +544,8 @@ public class RemoteDomainConnectionService implements MasterDomainControllerClie
     }
 
     private static class HostAlreadyExistsException extends RuntimeException {
+
+        private static final long serialVersionUID = 1L;
 
         public HostAlreadyExistsException(String msg) {
             super(msg);

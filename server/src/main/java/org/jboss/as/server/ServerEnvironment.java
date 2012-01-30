@@ -21,21 +21,27 @@
  */
 package org.jboss.as.server;
 
+import java.io.File;
+import java.io.Serializable;
+import java.net.UnknownHostException;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.regex.Pattern;
+
 import org.jboss.as.controller.ControllerMessages;
+import org.jboss.as.controller.OperationFailedException;
+import org.jboss.as.controller.ProcessType;
 import org.jboss.as.controller.RunningMode;
+import org.jboss.as.controller.interfaces.InetAddressUtil;
+import org.jboss.as.controller.operations.common.ProcessEnvironment;
 import org.jboss.as.controller.persistence.ConfigurationFile;
-import org.jboss.logging.Logger;
+import org.jboss.as.version.ProductConfig;
 import org.jboss.modules.Module;
 import org.jboss.modules.ModuleIdentifier;
 import org.jboss.modules.ModuleLoader;
-
-import java.io.File;
-import java.io.Serializable;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.util.Map;
-import java.util.Properties;
-import java.util.regex.Pattern;
 
 /**
  * Encapsulates the runtime environment for a server.
@@ -43,19 +49,32 @@ import java.util.regex.Pattern;
  * @author Brian Stansberry
  * @author Mike M. Clark
  */
-public class ServerEnvironment implements Serializable {
+public class ServerEnvironment extends ProcessEnvironment implements Serializable {
 
-    private static final long serialVersionUID = -349976376447122910L;
+    private static final long serialVersionUID = 1725061010357265545L;
 
     public static enum LaunchType {
         DOMAIN,
         STANDALONE,
         EMBEDDED,
-        APPCLIENT,
-    }
+        APPCLIENT;
 
-    // Provide logging
-    private static final transient Logger log = Logger.getLogger(ServerEnvironment.class);
+        public ProcessType getProcessType() {
+            switch (this) {
+                case DOMAIN:
+                    return ProcessType.DOMAIN_SERVER;
+                case STANDALONE:
+                    return ProcessType.STANDALONE_SERVER;
+                case EMBEDDED:
+                    return  ProcessType.EMBEDDED_SERVER;
+                case APPCLIENT:
+                    return ProcessType.APPLICATION_CLIENT;
+                default:
+                    // programming error
+                    throw new RuntimeException("unimplemented LaunchType");
+            }
+        }
+    }
 
     // ///////////////////////////////////////////////////////////////////////
     // Configuration Value Identifiers //
@@ -78,6 +97,14 @@ public class ServerEnvironment implements Serializable {
      * Defaults to <tt><em>HOME_DIR</em>/modules</tt>/
      */
     public static final String MODULES_DIR = "jboss.modules.dir";
+
+    /**
+     * Constant that holds the name of the environment property for specifying the directory from which JBoss will read OSGi bundles.
+     *
+     * <p>
+     * Defaults to <tt><em>HOME_DIR</em>/bundles</tt>/
+     */
+    public static final String BUNDLES_DIR = "jboss.bundles.dir";
 
     /**
      * VFS module identifier
@@ -136,15 +163,6 @@ public class ServerEnvironment implements Serializable {
     public static final String SERVER_TEMP_DIR = "jboss.server.temp.dir";
 
     /**
-     * Constant that holds the name of the environment property for specifying the directory which JBoss will use for internal
-     * system deployments.
-     *
-     * <p>
-     * Defaults to <tt><em>SERVER_DATA_DIR</em>/system-content</tt>.
-     */
-    public static final String SERVER_SYSTEM_DEPLOY_DIR = "jboss.server.system.deploy.dir";
-
-    /**
      * Common alias between domain and standalone mode. Uses jboss.domain.temp.dir on domain mode,
      * and jboss.server.temp.dir on standalone server mode.
      */
@@ -192,12 +210,28 @@ public class ServerEnvironment implements Serializable {
      */
     public static final String JBOSS_DEFAULT_MULTICAST_ADDRESS = "jboss.default.multicast.address";
 
+    private static final Set<String> ILLEGAL_PROPERTIES = new HashSet<String>(Arrays.asList(JAVA_EXT_DIRS, HOME_DIR,
+            "modules.path", SERVER_BASE_DIR, SERVER_CONFIG_DIR, SERVER_DATA_DIR, SERVER_DEPLOY_DIR, SERVER_LOG_DIR,
+            BOOTSTRAP_MAX_THREADS, CONTROLLER_TEMP_DIR));
+    private static final Set<String> BOOT_PROPERTIES = new HashSet<String>(Arrays.asList(BUNDLES_DIR, SERVER_TEMP_DIR,
+            NODE_NAME, SERVER_NAME, HOST_NAME, QUALIFIED_HOST_NAME));
+
+    /** Properties that we care about that were provided to the constructor (i.e. by the user via cmd line) */
+    private final Properties primordialProperties;
+    /**
+     * Properties that we care about that have been provided by the user either via cmd line or
+     * via {@link #systemPropertyUpdated(String, String)}
+     */
+    private final Properties providedProperties;
+    /** Whether the server name has been provided via {@link #setProcessName(String)} */
+    private volatile boolean processNameSet;
+
     private final LaunchType launchType;
-    private final String qualifiedHostName;
-    private final String hostName;
     private final String hostControllerName;
-    private final String serverName;
-    private final String nodeName;
+    private volatile String qualifiedHostName;
+    private volatile String hostName;
+    private volatile String serverName;
+    private volatile String nodeName;
 
     private final File[] javaExtDirs;
 
@@ -206,21 +240,24 @@ public class ServerEnvironment implements Serializable {
     private final File serverBaseDir;
     private final File serverConfigurationDir;
     private final ConfigurationFile serverConfigurationFile;
-    private final File serverDataDir;
-    private final File serverDeployDir;
     private final File serverLogDir;
-    private final File serverTempDir;
     private final File controllerTempDir;
+    private volatile File serverDataDir;
+    private volatile File serverDeployDir;
+    private volatile File serverTempDir;
+    private volatile File bundlesDir;
 
     private final boolean standalone;
     private final boolean allowModelControllerExecutor;
     private final RunningMode initialRunningMode;
+    private final ProductConfig productConfig;
 
     public ServerEnvironment(final String hostControllerName, final Properties props, final Map<String, String> env, final String serverConfig,
-                             final LaunchType launchType, final RunningMode initialRunningMode) {
+                             final LaunchType launchType, final RunningMode initialRunningMode, ProductConfig productConfig) {
         if (props == null) {
             throw ControllerMessages.MESSAGES.nullVar("props");
         }
+
         this.launchType = launchType;
         this.standalone = launchType != LaunchType.DOMAIN;
 
@@ -234,59 +271,8 @@ public class ServerEnvironment implements Serializable {
             throw ServerMessages.MESSAGES.hostControllerNameNullInDomain();
         }
 
-        // Calculate host and default server name
-        String hostName = props.getProperty(HOST_NAME);
-        String qualifiedHostName = props.getProperty(QUALIFIED_HOST_NAME);
-        if (qualifiedHostName == null) {
-            // if host name is specified, don't pick a qualified host name that isn't related to it
-            qualifiedHostName = hostName;
-            if (qualifiedHostName == null) {
-                // POSIX-like OSes including Mac should have this set
-                qualifiedHostName = env.get("HOSTNAME");
-            }
-            if (qualifiedHostName == null) {
-                // Certain versions of Windows
-                qualifiedHostName = env.get("COMPUTERNAME");
-            }
-            if (qualifiedHostName == null) {
-                try {
-                    qualifiedHostName = InetAddress.getLocalHost().getHostName();
-                } catch (UnknownHostException e) {
-                    qualifiedHostName = null;
-                }
-            }
-            if (qualifiedHostName != null && qualifiedHostName.matches("^\\d+\\.\\d+\\.\\d+\\.\\d+$|:")) {
-                // IP address is not acceptable
-                qualifiedHostName = null;
-            }
-            if (qualifiedHostName == null) {
-                // Give up
-                qualifiedHostName = "unknown-host.unknown-domain";
-            }
-            qualifiedHostName = qualifiedHostName.trim().toLowerCase();
-        }
-        this.qualifiedHostName = qualifiedHostName;
-
-        if (hostName == null) {
-            // Use the host part of the qualified host name
-            final int idx = qualifiedHostName.indexOf('.');
-            hostName = idx == -1 ? qualifiedHostName : qualifiedHostName.substring(0, idx);
-        }
-        this.hostName = hostName;
-
-        // Set up the server name for management purposes
-        String serverName = props.getProperty(SERVER_NAME);
-        if (serverName == null) {
-            serverName = hostName;
-        }
-        this.serverName = serverName;
-
-        // Set up the clustering node name
-        String nodeName = props.getProperty(NODE_NAME);
-        if (nodeName == null) {
-            nodeName = serverName;
-        }
-        this.nodeName = nodeName;
+        // Calculate qualified and unqualified host names, default server name, cluster node name
+        configureQualifiedHostName(props.getProperty(QUALIFIED_HOST_NAME), props.getProperty(HOST_NAME), props, env);
 
         // Java system-wide extension dirs
         javaExtDirs = getFilesFromProperty(JAVA_EXT_DIRS, props);
@@ -294,13 +280,15 @@ public class ServerEnvironment implements Serializable {
         // Must have HOME_DIR
         homeDir = getFileFromProperty(HOME_DIR, props);
         if (homeDir == null)
-            throw new IllegalStateException("Missing configuration value for: " + HOME_DIR);
+            throw ServerMessages.MESSAGES.missingHomeDirConfiguration(HOME_DIR);
 
         File tmp = getFileFromProperty(MODULES_DIR, props);
         if (tmp == null) {
             tmp = new File(homeDir, "modules");
         }
         modulesDir = tmp;
+
+        configureBundlesDir(props.getProperty(BUNDLES_DIR), props);
 
         tmp = getFileFromProperty(SERVER_BASE_DIR, props);
         if (tmp == null) {
@@ -334,11 +322,7 @@ public class ServerEnvironment implements Serializable {
         }
         serverLogDir = tmp;
 
-        tmp = getFileFromProperty(SERVER_TEMP_DIR, props);
-        if (tmp == null) {
-            tmp = new File(serverBaseDir, "tmp");
-        }
-        serverTempDir = tmp;
+        configureServerTempDir(props.getProperty(SERVER_TEMP_DIR), props);
 
         tmp = getFileFromProperty(CONTROLLER_TEMP_DIR, props);
         if (tmp == null) {
@@ -354,10 +338,31 @@ public class ServerEnvironment implements Serializable {
                 // Property was set to a valid value; user wishes to control core service threads
                 allowExecutor = false;
             } catch(NumberFormatException ex) {
-                log.warnf(ex, "Failed to parse property(%s), value(%s) as an integer", BOOTSTRAP_MAX_THREADS, maxThreads);
+                ServerLogger.ROOT_LOGGER.failedToParseCommandLineInteger(BOOTSTRAP_MAX_THREADS, maxThreads);
             }
         }
         allowModelControllerExecutor = allowExecutor;
+
+        this.productConfig = productConfig;
+
+        // Keep a copy of the original properties
+        this.primordialProperties = new Properties();
+        copyProperties(props, primordialProperties);
+        // Create a separate copy for tracking later changes
+        this.providedProperties = new Properties();
+        copyProperties(primordialProperties, providedProperties);
+    }
+
+    private static void copyProperties(Properties src, Properties dest) {
+        for (Map.Entry<Object, Object> entry : src.entrySet()) {
+            Object key = entry.getKey();
+            if (key instanceof String) {
+                Object val = entry.getValue();
+                if (val == null || val instanceof String) {
+                    dest.setProperty((String) key, (String) val);
+                }
+            }
+        }
     }
 
     void install() {
@@ -380,8 +385,15 @@ public class ServerEnvironment implements Serializable {
             Module vfsModule = bootLoader.loadModule(ModuleIdentifier.create(VFS_MODULE_IDENTIFIER));
             Module.registerURLStreamHandlerFactoryModule(vfsModule);
         } catch (Exception ex) {
-            log.errorf(ex, "Cannot add module '%s' as URLStreamHandlerFactory provider", VFS_MODULE_IDENTIFIER);
+            ServerLogger.ROOT_LOGGER.cannotAddURLStreamHandlerFactory(ex, VFS_MODULE_IDENTIFIER);
         }
+    }
+
+    void resetProvidedProperties() {
+        // We're being reloaded, so restore state to where we were right after constructor was executed
+        providedProperties.clear();
+        copyProperties(primordialProperties, providedProperties);
+        processNameSet = false;
     }
 
     /**
@@ -406,6 +418,20 @@ public class ServerEnvironment implements Serializable {
         return serverName;
     }
 
+    private void configureServerName(String serverName, Properties providedProperties) {
+        if (serverName == null) {
+            serverName = hostName;
+        } else {
+            providedProperties.setProperty(SERVER_NAME, serverName);
+            // If necessary, convert jboss.domain.uuid into a UUID
+            serverName = resolveGUID(serverName);
+        }
+        this.serverName = serverName;
+
+        // Chain down to nodeName as serverName is the default for it
+        configureNodeName(providedProperties.getProperty(NODE_NAME), providedProperties);
+    }
+
     /**
      * Get the fully-qualified host name detected at server startup.
      *
@@ -413,6 +439,46 @@ public class ServerEnvironment implements Serializable {
      */
     public String getQualifiedHostName() {
         return qualifiedHostName;
+    }
+
+    private void configureQualifiedHostName(String qualifiedHostName, String providedHostName,
+                                            Properties providedProperties,
+                                            Map<String, String> env) {
+        if (qualifiedHostName == null) {
+            // if host name is specified, don't pick a qualified host name that isn't related to it
+            qualifiedHostName = providedHostName;
+            if (qualifiedHostName == null) {
+                // POSIX-like OSes including Mac should have this set
+                qualifiedHostName = env.get("HOSTNAME");
+            }
+            if (qualifiedHostName == null) {
+                // Certain versions of Windows
+                qualifiedHostName = env.get("COMPUTERNAME");
+            }
+            if (qualifiedHostName == null) {
+                try {
+                    qualifiedHostName = InetAddressUtil.getLocalHost().getHostName();
+                } catch (UnknownHostException e) {
+                    qualifiedHostName = null;
+                }
+            }
+            if (qualifiedHostName != null && qualifiedHostName.matches("^\\d+\\.\\d+\\.\\d+\\.\\d+$|:")) {
+                // IP address is not acceptable
+                qualifiedHostName = null;
+            }
+            if (qualifiedHostName == null) {
+                // Give up
+                qualifiedHostName = "unknown-host.unknown-domain";
+            }
+            qualifiedHostName = qualifiedHostName.trim().toLowerCase();
+        } else {
+            providedProperties.setProperty(QUALIFIED_HOST_NAME, qualifiedHostName);
+        }
+
+        this.qualifiedHostName = qualifiedHostName;
+
+        // Chain down to hostName as qualifiedHostName is the default for it
+        configureHostName(providedProperties.getProperty(HOST_NAME), providedProperties);
     }
 
     /**
@@ -424,6 +490,21 @@ public class ServerEnvironment implements Serializable {
         return hostName;
     }
 
+    private void configureHostName(String hostName, Properties providedProperties) {
+        if (hostName == null) {
+            providedProperties.remove(HOST_NAME);
+            // Use the host part of the qualified host name
+            final int idx = qualifiedHostName.indexOf('.');
+            hostName = idx == -1 ? qualifiedHostName : qualifiedHostName.substring(0, idx);
+        } else {
+            providedProperties.setProperty(HOST_NAME, hostName);
+        }
+        this.hostName = hostName;
+
+        // Chain down to serverName as hostName is the default for it
+        configureServerName(providedProperties.getProperty(SERVER_NAME), providedProperties);
+    }
+
     /**
      * Get the node name used for clustering purposes.
      *
@@ -431,6 +512,16 @@ public class ServerEnvironment implements Serializable {
      */
     public String getNodeName() {
         return nodeName;
+    }
+
+    private void configureNodeName(String nodeName, Properties providedProperties) {
+        if (nodeName == null) {
+            providedProperties.remove(NODE_NAME);
+            nodeName = hostControllerName == null ? serverName : hostControllerName + ":" + serverName;
+        } else {
+            providedProperties.setProperty(NODE_NAME, nodeName);
+        }
+        this.nodeName = nodeName;
     }
 
     public File[] getJavaExtDirs() {
@@ -443,6 +534,21 @@ public class ServerEnvironment implements Serializable {
 
     public File getModulesDir() {
         return modulesDir;
+    }
+
+    public File getBundlesDir() {
+        return bundlesDir;
+    }
+
+    private void configureBundlesDir(String dirPath, Properties providedProperties) {
+        File tmp = getFileFromPath(dirPath);
+        if (tmp == null) {
+            providedProperties.remove(BUNDLES_DIR);
+            tmp = new File(homeDir, "bundles");
+        } else {
+            providedProperties.setProperty(BUNDLES_DIR, dirPath);
+        }
+        bundlesDir = tmp;
     }
 
     public File getServerBaseDir() {
@@ -473,6 +579,17 @@ public class ServerEnvironment implements Serializable {
         return serverTempDir;
     }
 
+    private void configureServerTempDir(String path, Properties providedProps) {
+        File tmp = getFileFromPath(path);
+        if (tmp == null) {
+            providedProps.remove(SERVER_TEMP_DIR);
+            tmp = new File(serverBaseDir, "tmp");
+        } else {
+            providedProps.setProperty(SERVER_TEMP_DIR, path);
+        }
+        serverTempDir = tmp;
+    }
+
     public File getControllerTempDir() {
         return controllerTempDir;
     }
@@ -494,6 +611,10 @@ public class ServerEnvironment implements Serializable {
         return allowModelControllerExecutor;
     }
 
+    public ProductConfig getProductConfig() {
+        return productConfig;
+    }
+
     /**
      * Determine the number of threads to use for the bootstrap service container. This reads
      * the {@link #BOOTSTRAP_MAX_THREADS} system property and if not set, defaults to 2*cpus.
@@ -510,31 +631,97 @@ public class ServerEnvironment implements Serializable {
                 int max = Integer.decode(maxThreads);
                 defaultThreads = Math.max(max, 1);
             } catch(NumberFormatException ex) {
-                log.warnf(ex, "Failed to parse property(%s), value(%s) as an integer", BOOTSTRAP_MAX_THREADS, maxThreads);
+                ServerLogger.ROOT_LOGGER.failedToParseCommandLineInteger(BOOTSTRAP_MAX_THREADS, maxThreads);
             }
         }
         return defaultThreads;
     }
 
+    @Override
+    protected String getProcessName() {
+        return serverName;
+    }
+
+    @Override
+    protected void setProcessName(String processName) {
+        if (processName != null) {
+            if (primordialProperties.contains(SERVER_NAME)) {
+                // User specified both -Djboss.server.name and a standalone.xml <server name="xxx"/> value.
+                // Log a WARN
+                String rawServerProp = SecurityActions.getSystemProperty(SERVER_NAME, serverName);
+                ServerLogger.AS_ROOT_LOGGER.duplicateServerNameConfiguration(SERVER_NAME, rawServerProp, processName);
+            }
+            serverName = processName;
+            SecurityActions.setSystemProperty(SERVER_NAME, serverName);
+            processNameSet = true;
+            if (!primordialProperties.contains(NODE_NAME)) {
+                nodeName = serverName;
+                SecurityActions.setSystemProperty(NODE_NAME, nodeName);
+            }
+        }
+    }
+
+    @Override
+    protected boolean isRuntimeSystemPropertyUpdateAllowed(String propertyName, String propertyValue, boolean bootTime) throws OperationFailedException {
+        if (ILLEGAL_PROPERTIES.contains(propertyName)) {
+            throw ServerMessages.MESSAGES.systemPropertyNotManageable(propertyName);
+        }
+        if (processNameSet && SERVER_NAME.equals(propertyName)) {
+            throw ServerMessages.MESSAGES.systemPropertyCannotOverrideServerName(SERVER_NAME);
+        }
+        return bootTime || !BOOT_PROPERTIES.contains(propertyName);
+    }
+
+    @Override
+    protected void systemPropertyUpdated(String propertyName, String propertyValue) {
+        if (BOOT_PROPERTIES.contains(propertyName)) {
+            if (BUNDLES_DIR.equals(propertyName)) {
+                configureBundlesDir(propertyValue, providedProperties);
+            } else if (SERVER_TEMP_DIR.equals(propertyName)) {
+                configureServerTempDir(propertyValue, providedProperties);
+            } else if (QUALIFIED_HOST_NAME.equals(propertyName)) {
+                configureQualifiedHostName(propertyValue, providedProperties.getProperty(HOST_NAME),
+                        providedProperties, SecurityActions.getSystemEnvironment());
+            } else if (HOST_NAME.equals(propertyName)) {
+                configureHostName(propertyValue, providedProperties);
+            } else if (SERVER_NAME.equals(propertyName)) {
+                configureServerName(propertyValue, providedProperties);
+            } else if (NODE_NAME.equals(propertyName)) {
+                configureNodeName(propertyValue, providedProperties);
+            }
+        }
+    }
+
     /**
      * Get a File from configuration.
+     *
+     * @param name the name of the property
+     * @param props the set of configuration properties
      *
      * @return the CanonicalFile form for the given name.
      */
     private File getFileFromProperty(final String name, final Properties props) {
-        String value = props.getProperty(name, null);
-        if (value != null) {
-            File f = new File(value);
-            return f;
-        }
+        return getFileFromPath(props.getProperty(name));
+    }
 
-        return null;
+    /**
+     * Get a File from configuration.
+     *
+     * @param path the file path
+     *
+     * @return the CanonicalFile form for the given name.
+     */
+    private File getFileFromPath(final String path) {
+        return (path != null) ? new File(path) : null;
     }
 
     private static final File[] NO_FILES = new File[0];
 
     /**
      * Get a File path list from configuration.
+     *
+     * @param name the name of the property
+     * @param props the set of configuration properties
      *
      * @return the CanonicalFile form for the given name.
      */

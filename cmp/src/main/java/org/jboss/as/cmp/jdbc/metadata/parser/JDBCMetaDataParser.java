@@ -28,11 +28,12 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
+
 import org.jboss.as.cmp.jdbc.SQLUtil;
 import org.jboss.as.cmp.jdbc.metadata.JDBCApplicationMetaData;
-import org.jboss.as.cmp.jdbc.metadata.JDBCCMPFieldMetaData;
 import org.jboss.as.cmp.jdbc.metadata.JDBCCMPFieldPropertyMetaData;
 import org.jboss.as.cmp.jdbc.metadata.JDBCEntityCommandMetaData;
 import org.jboss.as.cmp.jdbc.metadata.JDBCFunctionMappingMetaData;
@@ -1138,6 +1139,10 @@ public class JDBCMetaDataParser extends MetaDataElementParser {
                 }
                 case FIELD_NAME: {
                     fields.add(getElementText(reader));
+                    break;
+                }
+                case DESCRIPTION: {
+                    getElementText(reader);
                     break;
                 }
                 default: {

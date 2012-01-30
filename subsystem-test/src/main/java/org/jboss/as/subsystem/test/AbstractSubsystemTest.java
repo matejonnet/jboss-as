@@ -26,7 +26,6 @@ import static org.jboss.as.controller.parsing.ParseUtils.unexpectedElement;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringReader;
@@ -42,7 +41,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.xml.XMLConstants;
@@ -54,15 +52,12 @@ import javax.xml.stream.XMLStreamReader;
 
 import junit.framework.Assert;
 import junit.framework.AssertionFailedError;
-
 import org.jboss.as.controller.AbstractControllerService;
 import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.CompositeOperationHandler;
 import org.jboss.as.controller.ControlledProcessState;
 import org.jboss.as.controller.ExpressionResolver;
 import org.jboss.as.controller.Extension;
-import org.jboss.as.controller.ExtensionContext;
-import org.jboss.as.controller.ExtensionContextImpl;
 import org.jboss.as.controller.ModelController;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
@@ -72,12 +67,15 @@ import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.ProcessType;
 import org.jboss.as.controller.ProxyController;
 import org.jboss.as.controller.ResourceDefinition;
+import org.jboss.as.controller.RunningMode;
 import org.jboss.as.controller.RunningModeControl;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.descriptions.OverrideDescriptionProvider;
 import org.jboss.as.controller.descriptions.common.CommonProviders;
+import org.jboss.as.controller.extension.ExtensionRegistry;
 import org.jboss.as.controller.operations.common.Util;
 import org.jboss.as.controller.operations.global.GlobalOperationHandlers;
+import org.jboss.as.controller.operations.validation.OperationValidator;
 import org.jboss.as.controller.parsing.Element;
 import org.jboss.as.controller.parsing.ExtensionParsingContext;
 import org.jboss.as.controller.parsing.Namespace;
@@ -97,7 +95,6 @@ import org.jboss.as.controller.registry.Resource;
 import org.jboss.as.server.DeployerChainAddHandler;
 import org.jboss.as.server.Services;
 import org.jboss.as.server.controller.descriptions.ServerDescriptionProviders;
-import org.jboss.as.server.deployment.repository.impl.ContentRepositoryImpl;
 import org.jboss.as.server.operations.RootResourceHack;
 import org.jboss.as.subsystem.test.ModelDescriptionValidator.ValidationConfiguration;
 import org.jboss.as.subsystem.test.ModelDescriptionValidator.ValidationFailure;
@@ -134,17 +131,21 @@ public abstract class AbstractSubsystemTest {
 
     private final String TEST_NAMESPACE = "urn.org.jboss.test:1.0";
 
-    private ExtensionParsingContextImpl parsingContext;
-
     private List<KernelServices> kernelServices = new ArrayList<KernelServices>();
 
     private final AtomicInteger counter = new AtomicInteger();
 
     protected final String mainSubsystemName;
     private final Extension mainExtension;
+    /**
+     * ExtensionRegistry we use just for registering parsers.
+     * The ModelControllerService uses a separate registry. This is done this way to allow multiple ModelControllerService
+     * instantiations in the same test without having to re-initialize the parsers.
+     */
+    private ExtensionRegistry extensionParsingRegistry;
     private TestParser testParser;
     private boolean addedExtraParsers;
-    private StringConfigurationPersister persister;
+    private XMLMapper xmlMapper;
 
     protected AbstractSubsystemTest(final String mainSubsystemName, final Extension mainExtension) {
         this.mainSubsystemName = mainSubsystemName;
@@ -158,11 +159,11 @@ public abstract class AbstractSubsystemTest {
     @Before
     public void initializeParser() throws Exception {
         //Initialize the parser
-        XMLMapper mapper = XMLMapper.Factory.create();
+        xmlMapper = XMLMapper.Factory.create();
         testParser = new TestParser();
-        mapper.registerRootElement(new QName(TEST_NAMESPACE, "test"), testParser);
-        parsingContext = new ExtensionParsingContextImpl(mapper);
-        mainExtension.initializeParsers(parsingContext);
+        extensionParsingRegistry = new ExtensionRegistry(getProcessType(), new RunningModeControl(RunningMode.NORMAL));
+        xmlMapper.registerRootElement(new QName(TEST_NAMESPACE, "test"), testParser);
+        mainExtension.initializeParsers(extensionParsingRegistry.getExtensionParsingContext("Test", xmlMapper));
         addedExtraParsers = false;
 
         stack.set(new Stack<String>());
@@ -177,7 +178,8 @@ public abstract class AbstractSubsystemTest {
             }
         }
         kernelServices.clear();
-        parsingContext = null;
+        xmlMapper = null;
+        extensionParsingRegistry = null;
         testParser = null;
         stack.remove();
     }
@@ -214,6 +216,7 @@ public abstract class AbstractSubsystemTest {
      *
      * @param subsystemXml the subsystem xml to be parsed
      * @return the created operations
+     * @throws XMLStreamException if there is a parsing problem
      */
     protected List<ModelNode> parse(String subsystemXml) throws XMLStreamException {
         return parse(null, subsystemXml);
@@ -223,18 +226,19 @@ public abstract class AbstractSubsystemTest {
      * Parse the subsystem xml and create the operations that will be passed into the controller
      *
      * @param additionalParsers additional initialization that should be done to the parsers before initializing our extension. These parsers
-     * will only be initialized the first time this method or {@link #outputModel(AdditionalParsers, ModelNode)} is called from within a test
+     * will only be initialized the first time this method is called from within a test
      * @param subsystemXml the subsystem xml to be parsed
      * @return the created operations
+     * @throws XMLStreamException if there is a parsing problem
      */
     protected List<ModelNode> parse(AdditionalParsers additionalParsers, String subsystemXml) throws XMLStreamException {
-        addAdditionalParsers(additionalParsers);
         String xml = "<test xmlns=\"" + TEST_NAMESPACE + "\">" +
                 subsystemXml +
                 "</test>";
         final XMLStreamReader reader = XMLInputFactory.newInstance().createXMLStreamReader(new StringReader(xml));
+        addAdditionalParsers(additionalParsers);
         final List<ModelNode> operationList = new ArrayList<ModelNode>();
-        parsingContext.getMapper().parseDocument(operationList, reader);
+        xmlMapper.parseDocument(operationList, reader);
         return operationList;
     }
 
@@ -245,23 +249,15 @@ public abstract class AbstractSubsystemTest {
      * @return the xml
      */
     protected String outputModel(ModelNode model) throws Exception {
-        return outputModel(null, model);
-    }
 
-    /**
-     * Output the model to xml
-     *
-     * @param additionalParsers additional initialization that should be done to the parsers before initializing our extension. These parsers
-     * will only be initialized the first time this method or {@link #parse(AdditionalParsers, String)} is called from within a test
-     * @param model the model to marshall
-     * @return the xml
-     */
-    protected String outputModel(AdditionalParsers additionalParsers, ModelNode model) throws Exception {
-        addAdditionalParsers(additionalParsers);
         StringConfigurationPersister persister = new StringConfigurationPersister(Collections.<ModelNode>emptyList(), testParser);
 
+        ExtensionRegistry outputExtensionRegistry = new ExtensionRegistry(ProcessType.EMBEDDED_SERVER, new RunningModeControl(RunningMode.NORMAL));
+        outputExtensionRegistry.setSubsystemParentResourceRegistrations(MOCK_RESOURCE_REG, MOCK_RESOURCE_REG);
+        outputExtensionRegistry.setWriterRegistry(persister);
+
         Extension extension = mainExtension.getClass().newInstance();
-        extension.initialize(new ExtensionContextImpl(MOCK_RESOURCE_REG, MOCK_RESOURCE_REG, persister, ProcessType.EMBEDDED_SERVER).createTracking("Test"));
+        extension.initialize(outputExtensionRegistry.getExtensionContext("Test"));
 
         ConfigurationPersister.PersistenceResource resource = persister.store(model, Collections.<PathAddress>emptySet());
         resource.commit();
@@ -327,7 +323,10 @@ public abstract class AbstractSubsystemTest {
         }
         allOps.addAll(bootOperations);
         StringConfigurationPersister persister = new StringConfigurationPersister(allOps, testParser);
-        ModelControllerService svc = new ModelControllerService(mainExtension, controllerInitializer, additionalInit, processState, persister, additionalInit.isValidateOperations());
+        final ExtensionRegistry controllerExtensionRegistry = cloneExtensionRegistry();
+        controllerExtensionRegistry.setWriterRegistry(persister);
+        ModelControllerService svc = new ModelControllerService(mainExtension, controllerInitializer, additionalInit, controllerExtensionRegistry,
+                processState, persister, additionalInit.isValidateOperations());
         ServiceBuilder<ModelController> builder = target.addService(Services.JBOSS_SERVER_CONTROLLER, svc);
         builder.install();
 
@@ -349,6 +348,14 @@ public abstract class AbstractSubsystemTest {
         validateDescriptionProviders(additionalInit, kernelServices);
 
         return kernelServices;
+    }
+
+    /**
+     * Gets the ProcessType to use. Defaults to {@link ProcessType#EMBEDDED_SERVER}
+     * @return the process type
+     */
+    protected ProcessType getProcessType() {
+        return ProcessType.EMBEDDED_SERVER;
     }
 
     /**
@@ -551,11 +558,27 @@ public abstract class AbstractSubsystemTest {
 
     private void addAdditionalParsers(AdditionalParsers additionalParsers) {
         if (additionalParsers != null && !addedExtraParsers) {
-            additionalParsers.addParsers(parsingContext);
+            additionalParsers.addParsers(extensionParsingRegistry, xmlMapper);
             addedExtraParsers = true;
         }
     }
 
+    private ExtensionRegistry cloneExtensionRegistry() {
+        final ExtensionRegistry clone = new ExtensionRegistry(extensionParsingRegistry.getProcessType(), new RunningModeControl(RunningMode.NORMAL));
+        for (String extension : extensionParsingRegistry.getExtensionModuleNames()) {
+            ExtensionParsingContext epc = clone.getExtensionParsingContext(extension, null);
+            for (Map.Entry<String, ExtensionRegistry.SubsystemInformation> entry : extensionParsingRegistry.getAvailableSubsystems(extension).entrySet()) {
+                for (String namespace : entry.getValue().getXMLNamespaces()) {
+                    epc.setSubsystemXmlMapping(entry.getKey(), namespace, null);
+                }
+            }
+            for (String namespace : extensionParsingRegistry.getUnnamedNamespaces(extension)) {
+                epc.setSubsystemXmlMapping(namespace, null);
+            }
+        }
+
+        return clone;
+    }
 
     private void validateDescriptionProviders(AdditionalInitialization additionalInit, KernelServices kernelServices) {
         ValidationConfiguration arbitraryDescriptors = additionalInit.getModelValidationConfiguration();
@@ -631,27 +654,6 @@ public abstract class AbstractSubsystemTest {
         return xml.replaceFirst(" xmlns=\".*\"", "");
     }
 
-    private final class ExtensionParsingContextImpl implements ExtensionParsingContext {
-        private final XMLMapper mapper;
-
-        public ExtensionParsingContextImpl(XMLMapper mapper) {
-            this.mapper = mapper;
-        }
-
-        @Override
-        public void setSubsystemXmlMapping(final String namespaceUri, final XMLElementReader<List<ModelNode>> reader) {
-            mapper.registerRootElement(new QName(namespaceUri, SUBSYSTEM), reader);
-        }
-
-        @Override
-        public void setDeploymentXmlMapping(final String namespaceUri, final XMLElementReader<ModelNode> reader) {
-        }
-
-        private XMLMapper getMapper() {
-            return mapper;
-        }
-    }
-
     private final class TestParser implements  XMLStreamConstants, XMLElementReader<List<ModelNode>>, XMLElementWriter<ModelMarshallingContext> {
 
         private TestParser() {
@@ -660,6 +662,7 @@ public abstract class AbstractSubsystemTest {
 
         @Override
         public void writeContent(XMLExtendedStreamWriter writer, ModelMarshallingContext context) throws XMLStreamException {
+
             String defaultNamespace = writer.getNamespaceContext().getNamespaceURI(XMLConstants.DEFAULT_NS_PREFIX);
             try {
                 ModelNode subsystem = context.getModelNode().get(SUBSYSTEM, mainSubsystemName);
@@ -694,21 +697,24 @@ public abstract class AbstractSubsystemTest {
 
     private static class ModelControllerService extends AbstractControllerService {
 
-        final AtomicBoolean state = new AtomicBoolean(true);
         final CountDownLatch latch = new CountDownLatch(1);
         final StringConfigurationPersister persister;
         final AdditionalInitialization additionalInit;
         final ControllerInitializer controllerInitializer;
+        final ExtensionRegistry extensionRegistry;
         final Extension mainExtension;
         final boolean validateOps;
         volatile ManagementResourceRegistration rootRegistration;
         volatile Exception error;
 
-        ModelControllerService(final Extension mainExtension, final ControllerInitializer controllerInitializer, final AdditionalInitialization additionalPreStep, final ControlledProcessState processState, final StringConfigurationPersister persister, boolean validateOps) {
+        ModelControllerService(final Extension mainExtension, final ControllerInitializer controllerInitializer,
+                               final AdditionalInitialization additionalPreStep, final ExtensionRegistry extensionRegistry,
+                               final ControlledProcessState processState, final StringConfigurationPersister persister, boolean validateOps) {
             super(additionalPreStep.getProcessType(), new RunningModeControl(additionalPreStep.getRunningMode()), persister,
                     processState, DESC_PROVIDER, null, ExpressionResolver.DEFAULT);
             this.persister = persister;
             this.additionalInit = additionalPreStep;
+            this.extensionRegistry = extensionRegistry;
             this.mainExtension = mainExtension;
             this.controllerInitializer = controllerInitializer;
             this.validateOps = validateOps;
@@ -737,12 +743,12 @@ public abstract class AbstractSubsystemTest {
             //Hack to be able to access the registry for the jmx facade
             rootRegistration.registerOperationHandler(RootResourceHack.NAME, RootResourceHack.INSTANCE, RootResourceHack.INSTANCE, false, OperationEntry.EntryType.PRIVATE);
 
+            extensionRegistry.setSubsystemParentResourceRegistrations(rootRegistration, deployments);
 
             controllerInitializer.initializeModel(rootResource, rootRegistration);
 
-            ExtensionContext context = new ExtensionContextImpl(rootRegistration, deployments, persister, ProcessType.EMBEDDED_SERVER).createTracking("Test");
-            additionalInit.initializeExtraSubystemsAndModel(context, rootResource, rootRegistration);
-            mainExtension.initialize(context);
+            additionalInit.initializeExtraSubystemsAndModel(extensionRegistry, rootResource, rootRegistration);
+            mainExtension.initialize(extensionRegistry.getExtensionContext("Test"));
         }
 
         @Override
@@ -1027,35 +1033,6 @@ public abstract class AbstractSubsystemTest {
         }
 
     };
-
-    private static class TestContentRepository extends ContentRepositoryImpl {
-
-        private TestContentRepository(File repoRoot) {
-            // FIXME TestContentRepository constructor
-            super(repoRoot);
-        }
-
-        public static TestContentRepository createTestContentRepository() {
-            File file = new File("target/content-repository");
-            if (file.exists()) {
-                cleanFiles(file);
-            }
-            file.mkdirs();
-            return new TestContentRepository(file);
-        }
-
-        private static void cleanFiles(File file) {
-            if (file.isDirectory()) {
-                for (String name : file.list()) {
-                    File current = new File(file, name);
-                    if (current.isDirectory()) {
-                        cleanFiles(current);
-                    }
-                }
-            }
-            file.delete();
-        }
-    }
 
     private static class RootResourceGrabber implements OperationStepHandler, DescriptionProvider {
         static String NAME = "grab-root-resource";

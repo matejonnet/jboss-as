@@ -58,6 +58,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.jboss.as.connector.ConnectorServices;
+import org.jboss.as.connector.metadata.deployment.InactiveResourceAdapterDeploymentService;
+import org.jboss.as.connector.util.RaServicesFactory;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.dmr.ModelNode;
@@ -73,12 +76,16 @@ import org.jboss.jca.common.api.metadata.common.Extension;
 import org.jboss.jca.common.api.metadata.common.FlushStrategy;
 import org.jboss.jca.common.api.metadata.common.Recovery;
 import org.jboss.jca.common.api.metadata.common.TransactionSupportEnum;
+import org.jboss.jca.common.api.metadata.resourceadapter.ResourceAdapter;
 import org.jboss.jca.common.api.validator.ValidateException;
 import org.jboss.jca.common.metadata.common.CommonPoolImpl;
 import org.jboss.jca.common.metadata.common.CommonSecurityImpl;
 import org.jboss.jca.common.metadata.common.CommonTimeOutImpl;
 import org.jboss.jca.common.metadata.common.CommonValidationImpl;
 import org.jboss.jca.common.metadata.common.CredentialImpl;
+import org.jboss.msc.service.ServiceController;
+import org.jboss.msc.service.ServiceName;
+import org.jboss.msc.service.ServiceRegistry;
 
 public class RaOperationUtil {
 
@@ -164,15 +171,21 @@ public class RaOperationUtil {
         //TODO This will be cleaned up once it uses attribute definitions
         String recoveryPassword = getResolvedStringIfSetOrGetDefault(context, operation, RECOVERY_PASSWORD.getName(), null);
         final String recoverySecurityDomain = getStringIfSetOrGetDefault(operation, RECOVERY_SECURITY_DOMAIN.getName(), null);
-        final Boolean noRecovery = getBooleanIfSetOrGetDefault(operation, NO_RECOVERY.getName(), null);
+        Boolean noRecovery = getBooleanIfSetOrGetDefault(operation, NO_RECOVERY.getName(), null);
 
         Recovery recovery = null;
-        if (recoveryUsername != null || recoveryPassword != null || recoverySecurityDomain != null ||
-            (noRecovery != null && noRecovery.booleanValue())) {
-           final Credential credential = new CredentialImpl(recoveryUsername, recoveryPassword, recoverySecurityDomain);
+        if ((recoveryUsername != null && recoveryPassword != null) || recoverySecurityDomain != null || noRecovery != null) {
+            Credential credential = null;
 
-           final Extension recoverPlugin = extractExtension(operation, RECOVERLUGIN_CLASSNAME.getName(), RECOVERLUGIN_PROPERTIES.getName());
-           recovery = new Recovery(credential, recoverPlugin, noRecovery);
+            if ((recoveryUsername != null && recoveryPassword != null) || recoverySecurityDomain != null)
+                credential = new CredentialImpl(recoveryUsername, recoveryPassword, recoverySecurityDomain);
+
+            Extension recoverPlugin = extractExtension(operation, RECOVERLUGIN_CLASSNAME.getName(), RECOVERLUGIN_PROPERTIES.getName());
+
+            if (noRecovery == null)
+                noRecovery = Boolean.FALSE;
+
+            recovery = new Recovery(credential, recoverPlugin, noRecovery);
         }
         ModifiableConnDef connectionDefinition = new ModifiableConnDef(configProperties, className, jndiName, poolName,
                 enabled, useJavaContext, useCcm, pool, timeOut, validation, security, recovery);
@@ -255,4 +268,27 @@ public class RaOperationUtil {
         }
     }
 
+    public static void deactivateIfActive(OperationContext context, String raName) throws OperationFailedException {
+        final ServiceName raDeploymentServiceName = ConnectorServices.getDeploymentServiceName(raName);
+        if (raDeploymentServiceName != null)  {
+            context.removeService(raDeploymentServiceName);
+            ConnectorServices.unregisterDeployment(raName, raDeploymentServiceName);
+        }
+    }
+
+    public static void activate(OperationContext context, String raName, String rarName)  throws OperationFailedException {
+        ServiceRegistry registry = context.getServiceRegistry(true);
+        if (rarName.contains(ConnectorServices.RA_SERVICE_NAME_SEPARATOR)) {
+            rarName = rarName.substring(0, rarName.indexOf(ConnectorServices.RA_SERVICE_NAME_SEPARATOR));
+        }
+        final ServiceController<?> inactiveRaController = registry.getService(ConnectorServices.INACTIVE_RESOURCE_ADAPTER_SERVICE.append(rarName));
+        if (inactiveRaController == null) {
+            throw new OperationFailedException("rar not yet deployed");
+        }
+        InactiveResourceAdapterDeploymentService.InactiveResourceAdapterDeployment inactive = (InactiveResourceAdapterDeploymentService.InactiveResourceAdapterDeployment) inactiveRaController.getValue();
+        final ServiceController<?> RaxmlController = registry.getService(ServiceName.of(ConnectorServices.RA_SERVICE, raName));
+        ResourceAdapter raxml = (ResourceAdapter) RaxmlController.getValue();
+
+        RaServicesFactory.createDeploymentService(inactive.getRegistration(), inactive.getConnectorXmlDescriptor(), inactive.getModule(), context.getServiceTarget(), inactive.getDeployment(), inactive.getDeployment(), raxml);
+    }
 }

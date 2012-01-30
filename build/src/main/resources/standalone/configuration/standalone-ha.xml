@@ -5,6 +5,7 @@
     <extensions>
         <extension module="org.jboss.as.clustering.infinispan"/>
         <extension module="org.jboss.as.clustering.jgroups"/>
+        <extension module="org.jboss.as.configadmin"/>
         <extension module="org.jboss.as.connector"/>
         <extension module="org.jboss.as.deployment-scanner"/>
         <extension module="org.jboss.as.ee"/>
@@ -88,6 +89,7 @@
                 </handlers>
             </root-logger>
         </subsystem>
+        <subsystem xmlns="urn:jboss:domain:configadmin:1.0"/>
         <subsystem xmlns="urn:jboss:domain:datasources:1.0">
             <datasources>
                 <datasource jndi-name="java:jboss/datasources/ExampleDS" enabled="true" use-java-context="true" pool-name="ExampleDS">
@@ -106,7 +108,7 @@
                 </drivers>
             </datasources>
         </subsystem>
-        <subsystem xmlns="urn:jboss:domain:deployment-scanner:1.0">
+        <subsystem xmlns="urn:jboss:domain:deployment-scanner:1.1">
             <deployment-scanner scan-interval="5000" relative-to="jboss.server.base.dir" path="deployments"/>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:ee:1.0"/>
@@ -135,7 +137,7 @@
             </caches>
             <passivation-stores>
                 <file-passivation-store name="file"/>
-                <cluster-passivation-store name="infinispan" backing-cache="sfsb"/>
+                <cluster-passivation-store name="infinispan" cache-container="ejb"/>
             </passivation-stores>
             <async thread-pool-name="default"/>
             <timer-service thread-pool-name="default">
@@ -143,29 +145,31 @@
             </timer-service>
             <remote connector-ref="remoting-connector" thread-pool-name="default"/>
             <thread-pools>
-                <thread-pool name="default" max-threads="10" keepalive-time="100"/>
+                <thread-pool name="default">
+                    <max-threads count="10"/>
+                    <keepalive-time time="100" unit="milliseconds"/>
+                </thread-pool>
             </thread-pools>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:infinispan:1.1" default-cache-container="cluster">
-            <cache-container name="cluster" default-cache="default">
-                <alias>ha-partition</alias>
+            <cache-container name="cluster" aliases="ha-partition" default-cache="default">
+                <transport lock-timeout="60000"/>
                 <replicated-cache name="default" mode="SYNC" batching="true">
                     <locking isolation="REPEATABLE_READ"/>
                 </replicated-cache>
             </cache-container>
-            <cache-container name="web" default-cache="repl">
-                <alias>standard-session-cache</alias>
+            <cache-container name="web" aliases="standard-session-cache" default-cache="repl">
+                <transport lock-timeout="60000"/>
                 <replicated-cache name="repl" mode="ASYNC" batching="true">
                     <file-store/>
                 </replicated-cache>
                 <distributed-cache name="dist" mode="ASYNC" batching="true">
                     <file-store/>
                 </distributed-cache>
-                <replicated-cache name="registry" mode="SYNC" batching="true"/>
                 <replicated-cache name="sso" mode="SYNC" batching="true"/>
             </cache-container>
-            <cache-container name="sfsb" default-cache="repl">
-                <alias>sfsb-cache</alias>
+            <cache-container name="ejb" aliases="sfsb sfsb-cache" default-cache="repl">
+                <transport lock-timeout="60000"/>
                 <replicated-cache name="repl" mode="ASYNC" batching="true">
                     <eviction strategy="LRU"/>
                     <file-store/>
@@ -174,20 +178,24 @@
                     <eviction strategy="LRU"/>
                     <file-store/>
                 </distributed-cache>
+                <!-- Clustered cache used internally by EJB subsytem for managing the client-mapping(s) of
+                the socketbinding referenced by the EJB remoting connector -->
+                <replicated-cache name="remote-connector-client-mappings" mode="SYNC" batching="true"/>
             </cache-container>
             <cache-container name="hibernate" default-cache="local-query">
+                <transport lock-timeout="60000"/>
                 <invalidation-cache name="entity" mode="SYNC">
                     <transaction mode="NON_XA"/>
                     <eviction strategy="LRU" max-entries="10000"/>
                     <expiration max-idle="100000"/>
                 </invalidation-cache>
                 <local-cache name="local-query">
-                    <transaction mode="NON_XA"/>
+                    <transaction mode="NONE"/>
                     <eviction strategy="LRU" max-entries="10000"/>
                     <expiration max-idle="100000"/>
                 </local-cache>
                 <replicated-cache name="timestamps" mode="ASYNC">
-                    <transaction mode="NON_XA"/>
+                    <transaction mode="NONE"/>
                     <eviction strategy="NONE"/>
                 </replicated-cache>
             </cache-container>
@@ -198,17 +206,17 @@
             <archive-validation enabled="false"/>
             <bean-validation enabled="false"/>
             <default-workmanager>
-                <short-running-threads blocking="true">
-                <core-threads count="10" per-cpu="20"/>
-                        <queue-length count="10" per-cpu="20"/>
-                        <max-threads count="10" per-cpu="20"/>
-                        <keepalive-time time="10" unit="seconds"/>
+                <short-running-threads>
+                    <core-threads count="50"/>
+                    <queue-length count="50"/>
+                    <max-threads count="50"/>
+                    <keepalive-time time="10" unit="seconds"/>
                 </short-running-threads>
-                <long-running-threads blocking="true">
-                        <core-threads count="10" per-cpu="20"/>
-                        <queue-length count="10" per-cpu="20"/>
-                        <max-threads count="10" per-cpu="20"/>
-                        <keepalive-time time="10" unit="seconds"/>
+                <long-running-threads>
+                    <core-threads count="50"/>
+                    <queue-length count="50"/>
+                    <max-threads count="50"/>
+                    <keepalive-time time="10" unit="seconds"/>
                 </long-running-threads>
             </default-workmanager>
         </subsystem>
@@ -229,8 +237,6 @@
                 <protocol type="UFC"/>
                 <protocol type="MFC"/>
                 <protocol type="FRAG2"/>
-                <protocol type="pbcast.STATE_TRANSFER"/>
-                <protocol type="pbcast.FLUSH"/>
             </stack>
             <stack name="tcp">
                 <transport type="TCP" socket-binding="jgroups-tcp" diagnostics-socket-binding="jgroups-diagnostics"/>
@@ -247,12 +253,11 @@
                 <protocol type="UFC"/>
                 <protocol type="MFC"/>
                 <protocol type="FRAG2"/>
-                <protocol type="pbcast.STATE_TRANSFER"/>
-                <protocol type="pbcast.FLUSH"/>
             </stack>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:jmx:1.1">
             <show-model value="true"/>
+            <remoting-connector/>
         </subsystem>
          <subsystem xmlns="urn:jboss:domain:jpa:1.0">
             <jpa default-datasource=""/>
@@ -351,42 +356,21 @@
             <mod-cluster-config advertise-socket="modcluster"/>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:naming:1.1"/>
-        <subsystem xmlns="urn:jboss:domain:osgi:1.1" activation="lazy">
-            <configuration pid="org.apache.felix.webconsole.internal.servlet.OsgiManager">
-                <property name="manager.root" value="jboss-osgi"/>
-            </configuration>
+        <subsystem xmlns="urn:jboss:domain:osgi:1.2" activation="lazy">
             <properties>
                 <!-- Specifies the beginning start level of the framework -->
                 <property name="org.osgi.framework.startlevel.beginning">1</property>
             </properties>
             <capabilities>
                 <!-- modules registered with the OSGi layer on startup -->
-                <capability name="javax.api"/>
                 <capability name="javax.servlet.api"/>
                 <capability name="javax.transaction.api"/>
-                <!-- bundles installed on startup -->
-                <capability name="org.apache.aries.util"/>
-                <capability name="org.jboss.osgi.webconsole"/>
-                <capability name="org.osgi.compendium"/>
                 <!-- bundles started in startlevel 1 -->
                 <capability name="org.apache.felix.log" startlevel="1"/>
                 <capability name="org.jboss.osgi.logging" startlevel="1"/>
                 <capability name="org.apache.felix.configadmin" startlevel="1"/>
                 <capability name="org.jboss.as.osgi.configadmin" startlevel="1"/>
-                <!-- bundles started in startlevel 2 -->
-                <capability name="org.apache.aries.jmx" startlevel="2"/>
-                <capability name="org.apache.felix.eventadmin" startlevel="2"/>
-                <capability name="org.apache.felix.metatype" startlevel="2"/>
-                <capability name="org.apache.felix.scr" startlevel="2"/>
-                <capability name="org.apache.felix.webconsole" startlevel="2"/>
-                <capability name="org.jboss.netty" startlevel="2"/>
-                <capability name="org.jboss.osgi.jmx" startlevel="2"/>
-                <capability name="org.jboss.osgi.http" startlevel="2"/>
-                <capability name="org.projectodd.stilts" startlevel="2"/>
-                <!-- bundles started in startlevel 3 -->
-                <capability name="org.jboss.osgi.blueprint" startlevel="3"/>
-                <capability name="org.jboss.osgi.webapp" startlevel="3"/>
-                <capability name="org.jboss.osgi.xerces" startlevel="3"/>
+                <capability name="org.jboss.osgi.repository" startlevel="1"/>
             </capabilities>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:pojo:1.0"/>
@@ -434,7 +418,7 @@
             <endpoint-config>
                 <jaxwsconfig:config-name>Recording-Endpoint-Config</jaxwsconfig:config-name>
                 <jaxwsconfig:pre-handler-chains>
-                    <javaee:handler-chain xmlns="http://java.sun.com/xml/ns/javaee">
+                    <javaee:handler-chain xmlns="http://java.sun.com/xml/ns/javaee" id="recording-handlers">
                             <javaee:protocol-bindings>##SOAP11_HTTP ##SOAP11_HTTP_MTOM ##SOAP12_HTTP ##SOAP12_HTTP_MTOM</javaee:protocol-bindings>
                         <javaee:handler>
                             <javaee:handler-name>RecordingHandler</javaee:handler-name>

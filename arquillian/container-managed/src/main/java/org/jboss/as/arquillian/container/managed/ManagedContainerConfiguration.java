@@ -21,8 +21,6 @@ import org.jboss.arquillian.container.spi.ConfigurationException;
 import org.jboss.arquillian.container.spi.client.deployment.Validate;
 import org.jboss.as.arquillian.container.CommonContainerConfiguration;
 
-import java.io.File;
-
 /**
  * JBossAsManagedConfiguration
  *
@@ -39,13 +37,15 @@ public class ManagedContainerConfiguration extends CommonContainerConfiguration 
 
     private String javaVmArguments = System.getProperty("jboss.options", "-Xmx512m -XX:MaxPermSize=128m");
 
-    private int startupTimeoutInSeconds = 30;
+    private int startupTimeoutInSeconds = 60;
 
     private boolean outputToConsole = true;
 
     private String serverConfig = System.getProperty("jboss.server.config.file.name",  "standalone.xml");
 
     private boolean allowConnectingToRunningServer = false;
+
+    private boolean enableAssertions = true;
 
     public ManagedContainerConfiguration() {
         // if no javaHome is set use java.home of already running jvm
@@ -166,5 +166,13 @@ public class ManagedContainerConfiguration extends CommonContainerConfiguration 
 
     public void setAllowConnectingToRunningServer(final boolean allowConnectingToRunningServer) {
         this.allowConnectingToRunningServer = allowConnectingToRunningServer;
+    }
+
+    public boolean isEnableAssertions() {
+        return enableAssertions;
+    }
+
+    public void setEnableAssertions(final boolean enableAssertions) {
+        this.enableAssertions = enableAssertions;
     }
 }

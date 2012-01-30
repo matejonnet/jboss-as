@@ -36,14 +36,15 @@ enum Namespace {
 
     // must be first
     UNKNOWN(null),
-    OSGI_1_0("urn:jboss:domain:osgi:1.0"),
-    OSGI_1_1("urn:jboss:domain:osgi:1.1")
+    VERSION_1_0("urn:jboss:domain:osgi:1.0"),
+    VERSION_1_1("urn:jboss:domain:osgi:1.1"),
+    VERSION_1_2("urn:jboss:domain:osgi:1.2")
     ;
 
     /**
      * The current namespace version.
      */
-    static final Namespace CURRENT = OSGI_1_1;
+    static final Namespace CURRENT = VERSION_1_2;
 
     private final String name;
 

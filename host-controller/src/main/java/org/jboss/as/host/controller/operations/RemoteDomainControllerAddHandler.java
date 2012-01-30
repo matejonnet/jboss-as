@@ -26,6 +26,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SEC
 
 import java.util.Locale;
 
+import org.jboss.as.controller.extension.ExtensionRegistry;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
@@ -40,10 +41,10 @@ import org.jboss.as.controller.registry.AttributeAccess;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.Resource;
 import org.jboss.as.domain.controller.DomainModelUtil;
-import org.jboss.as.domain.controller.FileRepository;
 import org.jboss.as.host.controller.HostControllerConfigurationPersister;
 import org.jboss.as.host.controller.descriptions.HostRootDescription;
-import org.jboss.as.server.deployment.repository.api.ContentRepository;
+import org.jboss.as.repository.ContentRepository;
+import org.jboss.as.repository.HostFileRepository;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
 
@@ -64,15 +65,17 @@ public class RemoteDomainControllerAddHandler implements OperationStepHandler, D
     private final ManagementResourceRegistration rootRegistration;
     private final HostControllerConfigurationPersister overallConfigPersister;
     private final ContentRepository contentRepository;
-    private final FileRepository fileRepository;
+    private final HostFileRepository fileRepository;
     private final LocalHostControllerInfoImpl hostControllerInfo;
+    private final ExtensionRegistry extensionRegistry;
 
     public static RemoteDomainControllerAddHandler getInstance(final ManagementResourceRegistration rootRegistration,
                                                                  final LocalHostControllerInfoImpl hostControllerInfo,
                                                                  final HostControllerConfigurationPersister overallConfigPersister,
                                                                  final ContentRepository contentRepository,
-                                                                 final FileRepository fileRepository) {
-        return new RemoteDomainControllerAddHandler(rootRegistration, hostControllerInfo, overallConfigPersister, contentRepository, fileRepository);
+                                                                 final HostFileRepository fileRepository,
+                                                                 final ExtensionRegistry extensionRegistry) {
+        return new RemoteDomainControllerAddHandler(rootRegistration, hostControllerInfo, overallConfigPersister, contentRepository, fileRepository, extensionRegistry);
     }
 
     /**
@@ -82,12 +85,14 @@ public class RemoteDomainControllerAddHandler implements OperationStepHandler, D
                                      final LocalHostControllerInfoImpl hostControllerInfo,
                                      final HostControllerConfigurationPersister overallConfigPersister,
                                      final ContentRepository contentRepository,
-                                     final FileRepository fileRepository) {
+                                     final HostFileRepository fileRepository,
+                                     final ExtensionRegistry extensionRegistry) {
         this.rootRegistration = rootRegistration;
         this.overallConfigPersister = overallConfigPersister;
         this.contentRepository = contentRepository;
         this.fileRepository = fileRepository;
         this.hostControllerInfo = hostControllerInfo;
+        this.extensionRegistry = extensionRegistry;
     }
 
     @Override
@@ -121,7 +126,8 @@ public class RemoteDomainControllerAddHandler implements OperationStepHandler, D
 
         overallConfigPersister.initializeDomainConfigurationPersister(true);
 
-        DomainModelUtil.initializeSlaveDomainRegistry(rootRegistration, overallConfigPersister.getDomainPersister(), contentRepository, fileRepository, hostControllerInfo);
+        DomainModelUtil.initializeSlaveDomainRegistry(rootRegistration, overallConfigPersister.getDomainPersister(),
+                contentRepository, fileRepository, hostControllerInfo, extensionRegistry);
     }
 
     //Done by DomainModelControllerService

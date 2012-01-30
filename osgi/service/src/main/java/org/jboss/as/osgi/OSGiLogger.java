@@ -22,7 +22,6 @@
 
 package org.jboss.as.osgi;
 
-import org.jboss.as.osgi.service.ConfigAdminListener;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.logging.BasicLogger;
 import org.jboss.logging.Cause;
@@ -89,16 +88,6 @@ public interface OSGiLogger extends BasicLogger {
     void cannotUndeployBundle(@Cause Throwable cause, Deployment deployment);
 
     /**
-     * Logs an error message indicating an error in the configuration listener.
-     *
-     * @param cause    the cause of the error.
-     * @param listener the configuration listener.
-     */
-    @LogMessage(level = ERROR)
-    @Message(id = 11914, value = "Error in configuration listener: %s")
-    void configurationListenerError(@Cause Throwable cause, ConfigAdminListener listener);
-
-    /**
      * Logs an error message indicating there was a problem adding the module represented by the {@code moduleId}
      * parameter.
      *
@@ -128,15 +117,6 @@ public interface OSGiLogger extends BasicLogger {
     @LogMessage(level = ERROR)
     @Message(id = 11917, value = "Failed to uninstall module: %s")
     void failedToUninstallModule(@Cause Throwable cause, Module module);
-
-    /**
-     * Logs a warning message indicating the OSGi bundle in the modules hierarchy was found.
-     *
-     * @param modulesFile the modules file.
-     */
-    @LogMessage(level = WARN)
-    @Message(id = 11918, value = "Found OSGi bundle in modules hierarchy: %s")
-    void foundOsgiBundle(File modulesFile);
 
     /**
      * Logs a warning message indicating the module could not be added as it was not found.

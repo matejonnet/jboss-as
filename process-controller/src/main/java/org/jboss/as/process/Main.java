@@ -39,9 +39,11 @@ import java.util.logging.Logger;
 import javax.net.ServerSocketFactory;
 
 import org.jboss.as.process.protocol.ProtocolServer;
+import org.jboss.as.version.ProductConfig;
 import org.jboss.as.version.Version;
 import org.jboss.logging.MDC;
 import org.jboss.logmanager.handlers.ConsoleHandler;
+import org.jboss.modules.Module;
 import org.jboss.threads.JBossThreadFactory;
 
 /**
@@ -78,7 +80,6 @@ public final class Main {
         String jbossHome = SecurityActions.getSystemProperty("jboss.home.dir", ".");
         String modulePath = null;
         String bootJar = null;
-        String logModule = "org.jboss.logmanager";
         String jaxpModule = "javax.xml.jaxp-provider";
         String bootModule = HOST_CONTROLLER_MODULE;
         final PCSocketConfig pcSocketConfig = new PCSocketConfig();
@@ -88,7 +89,6 @@ public final class Main {
         final List<String> javaOptions = new ArrayList<String>();
         final List<String> smOptions = new ArrayList<String>();
 
-        // logmodule is the same as mine or defaulted
         // target module is always SM
         // -mp is my module path
         // -jar is jboss-modules.jar in jboss-home
@@ -104,8 +104,6 @@ public final class Main {
                 modulePath = args[++i];
             } else if ("-jar".equals(arg)) {
                 bootJar = args[++i];
-            } else if ("-logmodule".equals(arg)) {
-                logModule = args[++i];
             } else if ("-jaxpmodule".equals(arg)) {
                 jaxpModule = args[++i];
             } else if ("--".equals(arg)) {
@@ -120,7 +118,7 @@ public final class Main {
                                 return null;
                             } else if (CommandLineConstants.VERSION.equals(arg) || CommandLineConstants.SHORT_VERSION.equals(arg)
                                     || CommandLineConstants.OLD_VERSION.equals(arg) || CommandLineConstants.OLD_SHORT_VERSION.equals(arg)) {
-                                System.out.println("\nJBoss Application Server " + getVersionString());
+                                System.out.println(new ProductConfig(Module.getBootModuleLoader(), jbossHome).getPrettyVersionString());
                                 return null;
                             } else if (pcSocketConfig.processPCSocketConfigArgument(arg, args, i)) {
                                 if (pcSocketConfig.isParseFailed()) {
@@ -193,13 +191,12 @@ public final class Main {
 
         final List<String> initialCommand = new ArrayList<String>();
         initialCommand.add(jvmName);
+        initialCommand.add("-D[" + HOST_CONTROLLER_PROCESS_NAME + "]");
         initialCommand.addAll(javaOptions);
         initialCommand.add("-jar");
         initialCommand.add(bootJar);
         initialCommand.add("-mp");
         initialCommand.add(modulePath);
-        initialCommand.add("-logmodule");
-        initialCommand.add(logModule);
         initialCommand.add("-jaxpmodule");
         initialCommand.add(jaxpModule);
         initialCommand.add(bootModule);

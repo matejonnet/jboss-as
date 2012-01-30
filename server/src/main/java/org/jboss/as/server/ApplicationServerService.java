@@ -36,16 +36,14 @@ import java.util.TreeSet;
 
 import org.jboss.as.controller.ControlledProcessState;
 import org.jboss.as.controller.RunningModeControl;
-import org.jboss.as.server.deployment.repository.impl.ContentRepositoryImpl;
-import org.jboss.as.server.deployment.repository.impl.ServerDeploymentRepositoryImpl;
-import org.jboss.as.server.mgmt.ShutdownHandler;
-import org.jboss.as.server.mgmt.ShutdownHandlerImpl;
+import org.jboss.as.repository.ContentRepository;
+import org.jboss.as.server.deployment.DeploymentMountProvider;
+import org.jboss.as.server.mgmt.domain.RemoteFileRepository;
 import org.jboss.as.server.moduleservice.ExternalModuleService;
 import org.jboss.as.server.moduleservice.ModuleIndexService;
 import org.jboss.as.server.moduleservice.ServiceModuleLoader;
 import org.jboss.as.server.services.path.AbsolutePathService;
 import org.jboss.as.server.services.security.AbstractVaultReader;
-import org.jboss.as.version.Version;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceActivator;
 import org.jboss.msc.service.ServiceActivatorContext;
@@ -70,14 +68,16 @@ final class ApplicationServerService implements Service<AsyncFuture<ServiceConta
     private final Bootstrap.Configuration configuration;
     private final RunningModeControl runningModeControl;
     private final ControlledProcessState processState;
+    private final boolean standalone;
     private volatile FutureServiceContainer futureContainer;
     private volatile long startTime;
 
     ApplicationServerService(final List<ServiceActivator> extraServices, final Bootstrap.Configuration configuration) {
         this.extraServices = extraServices;
         this.configuration = configuration;
-        runningModeControl = new RunningModeControl(configuration.getServerEnvironment().getInitialRunningMode());
+        runningModeControl = configuration.getRunningModeControl();
         startTime = configuration.getStartTime();
+        standalone = configuration.getServerEnvironment().isStandalone();
         processState = new ControlledProcessState(configuration.getServerEnvironment().isStandalone());
     }
 
@@ -92,7 +92,8 @@ final class ApplicationServerService implements Service<AsyncFuture<ServiceConta
         // Install the environment before doing anything
         serverEnvironment.install();
 
-        AS_ROOT_LOGGER.serverStarting(Version.AS_VERSION, Version.AS_RELEASE_CODENAME);
+        String prettyVersion = serverEnvironment.getProductConfig().getPrettyVersionString();
+        AS_ROOT_LOGGER.serverStarting(prettyVersion);
         if (CONFIG_LOGGER.isDebugEnabled()) {
             final Properties properties = System.getProperties();
             final StringBuilder b = new StringBuilder(8192);
@@ -126,17 +127,18 @@ final class ApplicationServerService implements Service<AsyncFuture<ServiceConta
 
         CurrentServiceContainer.setServiceContainer(context.getController().getServiceContainer());
 
-        final BootstrapListener bootstrapListener = new BootstrapListener(container, startTime, serviceTarget, futureContainer, "JBoss AS");
+        final BootstrapListener bootstrapListener = new BootstrapListener(container, startTime, serviceTarget, futureContainer, prettyVersion);
         serviceTarget.addListener(ServiceListener.Inheritance.ALL, bootstrapListener);
         myController.addListener(bootstrapListener);
-        ContentRepositoryImpl contentRepository = ContentRepositoryImpl.addService(serviceTarget, serverEnvironment.getServerDeployDir());
-        ServerDeploymentRepositoryImpl.addService(serviceTarget, contentRepository);
+        RemoteFileRepository remoteFileRepository = standalone ? null : RemoteFileRepository.addService(serviceTarget, serverEnvironment.getServerDeployDir());
+        ContentRepository.Factory.addService(serviceTarget, serverEnvironment.getServerDeployDir());
+        DeploymentMountProvider.Factory.addService(serviceTarget);
         ServiceModuleLoader.addService(serviceTarget, configuration);
         ExternalModuleService.addService(serviceTarget);
         ModuleIndexService.addService(serviceTarget);
         final AbstractVaultReader vaultReader = service(AbstractVaultReader.class);
         AS_ROOT_LOGGER.debugf("Using VaultReader %s", vaultReader);
-        ServerService.addService(serviceTarget, configuration, processState, bootstrapListener, runningModeControl, vaultReader);
+        ServerService.addService(serviceTarget, configuration, processState, bootstrapListener, runningModeControl, vaultReader, remoteFileRepository);
         final ServiceActivatorContext serviceActivatorContext = new ServiceActivatorContext() {
             @Override
             public ServiceTarget getServiceTarget() {
@@ -154,9 +156,6 @@ final class ApplicationServerService implements Service<AsyncFuture<ServiceConta
         }
 
         // TODO: decide the fate of these
-
-        // Graceful shutdown
-        serviceTarget.addService(ShutdownHandler.SERVICE_NAME, new ShutdownHandlerImpl()).install();
 
         // Add server environment
         ServerEnvironmentService.addService(serverEnvironment, serviceTarget);
@@ -180,7 +179,8 @@ final class ApplicationServerService implements Service<AsyncFuture<ServiceConta
 
         if (AS_ROOT_LOGGER.isDebugEnabled()) {
             final long nanos = context.getElapsedTime();
-            AS_ROOT_LOGGER.debugf("JBoss AS root service started in %d.%06d ms", Long.valueOf(nanos / 1000000L), Long.valueOf(nanos % 1000000L));
+            AS_ROOT_LOGGER.debugf(prettyVersion + " root service started in %d.%06d ms",
+                    Long.valueOf(nanos / 1000000L), Long.valueOf(nanos % 1000000L));
         }
     }
 
@@ -188,7 +188,8 @@ final class ApplicationServerService implements Service<AsyncFuture<ServiceConta
     public synchronized void stop(final StopContext context) {
         processState.setStopping();
         CurrentServiceContainer.setServiceContainer(null);
-        AS_ROOT_LOGGER.serverStopped(Version.AS_VERSION, Version.AS_RELEASE_CODENAME, Integer.valueOf((int) (context.getElapsedTime() / 1000000L)));
+        String prettyVersion = configuration.getServerEnvironment().getProductConfig().getPrettyVersionString();
+        AS_ROOT_LOGGER.serverStopped(prettyVersion, Integer.valueOf((int) (context.getElapsedTime() / 1000000L)));
     }
 
     @Override

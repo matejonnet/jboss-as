@@ -1,22 +1,5 @@
 package org.jboss.as.server.deployment.module.descriptor;
 
-import java.io.Closeable;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
-import javax.xml.namespace.QName;
-import javax.xml.stream.Location;
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-
 import org.jboss.as.server.deployment.Attachments;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.module.FilterSpecification;
@@ -35,8 +18,23 @@ import org.jboss.staxmapper.XMLExtendedStreamReader;
 import org.jboss.vfs.VFS;
 import org.jboss.vfs.VirtualFile;
 
-import static javax.xml.stream.XMLStreamConstants.END_ELEMENT;
-import static javax.xml.stream.XMLStreamConstants.START_ELEMENT;
+import javax.xml.namespace.QName;
+import javax.xml.stream.Location;
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static javax.xml.stream.XMLStreamConstants.*;
 
 /**
  * @author Stuart Douglas
@@ -100,6 +98,8 @@ public class JBossDeploymentStructureParser11 implements XMLElementReader<ParseR
             elementsMap.put(new QName(NAMESPACE_1_1, "transformer"), Element.TRANSFORMER);
             elementsMap.put(new QName(NAMESPACE_1_1, "local-last"), Element.LOCAL_LAST);
             elementsMap.put(new QName(NAMESPACE_1_1, "module-alias"), Element.MODULE_ALIAS);
+            elementsMap.put(new QName(NAMESPACE_1_1, "system"), Element.SYSTEM);
+            elementsMap.put(new QName(NAMESPACE_1_1, "paths"), Element.PATHS);
             elements = elementsMap;
         }
 
@@ -116,7 +116,7 @@ public class JBossDeploymentStructureParser11 implements XMLElementReader<ParseR
     }
 
     enum Attribute {
-        NAME, SLOT, EXPORT, SERVICES, PATH, OPTIONAL, CLASS, VALUE, USE_PHYSICAL_CODE_SOURCE,
+        NAME, SLOT, EXPORT, SERVICES, PATH, OPTIONAL, CLASS, VALUE, USE_PHYSICAL_CODE_SOURCE, ANNOTATIONS, META_INF,
 
         // default unknown attribute
         UNKNOWN;
@@ -134,6 +134,8 @@ public class JBossDeploymentStructureParser11 implements XMLElementReader<ParseR
             attributesMap.put(new QName("class"), CLASS);
             attributesMap.put(new QName("value"), VALUE);
             attributesMap.put(new QName("use-physical-code-source"), USE_PHYSICAL_CODE_SOURCE);
+            attributesMap.put(new QName("annotations"), ANNOTATIONS);
+            attributesMap.put(new QName("meta-inf"), META_INF);
             attributes = attributesMap;
         }
 
@@ -550,7 +552,9 @@ public class JBossDeploymentStructureParser11 implements XMLElementReader<ParseR
         String slot = null;
         boolean export = false;
         boolean optional = false;
+        boolean annotations = false;
         Disposition services = Disposition.NONE;
+        Disposition metaInf = Disposition.NONE;
         final Set<Attribute> required = EnumSet.of(Attribute.NAME);
         final int count = reader.getAttributeCount();
         for (int i = 0; i < count; i++) {
@@ -572,6 +576,12 @@ public class JBossDeploymentStructureParser11 implements XMLElementReader<ParseR
                 case OPTIONAL:
                     optional = Boolean.parseBoolean(reader.getAttributeValue(i));
                     break;
+                case ANNOTATIONS:
+                    annotations = Boolean.parseBoolean(reader.getAttributeValue(i));
+                    break;
+                case META_INF:
+                    metaInf = Disposition.of(reader.getAttributeValue(i));
+                    break;
                 default:
                     throw unexpectedContent(reader);
             }
@@ -579,8 +589,24 @@ public class JBossDeploymentStructureParser11 implements XMLElementReader<ParseR
         if (!required.isEmpty()) {
             throw missingAttributes(reader.getLocation(), required);
         }
-        ModuleDependency dependency = new ModuleDependency(moduleLoader, ModuleIdentifier.create(name, slot), optional, export,
+        final ModuleIdentifier identifier = ModuleIdentifier.create(name, slot);
+        final ModuleDependency dependency = new ModuleDependency(moduleLoader, identifier, optional, export,
                 services == Disposition.IMPORT);
+        if(annotations) {
+            specBuilder.addAnnotationModule(identifier);
+        }
+        switch (metaInf) {
+            case EXPORT: {
+                dependency.addImportFilter(PathFilters.getMetaInfSubdirectoriesFilter(), true);
+                dependency.addExportFilter(PathFilters.getMetaInfSubdirectoriesFilter(), true);
+                break;
+            }
+            case IMPORT: {
+                dependency.addImportFilter(PathFilters.getMetaInfSubdirectoriesFilter(), true);
+                break;
+            }
+        }
+
         specBuilder.addModuleDependency(dependency);
         while (reader.hasNext()) {
             switch (reader.nextTag()) {

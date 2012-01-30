@@ -22,8 +22,6 @@
 
 package org.jboss.as.server;
 
-import static org.jboss.as.process.Main.getVersionString;
-
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -34,6 +32,7 @@ import java.util.Properties;
 
 import org.jboss.as.controller.RunningMode;
 import org.jboss.as.process.CommandLineConstants;
+import org.jboss.as.version.ProductConfig;
 import org.jboss.logmanager.Level;
 import org.jboss.logmanager.Logger;
 import org.jboss.logmanager.handlers.ConsoleHandler;
@@ -56,27 +55,7 @@ import org.jboss.stdio.StdioContext;
 public final class Main {
 
     public static void usage() {
-        System.out.println("Usage: ./standalone.sh [args...]\n");
-        System.out.println("where args include:");
-        System.out.println("    --admin-only                       Set the server's running type to ADMIN_ONLY causing it to open administrative interfaces ");
-        System.out.println("                                       and accept management requests but not start other runtime services or accept end user requests.\n");
-        System.out.println("    -b=<value>                         Set system property jboss.bind.address to the given value\n");
-        System.out.println("    -b <value>                         Set system property jboss.bind.address to the given value\n");
-        System.out.println("    -b<interface>=<value>              Set system property jboss.bind.address.<interface> to the given value\n");
-        System.out.println("    -c=<config>                        Name of the server configuration file to use (default is \"standalone.xml\")\n");
-        System.out.println("    -c <config>                        Name of the server configuration file to use (default is \"standalone.xml\")\n");
-        System.out.println("    -D<name>[=<value>]                 Set a system property\n");
-        System.out.println("    -h                                 Display this message and exit\n");
-        System.out.println("    --help                             Display this message and exit");
-        System.out.println("    -P=<url>                           Load system properties from the given url\n");
-        System.out.println("    -P <url>                           Load system properties from the given url\n");
-        System.out.println("    --properties=<url>                 Load system properties from the given url\n");
-        System.out.println("    --server-config=<config>           Name of the server configuration file to use (default is \"standalone.xml\")\n");
-        System.out.println("    -u=<value>                         Set system property jboss.default.multicast.address to the given value\n");
-        System.out.println("    -u <value>                         Set system property jboss.default.multicast.address to the given value\n");
-        System.out.println("    -V                                 Print version and exit\n");
-        System.out.println("    -v                                 Print version and exit\n");
-        System.out.println("    --version                          Print version and exit\n");
+        CommandLineArgument.printUsage(System.out);
     }
 
     private Main() {
@@ -97,24 +76,22 @@ public final class Main {
         } catch (Throwable ignored) {
         }
 
-        // Install JBoss Stdio to avoid any nasty crosstalk.
-        StdioContext.install();
-        final StdioContext context = StdioContext.create(
-            new NullInputStream(),
-            new LoggingOutputStream(Logger.getLogger("stdout"), Level.INFO),
-            new LoggingOutputStream(Logger.getLogger("stderr"), Level.ERROR)
-        );
-        StdioContext.setStdioContextSelector(new SimpleStdioContextSelector(context));
-
         try {
             Module.registerURLStreamHandlerFactoryModule(Module.getBootModuleLoader().loadModule(ModuleIdentifier.create("org.jboss.vfs")));
             ServerEnvironment serverEnvironment = determineEnvironment(args, new Properties(SecurityActions.getSystemProperties()), SecurityActions.getSystemEnvironment(), ServerEnvironment.LaunchType.STANDALONE);
+            // Install JBoss Stdio to avoid any nasty crosstalk, after command line arguments are processed.
+            StdioContext.install();
+            final StdioContext context = StdioContext.create(
+                    new NullInputStream(),
+                    new LoggingOutputStream(Logger.getLogger("stdout"), Level.INFO),
+                    new LoggingOutputStream(Logger.getLogger("stderr"), Level.ERROR)
+            );
+            StdioContext.setStdioContextSelector(new SimpleStdioContextSelector(context));
             if (serverEnvironment == null) {
                 abort(null);
             } else {
                 final Bootstrap bootstrap = Bootstrap.Factory.newInstance();
-                final Bootstrap.Configuration configuration = new Bootstrap.Configuration();
-                configuration.setServerEnvironment(serverEnvironment);
+                final Bootstrap.Configuration configuration = new Bootstrap.Configuration(serverEnvironment);
                 configuration.setModuleLoader(Module.getBootModuleLoader());
                 bootstrap.bootstrap(configuration, Collections.<ServiceActivator>emptyList()).get();
                 return;
@@ -138,12 +115,14 @@ public final class Main {
         final int argsLength = args.length;
         String serverConfig = null;
         RunningMode runningMode = RunningMode.NORMAL;
+        ProductConfig productConfig;
         for (int i = 0; i < argsLength; i++) {
             final String arg = args[i];
             try {
                 if (CommandLineConstants.VERSION.equals(arg) || CommandLineConstants.SHORT_VERSION.equals(arg)
                         || CommandLineConstants.OLD_VERSION.equals(arg) || CommandLineConstants.OLD_SHORT_VERSION.equals(arg)) {
-                    System.out.println("JBoss Application Server " + getVersionString());
+                    productConfig = new ProductConfig(Module.getBootModuleLoader(), SecurityActions.getSystemProperty(ServerEnvironment.HOME_DIR));
+                    System.out.println(productConfig.getPrettyVersionString());
                     return null;
                 } else if (CommandLineConstants.HELP.equals(arg) || CommandLineConstants.SHORT_HELP.equals(arg) || CommandLineConstants.OLD_HELP.equals(arg)) {
                     usage();
@@ -205,7 +184,7 @@ public final class Main {
 
                     int idx = arg.indexOf('=');
                     if (idx == arg.length() - 1) {
-                        System.err.printf("Argument expected for option %s\n", arg);
+                        System.err.printf(ServerMessages.MESSAGES.noArgValue(arg));
                         usage();
                         return null;
                     }
@@ -241,20 +220,19 @@ public final class Main {
                     runningMode = RunningMode.ADMIN_ONLY;
                 } else {
                     System.err.printf(ServerMessages.MESSAGES.invalidCommandLineOption(arg));
-                    System.err.println();
                     usage();
                     return null;
                 }
             } catch (IndexOutOfBoundsException e) {
                 System.err.printf(ServerMessages.MESSAGES.valueExpectedForCommandLineOption(arg));
-                System.err.println();
                 usage();
                 return null;
             }
         }
 
         String hostControllerName = null; // No host controller unless in domain mode.
-        return new ServerEnvironment(hostControllerName, systemProperties, systemEnvironment, serverConfig, launchType, runningMode);
+        productConfig = new ProductConfig(Module.getBootModuleLoader(), SecurityActions.getSystemProperty(ServerEnvironment.HOME_DIR));
+        return new ServerEnvironment(hostControllerName, systemProperties, systemEnvironment, serverConfig, launchType, runningMode, productConfig);
     }
 
     private static String parseValue(final String arg, final String key) {

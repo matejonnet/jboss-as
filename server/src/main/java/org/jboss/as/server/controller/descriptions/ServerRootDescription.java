@@ -32,6 +32,9 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.DUM
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.EXTENSION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.HEAD_COMMENT_ALLOWED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.INTERFACE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MANAGEMENT_MAJOR_VERSION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MANAGEMENT_MINOR_VERSION;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MIN;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MIN_LENGTH;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MIN_OCCURS;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.MODEL_DESCRIPTION;
@@ -41,6 +44,8 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NIL
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATIONS;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OPERATION_NAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PRODUCT_NAME;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PRODUCT_VERSION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELEASE_CODENAME;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RELEASE_VERSION;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REPLY_PROPERTIES;
@@ -58,7 +63,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.TYP
 import static org.jboss.as.server.controller.descriptions.ServerDescriptionConstants.LAUNCH_TYPE;
 import static org.jboss.as.server.controller.descriptions.ServerDescriptionConstants.PROCESS_TYPE;
 import static org.jboss.as.server.controller.descriptions.ServerDescriptionConstants.PROFILE_NAME;
-import static org.jboss.as.server.controller.descriptions.ServerDescriptionConstants.SERVER_STATE;
+import static org.jboss.as.server.controller.descriptions.ServerDescriptionConstants.PROCESS_STATE;
 
 import java.util.Locale;
 import java.util.ResourceBundle;
@@ -107,6 +112,30 @@ public class ServerRootDescription {
         root.get(ATTRIBUTES, RELEASE_CODENAME, NILLABLE).set(false);
         root.get(ATTRIBUTES, RELEASE_CODENAME, MIN_LENGTH).set(1);
 
+        root.get(ATTRIBUTES, PRODUCT_NAME, DESCRIPTION).set(bundle.getString("server.product-name"));
+        root.get(ATTRIBUTES, PRODUCT_NAME, TYPE).set(ModelType.STRING);
+        root.get(ATTRIBUTES, PRODUCT_NAME, REQUIRED).set(true);
+        root.get(ATTRIBUTES, PRODUCT_NAME, NILLABLE).set(true);
+        root.get(ATTRIBUTES, PRODUCT_NAME, MIN_LENGTH).set(1);
+
+        root.get(ATTRIBUTES, PRODUCT_VERSION, DESCRIPTION).set(bundle.getString("server.product-version"));
+        root.get(ATTRIBUTES, PRODUCT_VERSION, TYPE).set(ModelType.STRING);
+        root.get(ATTRIBUTES, PRODUCT_VERSION, REQUIRED).set(true);
+        root.get(ATTRIBUTES, PRODUCT_VERSION, NILLABLE).set(true);
+        root.get(ATTRIBUTES, PRODUCT_VERSION, MIN_LENGTH).set(1);
+
+        root.get(ATTRIBUTES, MANAGEMENT_MAJOR_VERSION, DESCRIPTION).set(bundle.getString("server.management-major-version"));
+        root.get(ATTRIBUTES, MANAGEMENT_MAJOR_VERSION, TYPE).set(ModelType.INT);
+        root.get(ATTRIBUTES, MANAGEMENT_MAJOR_VERSION, REQUIRED).set(true);
+        root.get(ATTRIBUTES, MANAGEMENT_MAJOR_VERSION, NILLABLE).set(false);
+        root.get(ATTRIBUTES, MANAGEMENT_MAJOR_VERSION, MIN).set(1);
+
+        root.get(ATTRIBUTES, MANAGEMENT_MINOR_VERSION, DESCRIPTION).set(bundle.getString("server.management-minor-version"));
+        root.get(ATTRIBUTES, MANAGEMENT_MINOR_VERSION, TYPE).set(ModelType.INT);
+        root.get(ATTRIBUTES, MANAGEMENT_MINOR_VERSION, REQUIRED).set(true);
+        root.get(ATTRIBUTES, MANAGEMENT_MINOR_VERSION, NILLABLE).set(false);
+        root.get(ATTRIBUTES, MANAGEMENT_MINOR_VERSION, MIN).set(1);
+
         root.get(ATTRIBUTES, PROFILE_NAME, DESCRIPTION).set(bundle.getString("server.profile"));
         root.get(ATTRIBUTES, PROFILE_NAME, TYPE).set(ModelType.STRING);
         root.get(ATTRIBUTES, PROFILE_NAME, REQUIRED).set(true);
@@ -115,11 +144,11 @@ public class ServerRootDescription {
         root.get(ATTRIBUTES, PROFILE_NAME, HEAD_COMMENT_ALLOWED).set(true);
         root.get(ATTRIBUTES, PROFILE_NAME, TAIL_COMMENT_ALLOWED).set(true);
 
-        root.get(ATTRIBUTES, SERVER_STATE, DESCRIPTION).set(bundle.getString("server.state"));
-        root.get(ATTRIBUTES, SERVER_STATE, TYPE).set(ModelType.STRING);
-        root.get(ATTRIBUTES, SERVER_STATE, REQUIRED).set(true);
-        root.get(ATTRIBUTES, SERVER_STATE, NILLABLE).set(false);
-        root.get(ATTRIBUTES, SERVER_STATE, MIN_LENGTH).set(1);
+        root.get(ATTRIBUTES, PROCESS_STATE, DESCRIPTION).set(bundle.getString("server.state"));
+        root.get(ATTRIBUTES, PROCESS_STATE, TYPE).set(ModelType.STRING);
+        root.get(ATTRIBUTES, PROCESS_STATE, REQUIRED).set(true);
+        root.get(ATTRIBUTES, PROCESS_STATE, NILLABLE).set(false);
+        root.get(ATTRIBUTES, PROCESS_STATE, MIN_LENGTH).set(1);
 
         root.get(ATTRIBUTES, PROCESS_TYPE, DESCRIPTION).set(bundle.getString("server.process-type"));
         root.get(ATTRIBUTES, PROCESS_TYPE, TYPE).set(ModelType.STRING);

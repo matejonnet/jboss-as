@@ -37,7 +37,6 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PATH;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.PRIORITY;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.ROLLBACK_ON_RUNTIME_FAILURE;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SECURITY_REALM;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SERVER_CONFIG;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOCKET_BINDING_GROUP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOCKET_BINDING_PORT_OFFSET;
@@ -68,6 +67,7 @@ import javax.xml.namespace.QName;
 
 import junit.framework.Assert;
 import junit.framework.AssertionFailedError;
+
 import org.jboss.arquillian.container.test.api.Deployment;
 import org.jboss.arquillian.junit.Arquillian;
 import org.jboss.as.controller.AbstractControllerService;
@@ -87,6 +87,7 @@ import org.jboss.as.controller.RunningModeControl;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.descriptions.common.CommonProviders;
+import org.jboss.as.controller.extension.ExtensionRegistry;
 import org.jboss.as.controller.operations.common.InterfaceAddHandler;
 import org.jboss.as.controller.operations.common.InterfaceCriteriaWriteHandler;
 import org.jboss.as.controller.operations.common.JVMHandlers;
@@ -108,10 +109,8 @@ import org.jboss.as.controller.registry.OperationEntry;
 import org.jboss.as.controller.registry.Resource;
 import org.jboss.as.domain.controller.DomainController;
 import org.jboss.as.domain.controller.DomainModelUtil;
-import org.jboss.as.domain.controller.FileRepository;
 import org.jboss.as.domain.controller.LocalHostControllerInfo;
 import org.jboss.as.domain.management.connections.ldap.LdapConnectionResourceDefinition;
-import org.jboss.as.domain.management.security.SecurityRealmAddHandler;
 import org.jboss.as.domain.management.security.SecurityRealmResourceDefinition;
 import org.jboss.as.host.controller.descriptions.HostDescriptionProviders;
 import org.jboss.as.host.controller.operations.HostSpecifiedInterfaceAddHandler;
@@ -124,6 +123,8 @@ import org.jboss.as.host.controller.parsing.DomainXml;
 import org.jboss.as.host.controller.parsing.HostXml;
 import org.jboss.as.host.controller.resources.HttpManagementResourceDefinition;
 import org.jboss.as.host.controller.resources.NativeManagementResourceDefinition;
+import org.jboss.as.repository.ContentRepository;
+import org.jboss.as.repository.HostFileRepository;
 import org.jboss.as.security.vault.RuntimeVaultReader;
 import org.jboss.as.server.ServerControllerModelUtil;
 import org.jboss.as.server.parsing.StandaloneXml;
@@ -143,9 +144,9 @@ import org.jboss.shrinkwrap.api.Archive;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.asset.Asset;
 import org.jboss.shrinkwrap.api.spec.JavaArchive;
+import org.jboss.vfs.VirtualFile;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -215,7 +216,7 @@ public class ParseAndMarshalModelsTestCase {
         standaloneXmlTest(getExampleConfigFile("standalone-xts.xml"));
     }
 
-    @Test @Ignore("AS7-2901")
+    @Test
     public void testStandaloneHornetqColocatedXml() throws Exception {
         standaloneXmlTest(getExampleConfigFile("standalone-hornetq-colocated.xml"));
     }
@@ -472,21 +473,23 @@ public class ParseAndMarshalModelsTestCase {
     }
 
     private ModelNode loadServerModel(final File file) throws Exception {
+        final ExtensionRegistry extensionRegistry = new ExtensionRegistry(ProcessType.STANDALONE_SERVER, new RunningModeControl(RunningMode.NORMAL));
         final QName rootElement = new QName(Namespace.CURRENT.getUriString(), "server");
-        final StandaloneXml parser = new StandaloneXml(Module.getBootModuleLoader(), null);
+        final StandaloneXml parser = new StandaloneXml(Module.getBootModuleLoader(), null, extensionRegistry);
         final XmlConfigurationPersister persister = new XmlConfigurationPersister(file, rootElement, parser, parser);
         for (Namespace namespace : Namespace.values()) {
             if (namespace != Namespace.CURRENT) {
                 persister.registerAdditionalRootElement(new QName(namespace.getUriString(), "server"), parser);
             }
         }
+        extensionRegistry.setWriterRegistry(persister);
         final List<ModelNode> ops = persister.load();
 
         final ModelNode model = new ModelNode();
         final ModelController controller = createController(ProcessType.STANDALONE_SERVER, model, new Setup() {
             public void setup(Resource resource, ManagementResourceRegistration rootRegistration) {
-                ServerControllerModelUtil.updateCoreModel(model);
-                ServerControllerModelUtil.initOperations(rootRegistration, null, persister, null, null, null, null, false);
+                ServerControllerModelUtil.updateCoreModel(model, null);
+                ServerControllerModelUtil.initOperations(rootRegistration, new MockContentRepository(), persister, null, null, null, null, extensionRegistry, false, new MockFileRepository());
             }
         });
 
@@ -503,7 +506,7 @@ public class ParseAndMarshalModelsTestCase {
 
     private ModelNode loadHostModel(final File file) throws Exception {
         final QName rootElement = new QName(Namespace.CURRENT.getUriString(), "host");
-        final HostXml parser = new HostXml(Module.getBootModuleLoader(), null);
+        final HostXml parser = new HostXml("host-controller");
         final XmlConfigurationPersister persister = new XmlConfigurationPersister(file, rootElement, parser, parser);
         for (Namespace namespace : Namespace.values()) {
             if (namespace != Namespace.CURRENT) {
@@ -526,7 +529,7 @@ public class ParseAndMarshalModelsTestCase {
                 host.registerChild(PathElement.pathElement(ModelDescriptionConstants.CORE_SERVICE, ModelDescriptionConstants.MANAGEMENT), Resource.Factory.create());
                 host.registerChild(PathElement.pathElement(ModelDescriptionConstants.CORE_SERVICE, ModelDescriptionConstants.SERVICE_CONTAINER), Resource.Factory.create());
 
-                final LocalHostControllerInfoImpl hostControllerInfo = new LocalHostControllerInfoImpl(new ControlledProcessState(false));
+                final LocalHostControllerInfoImpl hostControllerInfo = new LocalHostControllerInfoImpl(new ControlledProcessState(false), "master");
 
                 // Add of the host itself
                 ManagementResourceRegistration hostRegistration = root.registerSubModel(PathElement.pathElement(HOST), HostDescriptionProviders.HOST_ROOT_PROVIDER);
@@ -622,22 +625,25 @@ public class ParseAndMarshalModelsTestCase {
     }
 
     private ModelNode loadDomainModel(File file) throws Exception {
+        final ExtensionRegistry extensionRegistry = new ExtensionRegistry(ProcessType.STANDALONE_SERVER, new RunningModeControl(RunningMode.NORMAL));
         final QName rootElement = new QName(Namespace.CURRENT.getUriString(), "domain");
-        final DomainXml parser = new DomainXml(Module.getBootModuleLoader(), null);
+        final DomainXml parser = new DomainXml(Module.getBootModuleLoader(), null, extensionRegistry);
         final XmlConfigurationPersister persister = new XmlConfigurationPersister(file, rootElement, parser, parser);
         for (Namespace namespace : Namespace.values()) {
             if (namespace != Namespace.CURRENT) {
                 persister.registerAdditionalRootElement(new QName(namespace.getUriString(), "domain"), parser);
             }
         }
+        extensionRegistry.setWriterRegistry(persister);
         final List<ModelNode> ops = persister.load();
 
 
         final ModelNode model = new ModelNode();
         final ModelController controller = createController(ProcessType.HOST_CONTROLLER, model, new Setup() {
             public void setup(Resource resource, ManagementResourceRegistration rootRegistration) {
-                DomainModelUtil.updateCoreModel(resource);
-                DomainModelUtil.initializeMasterDomainRegistry(rootRegistration, persister, null, new MockFileRepository(), new MockDomainController(), null);
+                DomainModelUtil.updateCoreModel(resource, null);
+                DomainModelUtil.initializeMasterDomainRegistry(rootRegistration, persister, new MockContentRepository(), new MockFileRepository(),
+                        new MockDomainController(), null, extensionRegistry);
             }
         });
 
@@ -810,7 +816,30 @@ public class ParseAndMarshalModelsTestCase {
 
     }
 
-    private static class MockFileRepository implements FileRepository {
+    private static class MockContentRepository implements ContentRepository {
+
+        @Override
+        public byte[] addContent(InputStream stream) throws IOException {
+            return null;
+        }
+
+        @Override
+        public VirtualFile getContent(byte[] hash) {
+            return null;
+        }
+
+        @Override
+        public boolean hasContent(byte[] hash) {
+            return false;
+        }
+
+        @Override
+        public void removeContent(byte[] hash) {
+        }
+
+    }
+
+    private static class MockFileRepository implements HostFileRepository {
 
         @Override
         public File getFile(String relativePath) {
@@ -830,6 +859,10 @@ public class ParseAndMarshalModelsTestCase {
         @Override
         public File getDeploymentRoot(byte[] deploymentHash) {
             return null;
+        }
+
+        @Override
+        public void deleteDeployment(byte[] deploymentHash) {
         }
     }
 
@@ -854,15 +887,20 @@ public class ParseAndMarshalModelsTestCase {
             return null;
         }
 
-        public FileRepository getLocalFileRepository() {
+        public HostFileRepository getLocalFileRepository() {
             return null;
         }
 
-        public FileRepository getRemoteFileRepository() {
+        public HostFileRepository getRemoteFileRepository() {
             return null;
         }
 
         public void stopLocalHost() {
+        }
+
+        @Override
+        public void stopLocalHost(int exitCode) {
+            //
         }
     }
 
@@ -875,7 +913,7 @@ public class ParseAndMarshalModelsTestCase {
          * Create the ServerAddHandler
          */
         protected MockLocalDomainControllerAddHandler() {
-            super(null, null, null, null, null, null, null);
+            super(null, null, null, null, null, null, null, null);
         }
 
         @Override
@@ -890,7 +928,7 @@ public class ParseAndMarshalModelsTestCase {
          * Create the ServerAddHandler
          */
         protected MockRemoteDomainControllerAddHandler() {
-            super(null, null, null, null, null);
+            super(null, null, null, null, null, null);
         }
 
         @Override

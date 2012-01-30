@@ -58,19 +58,22 @@ public class JdrReportExtension implements Extension {
             }
         };
 
-        SubsystemRegistration subsystemRegistration = context.registerSubsystem(SUBSYSTEM_NAME);
+        SubsystemRegistration subsystemRegistration = context.registerSubsystem(SUBSYSTEM_NAME, 1, 0);
 
         ManagementResourceRegistration root = subsystemRegistration.registerSubsystemModel(subsystemDescription);
         root.registerOperationHandler(JdrReportSubsystemAdd.OPERATION_NAME, JdrReportSubsystemAdd.INSTANCE, JdrReportSubsystemAdd.INSTANCE);
         root.registerOperationHandler(DESCRIBE, JdrSubsystemDescribeHandler.INSTANCE,
                 JdrSubsystemDescribeHandler.INSTANCE, false, OperationEntry.EntryType.PRIVATE);
         root.registerOperationHandler(JdrReportSubsystemRemove.OPERATION_NAME, JdrReportSubsystemRemove.INSTANCE, JdrReportSubsystemRemove.INSTANCE);
-        root.registerOperationHandler(JdrReportRequestHandler.OPERATION_NAME, JdrReportRequestHandler.INSTANCE, JdrReportRequestHandler.INSTANCE);
+
+        if (context.isRuntimeOnlyRegistrationValid()) {
+            root.registerOperationHandler(JdrReportRequestHandler.OPERATION_NAME, JdrReportRequestHandler.INSTANCE, JdrReportRequestHandler.INSTANCE);
+        }
         subsystemRegistration.registerXMLElementWriter(JdrReportSubsystemParser.INSTANCE);
     }
 
     public void initializeParsers(ExtensionParsingContext context) {
-        context.setSubsystemXmlMapping(Namespace.CURRENT.getUriString(), JdrReportSubsystemParser.INSTANCE);
+        context.setSubsystemXmlMapping(SUBSYSTEM_NAME, Namespace.CURRENT.getUriString(), JdrReportSubsystemParser.INSTANCE);
     }
 
     private static class JdrSubsystemDescribeHandler implements OperationStepHandler, DescriptionProvider {

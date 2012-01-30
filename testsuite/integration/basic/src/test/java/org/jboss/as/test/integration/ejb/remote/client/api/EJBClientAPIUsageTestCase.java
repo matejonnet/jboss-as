@@ -22,21 +22,18 @@
 
 package org.jboss.as.test.integration.ejb.remote.client.api;
 
-import javax.ejb.EJBException;
-import javax.ejb.NoSuchEJBException;
-import java.util.concurrent.Future;
-
 import org.jboss.arquillian.container.test.api.Deployment;
 import org.jboss.arquillian.container.test.api.RunAsClient;
 import org.jboss.arquillian.junit.Arquillian;
+import org.jboss.ejb.client.Affinity;
 import org.jboss.ejb.client.EJBClient;
 import org.jboss.ejb.client.EJBClientTransactionContext;
-import org.jboss.ejb.client.SessionID;
 import org.jboss.ejb.client.StatefulEJBLocator;
 import org.jboss.ejb.client.StatelessEJBLocator;
 import org.jboss.logging.Logger;
 import org.jboss.shrinkwrap.api.Archive;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
+import org.jboss.shrinkwrap.api.asset.EmptyAsset;
 import org.jboss.shrinkwrap.api.spec.EnterpriseArchive;
 import org.jboss.shrinkwrap.api.spec.JavaArchive;
 import org.junit.Assert;
@@ -44,6 +41,10 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+
+import javax.ejb.EJBException;
+import javax.ejb.NoSuchEJBException;
+import java.util.concurrent.Future;
 
 /**
  * Tests the various common use cases of the EJB remote client API
@@ -71,7 +72,7 @@ public class EJBClientAPIUsageTestCase {
 
         final JavaArchive jar = ShrinkWrap.create(JavaArchive.class, MODULE_NAME + ".jar");
         jar.addPackage(EJBClientAPIUsageTestCase.class.getPackage());
-
+        jar.addAsManifestResource(EmptyAsset.INSTANCE, "beans.xml");
         ear.addAsModule(jar);
 
         return ear;
@@ -157,9 +158,7 @@ public class EJBClientAPIUsageTestCase {
      */
     @Test
     public void testSFSBInvocation() throws Exception {
-        // open a session for the SFSB
-        final SessionID sessionID = EJBClient.createSession(APP_NAME, MODULE_NAME, CounterBean.class.getSimpleName(), "");
-        final StatefulEJBLocator<Counter> locator = new StatefulEJBLocator<Counter>(Counter.class, APP_NAME, MODULE_NAME, CounterBean.class.getSimpleName(), "", sessionID);
+        final StatefulEJBLocator<Counter> locator = EJBClient.createSession(Counter.class, APP_NAME, MODULE_NAME, CounterBean.class.getSimpleName(), "");
         final Counter counter = EJBClient.createProxy(locator);
         Assert.assertNotNull("Received a null proxy", counter);
         // invoke the bean
@@ -188,7 +187,7 @@ public class EJBClientAPIUsageTestCase {
             "Need to think if there's a different way to test this. Else just remove this test")
     public void testSFSBAccessFailureWithoutSession() throws Exception {
         // create a locator without a session
-        final StatefulEJBLocator<Counter> locator = new StatefulEJBLocator<Counter>(Counter.class, APP_NAME, MODULE_NAME, CounterBean.class.getSimpleName(), "", null);
+        final StatefulEJBLocator<Counter> locator = new StatefulEJBLocator<Counter>(Counter.class, APP_NAME, MODULE_NAME, CounterBean.class.getSimpleName(), "", null, Affinity.NONE);
         final Counter counter = EJBClient.createProxy(locator);
         Assert.assertNotNull("Received a null proxy", counter);
         // invoke the bean without creating a session
@@ -330,5 +329,17 @@ public class EJBClientAPIUsageTestCase {
         final String message = "Hello world from a really remote client";
         final String echo = getBusinessObjectProxy.echo(message);
         Assert.assertEquals("Unexpected echo message", message, echo);
+    }
+
+    /**
+     * AS7-3129
+     * <p/>
+     * Make sure that the CDI request scope is activated for remote EJB invocations
+     */
+    @Test
+    public void testCdiRequestScopeActive() {
+        final StatelessEJBLocator<EchoRemote> locator = new StatelessEJBLocator(EchoRemote.class, APP_NAME, MODULE_NAME, EchoBean.class.getSimpleName(), "");
+        final EchoRemote proxy = EJBClient.createProxy(locator);
+        Assert.assertTrue(proxy.testRequestScopeActive());
     }
 }

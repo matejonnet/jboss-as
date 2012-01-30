@@ -26,7 +26,6 @@ import java.util.Collections;
 import java.util.Set;
 
 import org.jboss.as.controller.PathElement;
-import org.jboss.as.controller.registry.Resource;
 
 /**
  * Resource impl for leaf platform mbean resources.

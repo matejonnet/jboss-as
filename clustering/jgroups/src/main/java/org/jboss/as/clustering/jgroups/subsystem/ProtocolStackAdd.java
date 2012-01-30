@@ -43,6 +43,7 @@ import org.jboss.as.clustering.jgroups.ProtocolStackConfiguration;
 import org.jboss.as.clustering.jgroups.TransportConfiguration;
 import org.jboss.as.controller.AbstractAddStepHandler;
 import org.jboss.as.controller.OperationContext;
+import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.ServiceVerificationHandler;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
@@ -75,9 +76,9 @@ public class ProtocolStackAdd extends AbstractAddStepHandler implements Descript
 
     private static void populate(ModelNode source, ModelNode target) {
         target.get(ModelKeys.TRANSPORT).set(source.require(ModelKeys.TRANSPORT));
-        if (source.hasDefined(ModelKeys.PROTOCOL)) {
-            ModelNode protocols = target.get(ModelKeys.PROTOCOL);
-            for (ModelNode protocol : source.get(ModelKeys.PROTOCOL).asList()) {
+        if (source.hasDefined(ModelKeys.PROTOCOLS)) {
+            ModelNode protocols = target.get(ModelKeys.PROTOCOLS);
+            for (ModelNode protocol : source.get(ModelKeys.PROTOCOLS).asList()) {
                 protocols.add(protocol);
             }
         }
@@ -88,11 +89,13 @@ public class ProtocolStackAdd extends AbstractAddStepHandler implements Descript
         return JGroupsDescriptions.getProtocolStackAddDescription(locale);
     }
 
+    @Override
     protected void populateModel(ModelNode operation, ModelNode model) {
         populate(operation, model);
     }
 
-    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) {
+    @Override
+    protected void performRuntime(OperationContext context, ModelNode operation, ModelNode model, ServiceVerificationHandler verificationHandler, List<ServiceController<?>> newControllers) throws OperationFailedException {
         final PathAddress address = PathAddress.pathAddress(operation.get(OP_ADDR));
         final String name = address.getLastElement().getValue();
         ModelNode transport = operation.get(ModelKeys.TRANSPORT);
@@ -108,6 +111,15 @@ public class ProtocolStackAdd extends AbstractAddStepHandler implements Descript
         if (transport.hasDefined(ModelKeys.SHARED)) {
             transportConfig.setShared(transport.get(ModelKeys.SHARED).asBoolean());
         }
+        if (transport.hasDefined(ModelKeys.MACHINE)) {
+            transportConfig.setMachineId(context.resolveExpressions(transport.get(ModelKeys.MACHINE)).asString());
+        }
+        if (transport.hasDefined(ModelKeys.RACK)) {
+            transportConfig.setRackId(context.resolveExpressions(transport.get(ModelKeys.RACK)).asString());
+        }
+        if (transport.hasDefined(ModelKeys.SITE)) {
+            transportConfig.setSiteId(context.resolveExpressions(transport.get(ModelKeys.SITE)).asString());
+        }
         build(builder, transport, transportConfig);
         addSocketBindingDependency(builder, transport, ModelKeys.DIAGNOSTICS_SOCKET_BINDING, transportConfig.getDiagnosticsSocketBindingInjector());
         addExecutorDependency(builder, transport, ModelKeys.DEFAULT_EXECUTOR, transportConfig.getDefaultExecutorInjector());
@@ -118,7 +130,7 @@ public class ProtocolStackAdd extends AbstractAddStepHandler implements Descript
         if (transport.hasDefined(ModelKeys.THREAD_FACTORY)) {
             builder.addDependency(ThreadsServices.threadFactoryName(transport.get(ModelKeys.THREAD_FACTORY).asString()), ThreadFactory.class, transportConfig.getThreadFactoryInjector());
         }
-        for (ModelNode protocol : operation.get(ModelKeys.PROTOCOL).asList()) {
+        for (ModelNode protocol : operation.get(ModelKeys.PROTOCOLS).asList()) {
             Protocol protocolConfig = new Protocol(protocol.require(ModelKeys.TYPE).asString());
             build(builder, protocol, protocolConfig);
             stackConfig.getProtocols().add(protocolConfig);
@@ -131,8 +143,8 @@ public class ProtocolStackAdd extends AbstractAddStepHandler implements Descript
     private void build(ServiceBuilder<ChannelFactory> builder, ModelNode protocol, Protocol protocolConfig) {
         this.addSocketBindingDependency(builder, protocol, ModelKeys.SOCKET_BINDING, protocolConfig.getSocketBindingInjector());
         Map<String, String> properties = protocolConfig.getProperties();
-        if (protocol.hasDefined(ModelKeys.PROPERTY)) {
-            for (Property property : protocol.get(ModelKeys.PROPERTY).asPropertyList()) {
+        if (protocol.hasDefined(ModelKeys.PROPERTIES)) {
+            for (Property property : protocol.get(ModelKeys.PROPERTIES).asPropertyList()) {
                 properties.put(property.getName(), property.getValue().asString());
             }
         }
@@ -150,6 +162,7 @@ public class ProtocolStackAdd extends AbstractAddStepHandler implements Descript
         }
     }
 
+    @Override
     protected boolean requiresRuntimeVerification() {
         return false;
     }
@@ -218,6 +231,9 @@ public class ProtocolStackAdd extends AbstractAddStepHandler implements Descript
         private final InjectedValue<ScheduledExecutorService> timerExecutor = new InjectedValue<ScheduledExecutorService>();
         private final InjectedValue<ThreadFactory> threadFactory = new InjectedValue<ThreadFactory>();
         private boolean shared = true;
+        private String machineId;
+        private String rackId;
+        private String siteId;
 
         Transport(String name) {
             super(name);
@@ -250,6 +266,39 @@ public class ProtocolStackAdd extends AbstractAddStepHandler implements Descript
         @Override
         public boolean isShared() {
             return this.shared;
+        }
+
+
+        @Override
+        public String getMachineId() {
+            return machineId;
+        }
+
+        public void setMachineId(String machineId) {
+            this.machineId = machineId;
+        }
+
+        @Override
+        public String getRackId() {
+            return rackId;
+        }
+
+        public void setRackId(String rackId) {
+            this.rackId = rackId;
+        }
+
+        @Override
+        public String getSiteId() {
+            return siteId;
+        }
+
+        public void setSiteId(String siteId) {
+            this.siteId = siteId;
+        }
+
+        @Override
+        public boolean hasTopology() {
+            return (machineId!=null || rackId!=null || siteId!=null);
         }
 
         @Override

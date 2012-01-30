@@ -26,6 +26,7 @@ import java.io.File;
 import java.io.FileReader;
 
 import org.jboss.as.cli.CliInitializationException;
+import org.jboss.as.cli.gui.GuiMain;
 import org.jboss.as.cli.handlers.VersionHandler;
 import org.jboss.as.protocol.StreamUtils;
 
@@ -36,6 +37,9 @@ import org.jboss.as.protocol.StreamUtils;
 public class CliLauncher {
 
     public static void main(String[] args) throws Exception {
+        int exitCode = 0;
+        CommandContextImpl cmdCtx = null;
+        boolean gui = false;
         try {
             String argError = null;
             String[] commands = null;
@@ -84,6 +88,8 @@ public class CliLauncher {
                     connect = true;
                 } else if("--version".equals(arg)) {
                     version = true;
+                } else if ("--gui".equals(arg)) {
+                    gui = true;
                 } else if(arg.startsWith("--file=") || arg.startsWith("file=")) {
                     if(file != null) {
                         argError = "Duplicate argument '--file'.";
@@ -149,51 +155,77 @@ public class CliLauncher {
 
             if(argError != null) {
                 System.err.println(argError);
+                exitCode = 1;
                 return;
             }
 
             if(version) {
-                final CommandContextImpl cmdCtx = new CommandContextImpl();
+                cmdCtx = new CommandContextImpl();
                 VersionHandler.INSTANCE.handle(cmdCtx);
                 return;
             }
 
             if(file != null) {
-                processFile(file, defaultControllerHost, defaultControllerPort, connect, username, password);
+                cmdCtx = initCommandContext(defaultControllerHost, defaultControllerPort, username, password, false, connect);
+                processFile(file, cmdCtx);
                 return;
             }
 
             if(commands != null) {
-                processCommands(commands, defaultControllerHost, defaultControllerPort, connect, username, password);
+                cmdCtx = initCommandContext(defaultControllerHost, defaultControllerPort, username, password, false, connect);
+                processCommands(commands, cmdCtx);
+                return;
+            }
+
+            if (gui) {
+                cmdCtx = initCommandContext(defaultControllerHost, defaultControllerPort, username, password, false, connect);
+                processGui(cmdCtx);
                 return;
             }
 
             // Interactive mode
 
-            final CommandContextImpl cmdCtx = new CommandContextImpl(defaultControllerHost, defaultControllerPort, username, password, true);
+            cmdCtx = new CommandContextImpl(defaultControllerHost, defaultControllerPort, username, password, true);
             cmdCtx.interact(connect);
         } catch(Throwable t) {
             t.printStackTrace();
         } finally {
-            System.exit(0);
+            if(cmdCtx != null) {
+                exitCode = cmdCtx.getExitCode();
+            }
+            if (!gui) {
+                System.exit(exitCode);
+            }
         }
-        System.exit(0);
+        System.exit(exitCode);
     }
 
-    private static void processCommands(String[] commands, String defaultControllerHost, int defaultControllerPort, final boolean connect, final String username, final char[] password) throws CliInitializationException {
-
-        final CommandContextImpl cmdCtx = new CommandContextImpl(defaultControllerHost, defaultControllerPort, username, password, false);
+    private static CommandContextImpl initCommandContext(String defaultHost, int defaultPort, String username, char[] password, boolean initConsole, boolean connect) throws CliInitializationException {
+        final CommandContextImpl cmdCtx = new CommandContextImpl(defaultHost, defaultPort, username, password, false);
         SecurityActions.addShutdownHook(new Thread(new Runnable() {
             @Override
             public void run() {
+                if (!cmdCtx.isTerminated()) {
+                    cmdCtx.terminateSession();
+                }
                 cmdCtx.disconnectController();
             }
         }));
-
         if(connect) {
             cmdCtx.connectController(null, -1);
         }
+        return cmdCtx;
+    }
 
+    private static void processGui(final CommandContextImpl cmdCtx) {
+        try {
+            GuiMain.start(cmdCtx);
+        } catch(Throwable t) {
+            t.printStackTrace();
+        }
+    }
+
+    private static void processCommands(String[] commands, CommandContextImpl cmdCtx) {
         try {
             for (int i = 0; i < commands.length && !cmdCtx.isTerminated(); ++i) {
                 cmdCtx.processLine(commands[i]);
@@ -208,19 +240,7 @@ public class CliLauncher {
         }
     }
 
-    private static void processFile(File file, String defaultControllerHost, int defaultControllerPort, final boolean connect, final String username, final char[] password) throws CliInitializationException {
-
-        final CommandContextImpl cmdCtx = new CommandContextImpl(defaultControllerHost, defaultControllerPort, username, password, false);
-        SecurityActions.addShutdownHook(new Thread(new Runnable() {
-            @Override
-            public void run() {
-                cmdCtx.disconnectController();
-            }
-        }));
-
-        if(connect) {
-            cmdCtx.connectController(null, -1);
-        }
+    private static void processFile(File file, final CommandContextImpl cmdCtx) {
 
         BufferedReader reader = null;
         try {
@@ -231,7 +251,7 @@ public class CliLauncher {
                 line = reader.readLine();
             }
         } catch (Throwable e) {
-            cmdCtx.printLine("Failed to process file '" + file.getAbsolutePath() + "'");
+            cmdCtx.error("Failed to process file '" + file.getAbsolutePath() + "'");
             e.printStackTrace();
         } finally {
             StreamUtils.safeClose(reader);

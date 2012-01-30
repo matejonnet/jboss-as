@@ -49,6 +49,7 @@ import org.jboss.as.ejb3.cache.spi.impl.AbstractBackingCache;
 import org.jboss.as.ejb3.cache.spi.impl.PassivateTask;
 import org.jboss.as.ejb3.cache.spi.impl.RemoveTask;
 import org.jboss.as.ejb3.component.stateful.StatefulTimeoutInfo;
+import org.jboss.ejb.client.Affinity;
 import org.jboss.logging.Logger;
 
 /**
@@ -95,6 +96,21 @@ public class PassivatingBackingCacheImpl<K extends Serializable, V extends Cache
     }
 
     @Override
+    public Affinity getStrictAffinity() {
+        return this.store.getStrictAffinity();
+    }
+
+    @Override
+    public Affinity getWeakAffinity(K key) {
+        return this.store.getWeakAffinity(key);
+    }
+
+    @Override
+    public boolean hasAffinity(K key) {
+        return this.store.hasAffinity(key);
+    }
+
+    @Override
     public E create() {
         E obj = entryFactory.createEntry(factory.createInstance());
         store.insert(obj);
@@ -106,9 +122,10 @@ public class PassivatingBackingCacheImpl<K extends Serializable, V extends Cache
         this.trace("get(%s)", key);
 
         boolean valid = false;
+        boolean lock = true;
         while (!valid) {
-            E entry = store.get(key);
-
+            E entry = store.get(key, lock);
+            lock = false;
             if (entry == null) return null;
 
             entry.lock();
@@ -140,7 +157,7 @@ public class PassivatingBackingCacheImpl<K extends Serializable, V extends Cache
     public void passivate(K key) {
         this.trace("passivate(%s)", key);
 
-        E entry = store.get(key);
+        E entry = store.get(key, false);
 
         if (entry == null) {
             EjbLogger.ROOT_LOGGER.cacheEntryNotFound(key);
@@ -172,14 +189,14 @@ public class PassivatingBackingCacheImpl<K extends Serializable, V extends Cache
     public E peek(K key) throws NoSuchEJBException {
         this.trace("peek(%s)", key);
 
-        return store.get(key);
+        return store.get(key, false);
     }
 
     @Override
     public E release(K key) {
         this.trace("release(%s)", key);
 
-        E entry = store.get(key);
+        E entry = store.get(key, false);
         if (entry == null) {
             EjbLogger.ROOT_LOGGER.cacheEntryNotFound(key);
             return null;

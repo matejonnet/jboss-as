@@ -21,12 +21,39 @@
  */
 package org.jboss.as.test.smoke.jsr88;
 
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.jar.JarOutputStream;
+
+import javax.enterprise.deploy.shared.ModuleType;
+import javax.enterprise.deploy.shared.StateType;
+import javax.enterprise.deploy.shared.factories.DeploymentFactoryManager;
+import javax.enterprise.deploy.spi.DeploymentManager;
+import javax.enterprise.deploy.spi.Target;
+import javax.enterprise.deploy.spi.TargetModuleID;
+import javax.enterprise.deploy.spi.exceptions.TargetException;
+import javax.enterprise.deploy.spi.factories.DeploymentFactory;
+import javax.enterprise.deploy.spi.status.DeploymentStatus;
+import javax.enterprise.deploy.spi.status.ProgressEvent;
+import javax.enterprise.deploy.spi.status.ProgressListener;
+import javax.enterprise.deploy.spi.status.ProgressObject;
+
 import org.jboss.arquillian.container.test.api.RunAsClient;
 import org.jboss.arquillian.junit.Arquillian;
 import org.jboss.as.ee.deployment.spi.DeploymentManagerImpl;
 import org.jboss.as.ee.deployment.spi.DeploymentMetaData;
 import org.jboss.as.ee.deployment.spi.JarUtils;
 import org.jboss.as.ee.deployment.spi.factories.DeploymentFactoryImpl;
+import org.jboss.as.test.http.Authentication;
 import org.jboss.as.test.smoke.embedded.deployment.Echo;
 import org.jboss.as.test.smoke.embedded.deployment.EchoBean;
 import org.jboss.as.test.smoke.embedded.deployment.EchoHome;
@@ -42,33 +69,6 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import javax.enterprise.deploy.shared.ModuleType;
-import javax.enterprise.deploy.shared.StateType;
-import javax.enterprise.deploy.shared.factories.DeploymentFactoryManager;
-import javax.enterprise.deploy.spi.DeploymentManager;
-import javax.enterprise.deploy.spi.Target;
-import javax.enterprise.deploy.spi.TargetModuleID;
-import javax.enterprise.deploy.spi.exceptions.TargetException;
-import javax.enterprise.deploy.spi.factories.DeploymentFactory;
-import javax.enterprise.deploy.spi.status.DeploymentStatus;
-import javax.enterprise.deploy.spi.status.ProgressEvent;
-import javax.enterprise.deploy.spi.status.ProgressListener;
-import javax.enterprise.deploy.spi.status.ProgressObject;
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.URL;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.jar.JarOutputStream;
-
-import static org.jboss.as.arquillian.container.Authentication.PASSWORD;
-import static org.jboss.as.arquillian.container.Authentication.USERNAME;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -167,7 +167,7 @@ public class EnterpriseDeploymentTestCase {
     @Test
     public void testListAvailableModules() throws Exception {
         String uri = DeploymentManagerImpl.DEPLOYER_URI + "?targetType=as7&serverHost=127.0.0.1&serverPort=9999";
-        DeploymentManager manager = getDeploymentManager(uri, USERNAME, PASSWORD);
+        DeploymentManager manager = getDeploymentManager(uri, Authentication.USERNAME, Authentication.PASSWORD);
         Target[] targets = manager.getTargets();
         TargetModuleID[] modules = manager.getAvailableModules(ModuleType.EAR, targets);
         assertNull(modules);
@@ -239,7 +239,7 @@ public class EnterpriseDeploymentTestCase {
     @Test
     public void testListAvailableModulesWrongHost() throws Exception {
         String uri = DeploymentManagerImpl.DEPLOYER_URI + "?targetType=as7&serverHost=wrongHost";
-        DeploymentManager manager = getDeploymentManager(uri, USERNAME, PASSWORD);
+        DeploymentManager manager = getDeploymentManager(uri, Authentication.USERNAME, Authentication.PASSWORD);
         Target[] targets = manager.getTargets();
         try {
             manager.getAvailableModules(ModuleType.EAR, targets);
@@ -252,7 +252,7 @@ public class EnterpriseDeploymentTestCase {
     @Test
     public void testListAvailableModulesWrongPort() throws Exception {
         String uri = DeploymentManagerImpl.DEPLOYER_URI + "?targetType=as7&serverPort=9876";
-        DeploymentManager manager = getDeploymentManager(uri, USERNAME, PASSWORD);
+        DeploymentManager manager = getDeploymentManager(uri, Authentication.USERNAME, Authentication.PASSWORD);
         Target[] targets = manager.getTargets();
         try {
             manager.getAvailableModules(ModuleType.EAR, targets);
@@ -263,7 +263,7 @@ public class EnterpriseDeploymentTestCase {
     }
 
     private DeploymentManager getDeploymentManager() throws Exception {
-        return getDeploymentManager(USERNAME, PASSWORD);
+        return getDeploymentManager(Authentication.USERNAME, Authentication.PASSWORD);
     }
 
     private DeploymentManager getDeploymentManager(String username, String password) throws Exception {

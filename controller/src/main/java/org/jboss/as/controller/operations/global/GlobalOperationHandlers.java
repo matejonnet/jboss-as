@@ -46,6 +46,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.REC
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESTART_REQUIRED;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESULT;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.STORAGE;
+import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -63,8 +64,8 @@ import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
+import org.jboss.as.controller.ProcessType;
 import org.jboss.as.controller.descriptions.DescriptionProvider;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE;
 import org.jboss.as.controller.operations.validation.ModelTypeValidator;
 import org.jboss.as.controller.operations.validation.ParametersValidator;
 import org.jboss.as.controller.operations.validation.StringLengthValidator;
@@ -221,7 +222,8 @@ public class GlobalOperationHandlers {
                                 ModelNode rrOp = new ModelNode();
                                 rrOp.get(OP).set(opName);
                                 rrOp.get(OP_ADDR).set(PathAddress.pathAddress(address, childPE).toModelNode());
-                                rrOp.get(RECURSIVE).set(true);
+                                rrOp.get(RECURSIVE).set(operation.get(RECURSIVE));
+                                rrOp.get(RECURSIVE_DEPTH).set(newDepth);
                                 rrOp.get(PROXIES).set(proxies);
                                 rrOp.get(INCLUDE_RUNTIME).set(queryRuntime);
                                 ModelNode rrRsp = new ModelNode();
@@ -487,8 +489,6 @@ public class GlobalOperationHandlers {
         }
     }
 
-    ;
-
     /**
      * {@link org.jboss.as.controller.OperationStepHandler} writing a single attribute. The required request parameter "name" represents the attribute name.
      */
@@ -593,62 +593,57 @@ public class GlobalOperationHandlers {
             validator.validate(operation);
             final String childType = operation.require(CHILD_TYPE).asString();
 
-            final Set<String> childNames = context.getResourceRegistration().getChildNames(PathAddress.EMPTY_ADDRESS);
-            if (!childNames.contains(childType)) {
-                throw new OperationFailedException(new ModelNode().set(MESSAGES.unknownChildType(childType)));
-            }
             final Map<PathElement, ModelNode> resources = new HashMap<PathElement, ModelNode>();
 
             final Resource resource = context.readResource(PathAddress.EMPTY_ADDRESS);
-            if (!resource.hasChildren(childType)) {
-                context.getResult().setEmptyObject();
-            } else {
-                // We're going to add a bunch of steps that should immediately follow this one. We are going to add them
-                // in reverse order of how they should execute, as that is the way adding a Stage.IMMEDIATE step works
-
-                // Last to execute is the handler that assembles the overall response from the pieces created by all the other steps
-                final ReadChildrenResourcesAssemblyHandler assemblyHandler = new ReadChildrenResourcesAssemblyHandler(resources);
-                context.addStep(assemblyHandler, OperationContext.Stage.IMMEDIATE);
-
-                final PathAddress address = PathAddress.pathAddress(operation.get(OP_ADDR));
-                for (final String key : resource.getChildrenNames(childType)) {
-                    final PathElement childPath = PathElement.pathElement(childType, key);
-                    final PathAddress childAddress = PathAddress.EMPTY_ADDRESS.append(PathElement.pathElement(childType, key));
-
-                    final ModelNode readOp = new ModelNode();
-                    readOp.get(OP).set(READ_RESOURCE_OPERATION);
-                    readOp.get(OP_ADDR).set(PathAddress.pathAddress(address, childPath).toModelNode());
-
-                    if (operation.hasDefined(INCLUDE_RUNTIME)) {
-                        readOp.get(INCLUDE_RUNTIME).set(operation.get(INCLUDE_RUNTIME));
-                    }
-                    if (operation.hasDefined(RECURSIVE)) {
-                        readOp.get(RECURSIVE).set(operation.get(RECURSIVE));
-                    }
-                    if(operation.hasDefined(RECURSIVE_DEPTH)) {
-                        readOp.get(RECURSIVE_DEPTH).set(operation.get(RECURSIVE_DEPTH));
-                    }
-                    if (operation.hasDefined(PROXIES)) {
-                        readOp.get(PROXIES).set(operation.get(PROXIES));
-                    }
-                    if (operation.hasDefined(INCLUDE_DEFAULTS)) {
-                        readOp.get(INCLUDE_DEFAULTS).set(operation.get(INCLUDE_DEFAULTS));
-                    }
-                    final OperationStepHandler handler = context.getResourceRegistration().getOperationHandler(childAddress, READ_RESOURCE_OPERATION);
-                    if (handler == null) {
-                        throw new OperationFailedException(new ModelNode().set(MESSAGES.noOperationHandler()));
-                    }
-                    ModelNode rrRsp = new ModelNode();
-                    resources.put(childPath, rrRsp);
-                    context.addStep(rrRsp, readOp, handler, OperationContext.Stage.IMMEDIATE);
-                }
+            final ImmutableManagementResourceRegistration registry = context.getResourceRegistration();
+            Map<String, Set<String>> childAddresses = getChildAddresses(registry, resource, childType);
+            Set<String> childNames = childAddresses.get(childType);
+            if (childNames == null) {
+                throw new OperationFailedException(new ModelNode().set(MESSAGES.unknownChildType(childType)));
             }
+            // We're going to add a bunch of steps that should immediately follow this one. We are going to add them
+            // in reverse order of how they should execute, as that is the way adding a Stage.IMMEDIATE step works
 
+            // Last to execute is the handler that assembles the overall response from the pieces created by all the other steps
+            final ReadChildrenResourcesAssemblyHandler assemblyHandler = new ReadChildrenResourcesAssemblyHandler(resources);
+            context.addStep(assemblyHandler, OperationContext.Stage.IMMEDIATE);
+
+            final PathAddress address = PathAddress.pathAddress(operation.get(OP_ADDR));
+            for (final String key : childNames) {
+                final PathElement childPath = PathElement.pathElement(childType, key);
+                final PathAddress childAddress = PathAddress.EMPTY_ADDRESS.append(PathElement.pathElement(childType, key));
+
+                final ModelNode readOp = new ModelNode();
+                readOp.get(OP).set(READ_RESOURCE_OPERATION);
+                readOp.get(OP_ADDR).set(PathAddress.pathAddress(address, childPath).toModelNode());
+
+                if (operation.hasDefined(INCLUDE_RUNTIME)) {
+                    readOp.get(INCLUDE_RUNTIME).set(operation.get(INCLUDE_RUNTIME));
+                }
+                if (operation.hasDefined(RECURSIVE)) {
+                    readOp.get(RECURSIVE).set(operation.get(RECURSIVE));
+                }
+                if(operation.hasDefined(RECURSIVE_DEPTH)) {
+                    readOp.get(RECURSIVE_DEPTH).set(operation.get(RECURSIVE_DEPTH));
+                }
+                if (operation.hasDefined(PROXIES)) {
+                    readOp.get(PROXIES).set(operation.get(PROXIES));
+                }
+                if (operation.hasDefined(INCLUDE_DEFAULTS)) {
+                    readOp.get(INCLUDE_DEFAULTS).set(operation.get(INCLUDE_DEFAULTS));
+                }
+                final OperationStepHandler handler = context.getResourceRegistration().getOperationHandler(childAddress, READ_RESOURCE_OPERATION);
+                if (handler == null) {
+                    throw new OperationFailedException(new ModelNode().set(MESSAGES.noOperationHandler()));
+                }
+                final ModelNode rrRsp = new ModelNode();
+                resources.put(childPath, rrRsp);
+                context.addStep(rrRsp, readOp, handler, OperationContext.Stage.IMMEDIATE);
+            }
             context.completeStep(OperationContext.RollbackHandler.NOOP_ROLLBACK_HANDLER);
         }
     }
-
-    ;
 
     /**
      * Assembles the response to a read-resource request from the components gathered by earlier steps.
@@ -865,7 +860,11 @@ public class GlobalOperationHandlers {
                     final AccessType accessType = access == null ? AccessType.READ_ONLY : access.getAccessType();
                     final Storage storage = access == null ? Storage.CONFIGURATION : access.getStorageType();
                     final ModelNode attrNode = nodeDescription.get(ATTRIBUTES, attr);
-                    attrNode.get(ACCESS_TYPE).set(accessType.toString());
+                    //AS7-3085 - For a domain mode server show writable attributes as read-only
+                    String displayedAccessType =
+                            context.getProcessType() == ProcessType.DOMAIN_SERVER && storage == Storage.CONFIGURATION ?
+                                   AccessType.READ_ONLY.toString() : accessType.toString();
+                    attrNode.get(ACCESS_TYPE).set(displayedAccessType);
                     attrNode.get(STORAGE).set(storage.toString());
                     if (accessType == AccessType.READ_WRITE) {
                         Set<AttributeAccess.Flag> flags = access.getFlags();

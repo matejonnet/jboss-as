@@ -29,13 +29,13 @@
     <parent>
         <groupId>org.jboss.as</groupId>
         <artifactId>jboss-as-clustering</artifactId>
-        <version>7.1.0.CR1-SNAPSHOT</version>
+        <version>7.1.0.Final-SNAPSHOT</version>
     </parent>
 
     <artifactId>jboss-as-clustering-service</artifactId>
     <packaging>jar</packaging>
 
-    <name>JBoss Application Server: Clustered singleton services</name>
+    <name>JBoss Application Server: Clustered service provider registry services</name>
 
     <dependencies>
         <dependency>

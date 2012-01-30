@@ -36,12 +36,10 @@ public interface ModelConstants {
     String ACTIVATION = "activation";
     String BUNDLE = "bundle";
     String CAPABILITY = "capability";
-    String CONFIGURATION = "configuration";
     String ENTRIES = "entries";
     String FRAGMENT = "fragment";
     String ID = "id";
     String NAME = "name";
-    String PID = "pid";
     String PROPERTY = "property";
     String STARTLEVEL = "startlevel";
     String STATE = "state";

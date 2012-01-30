@@ -80,9 +80,12 @@
             <xs:attribute name="name" type="xs:string" use="optional">
                 <xs:annotation>
                     <xs:documentation>
-                        The name to use for this host's host controller. Must be
-                        unique across the domain. If not set, defaults to the
-                        runtime value of InetAddress.getLocalHost().getHostName().
+                        The name to use for this host's host controller. Must be unique across the domain.
+                        If not set, defaults to the runtime value "HOSTNAME" or "COMPUTERNAME" environment variables,
+                        or, if neither environment variable is present, to the value of InetAddress.getLocalHost().getHostName().
+
+                        If the special value "jboss.domain.uuid" is used, a java.util.UUID will be created
+                        and used, based on the value of InetAddress.getLocalHost().
                     </xs:documentation>
                 </xs:annotation>
             </xs:attribute>
@@ -116,8 +119,12 @@
             <xs:attribute name="name" type="xs:string" use="optional">
                 <xs:annotation>
                     <xs:documentation>
-                        The name to use for this server. If not set, defaults to
-                        the runtime value of InetAddress.getLocalHost().getHostName().
+                        The name to use for this server.
+                        If not set, defaults to the runtime value "HOSTNAME" or "COMPUTERNAME" environment variables,
+                        or, if neither environment variable is present, to the value of InetAddress.getLocalHost().getHostName().
+
+                        If the special value "jboss.domain.uuid" is used, a java.util.UUID will be created
+                        and used, based on the value of InetAddress.getLocalHost().
                     </xs:documentation>
                 </xs:annotation>
             </xs:attribute>
@@ -179,7 +186,7 @@
         </xs:complexContent>
     </xs:complexType>
 
-    <xs:complexType name="ldapType"> <!-- TODO - May extend from a common connection type for name -->
+    <xs:complexType name="ldapType">
         <xs:annotation>
             <xs:documentation>
                 The LDAP connection definition.
@@ -214,7 +221,6 @@
                 </xs:documentation>
             </xs:annotation>
         </xs:attribute>
-        <!-- TODO - May drop this and just allow free name/value properties for extension. -->
         <xs:attribute name="initial-context-factory" type="xs:string" default="com.sun.jndi.ldap.LdapCtxFactory">
             <xs:annotation>
                 <xs:documentation>
@@ -342,11 +348,27 @@
                 </xs:annotation>
             </xs:element>
             <xs:choice minOccurs="0">
+                <xs:element name="jaas" type="jaasAuthenticationType" minOccurs="0" />
                 <xs:element name="ldap" type="ldapAuthenticationType" minOccurs="0" />
                 <xs:element name="properties" type="propertiesAuthenticationType" minOccurs="0" />
                 <xs:element name="users" type="usersAuthenticationType" minOccurs="0" />
             </xs:choice>
         </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="jaasAuthenticationType">
+        <xs:annotation>
+            <xs:documentation>
+                Definition to use a JAAS based configuration for authentication.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="name" type="xs:string" use="required">
+            <xs:annotation>
+                <xs:documentation>
+                    The name identifying the jaas configuration of LoginModules.
+                </xs:documentation>
+            </xs:annotation>
+        </xs:attribute>
     </xs:complexType>
 
     <xs:complexType name="ldapAuthenticationType">
@@ -672,6 +694,7 @@
                     <xs:element name="socket" type="http-management-socketType"/>
                     <xs:element name="socket-binding" type="http-management-socket-binding-refType"/>
                 </xs:choice>
+                <xs:attribute name="console-enabled" type="xs:boolean" use="optional"/>
             </xs:extension>
         </xs:complexContent>
     </xs:complexType>
@@ -1081,6 +1104,24 @@
         <xs:annotation>
             <xs:documentation>Configuration information for a socket.</xs:documentation>
         </xs:annotation>
+        <xs:choice>
+            <xs:element name="client-mapping" type="socket-binding-client-mappingType"
+                        minOccurs="0" maxOccurs="unbounded">
+                <xs:annotation>
+                    <xs:documentation>
+                        Specifies zero or more client mappings for this socket binding.
+                        A client connecting to this socket should use the destination address
+                        specified in the mapping that matches its desired outbound interface.
+                        This allows for advanced network topologies that use either network
+                        address translation, or have bindings on multiple network interfaces
+                        to function.
+
+                        Each mapping should be evaluated in declared order, with the first successful
+                        match used to determine the destination.
+                    </xs:documentation>
+                </xs:annotation>
+            </xs:element>
+        </xs:choice>
         <xs:attribute name="name" type="xs:string" use="required"/>
         <xs:attribute name="interface" type="xs:string" use="optional">
             <xs:annotation>
@@ -1120,6 +1161,49 @@
                 <xs:documentation>
                     Port on which the socket should receive multicast
                     traffic. Must be configured if 'multicast-address' is configured.
+                </xs:documentation>
+            </xs:annotation>
+        </xs:attribute>
+    </xs:complexType>
+
+    <xs:complexType name="socket-binding-client-mappingType">
+        <xs:annotation>
+                <xs:documentation>
+                    Type definition for a client mapping on a socket binding. A client
+                    mapping specifies how external clients should connect to this
+                    socket's port, provided that the client's outbound interface
+                    match the specified source network value.
+                </xs:documentation>
+            </xs:annotation>
+        <xs:attribute name="source-network" type="xs:string" use="optional">
+            <xs:annotation>
+                <xs:documentation>
+                    Source network the client connection binds on. This value is in
+                    the form of ip/netmask. A client should match this value against
+                    the desired client host network interface, and if matched the
+                    client should connect to the corresponding destination values.
+
+                    If omitted this mapping should match any interface.
+                </xs:documentation>
+            </xs:annotation>
+        </xs:attribute>
+        <xs:attribute name="destination-address" type="xs:string" use="required">
+            <xs:annotation>
+                <xs:documentation>
+                    The destination address that a client should connect to if the
+                    source-network matches. This value can either be a hostname or
+                    an ip address.
+                </xs:documentation>
+            </xs:annotation>
+        </xs:attribute>
+        <xs:attribute name="destination-port" type="xs:string" use="optional">
+            <xs:annotation>
+                <xs:documentation>
+                    The destination port that a client should connect to if the
+                    source-network matches.
+
+                    If omitted this mapping will reuse the effective socket binding
+                    port.
                 </xs:documentation>
             </xs:annotation>
         </xs:attribute>

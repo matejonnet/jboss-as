@@ -21,9 +21,6 @@
  */
 package org.jboss.as.ee.deployment.spi.status;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import javax.enterprise.deploy.shared.StateType;
 import javax.enterprise.deploy.spi.TargetModuleID;
 import javax.enterprise.deploy.spi.exceptions.OperationUnsupportedException;
@@ -32,8 +29,11 @@ import javax.enterprise.deploy.spi.status.DeploymentStatus;
 import javax.enterprise.deploy.spi.status.ProgressEvent;
 import javax.enterprise.deploy.spi.status.ProgressListener;
 import javax.enterprise.deploy.spi.status.ProgressObject;
+import java.util.ArrayList;
+import java.util.List;
 
-import org.jboss.logging.Logger;
+import static org.jboss.as.ee.deployment.spi.DeploymentLogger.ROOT_LOGGER;
+import static org.jboss.as.ee.deployment.spi.DeploymentMessages.MESSAGES;
 
 /**
  * The ProgressObject interface tracks and reports the progress of the deployment activities, distribute, start, stop, undeploy.
@@ -42,24 +42,31 @@ import org.jboss.logging.Logger;
  *
  */
 public class ProgressObjectImpl implements ProgressObject {
-    private static Logger log = Logger.getLogger(ProgressObjectImpl.class);
 
     // list of ProgressListener objects
     private List listeners = new ArrayList();
 
-    private DeploymentStatusImpl deploymentStatus;
-    private TargetModuleID[] targetModules;
+    private final DeploymentStatusImpl deploymentStatus;
+    private final TargetModuleID[] targetModules;
+    private final List<String> moduleIDs = new ArrayList<String>();
 
     public ProgressObjectImpl(DeploymentStatus deploymentStatus, TargetModuleID[] targetModules) {
+        if (deploymentStatus == null)
+            throw new IllegalArgumentException(MESSAGES.nullArgument("deploymentStatus"));
+        if (targetModules == null)
+            throw new IllegalArgumentException(MESSAGES.nullArgument("targetModules"));
         this.deploymentStatus = (DeploymentStatusImpl) deploymentStatus;
         this.targetModules = targetModules;
+        for(TargetModuleID modid : targetModules) {
+            moduleIDs.add(modid.getModuleID());
+        }
     }
 
     /**
      * Set the current deployment status
      */
     public void sendProgressEvent(StateType stateType, String message, TargetModuleID moduleID) {
-        log.trace("sendProgressEvent, state: " + stateType + ", msg: " + message);
+        ROOT_LOGGER.tracef("sendProgressEvent, state: %s, msg: %s", stateType, message);
         deploymentStatus.setStateType(stateType);
         deploymentStatus.setMessage(message);
         ProgressEvent progressEvent = new ProgressEvent(this, moduleID, deploymentStatus);
@@ -112,7 +119,7 @@ public class ProgressObjectImpl implements ProgressObject {
      * @throws javax.enterprise.deploy.spi.exceptions.OperationUnsupportedException when cancel is not supported
      */
     public void cancel() throws OperationUnsupportedException {
-        throw new OperationUnsupportedException("cancel not supported");
+        throw new OperationUnsupportedException("cancel");
     }
 
     /**
@@ -130,7 +137,7 @@ public class ProgressObjectImpl implements ProgressObject {
      * @throws javax.enterprise.deploy.spi.exceptions.OperationUnsupportedException when stop is not supported
      */
     public void stop() throws OperationUnsupportedException {
-        throw new OperationUnsupportedException("stop not supported");
+        throw new OperationUnsupportedException("stop");
     }
 
     /**
@@ -149,5 +156,10 @@ public class ProgressObjectImpl implements ProgressObject {
      */
     public void removeProgressListener(ProgressListener listener) {
         listeners.remove(listener);
+    }
+
+    @Override
+    public String toString() {
+        return "ProgressObject[status=" + deploymentStatus + ",modules=" + moduleIDs + "]";
     }
 }

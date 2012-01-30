@@ -44,9 +44,16 @@ if $cygwin ; then
 fi
 
 # Setup JBOSS_HOME
+RESOLVED_JBOSS_HOME=`cd "$DIRNAME/.."; pwd`
 if [ "x$JBOSS_HOME" = "x" ]; then
     # get the full path (without any relative bits)
-    JBOSS_HOME=`cd "$DIRNAME/.."; pwd`
+    JBOSS_HOME=$RESOLVED_JBOSS_HOME
+else
+ SANITIZED_JBOSS_HOME=`cd "$JBOSS_HOME"; pwd`
+ if [ "$RESOLVED_JBOSS_HOME" != "$SANITIZED_JBOSS_HOME" ]; then
+   echo "WARNING JBOSS_HOME may be pointing to a different installation - unpredictable results may occur."
+   echo ""
+ fi
 fi
 export JBOSS_HOME
 
@@ -92,8 +99,8 @@ else
     JVM_OPTVERSION="-server $JVM_OPTVERSION"
 fi
 
-if [ "x$MODULEPATH" = "x" ]; then
-    MODULEPATH="$JBOSS_HOME/modules"
+if [ "x$JBOSS_MODULEPATH" = "x" ]; then
+    JBOSS_MODULEPATH="$JBOSS_HOME/modules"
 fi
 
 # For Cygwin, switch paths to Windows format before running java
@@ -102,7 +109,7 @@ if $cygwin; then
     JAVA_HOME=`cygpath --path --windows "$JAVA_HOME"`
     JBOSS_CLASSPATH=`cygpath --path --windows "$JBOSS_CLASSPATH"`
     JBOSS_ENDORSED_DIRS=`cygpath --path --windows "$JBOSS_ENDORSED_DIRS"`
-    MODULEPATH=`cygpath --path --windows "$MODULEPATH"`
+    JBOSS_MODULEPATH=`cygpath --path --windows "$JBOSS_MODULEPATH"`
 fi
 
 CLASSPATH="$CLASSPATH:$JBOSS_HOME/jboss-modules.jar"
@@ -113,8 +120,7 @@ eval \"$JAVA\" $JAVA_OPTS \
  \"-Dorg.jboss.boot.log.file=$JBOSS_HOME/appclient/log/boot.log\" \
  \"-Dlogging.configuration=file:$JBOSS_HOME/appclient/configuration/logging.properties\" \
  org.jboss.modules.Main \
- -mp \"${MODULEPATH}\" \
- -logmodule "org.jboss.logmanager" \
+ -mp \"${JBOSS_MODULEPATH}\" \
  -jaxpmodule javax.xml.jaxp-provider \
  org.jboss.as.appclient \
  -Djboss.home.dir=\"$JBOSS_HOME\" \

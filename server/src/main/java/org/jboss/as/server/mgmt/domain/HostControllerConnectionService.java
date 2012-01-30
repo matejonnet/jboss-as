@@ -27,6 +27,7 @@ import static org.jboss.as.protocol.StreamUtils.safeClose;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.CallbackHandler;
 import javax.security.auth.callback.NameCallback;
@@ -88,6 +89,7 @@ public class HostControllerConnectionService implements Service<Channel> {
         try {
             ProtocolChannelClient.Configuration configuration = new ProtocolChannelClient.Configuration();
             configuration.setEndpoint(endpointInjector.getValue());
+            configuration.setConnectionTimeout(15000);
             configuration.setUri(new URI("remote://" + hcAddressInjector.getValue().getHostName() + ":" + hcAddressInjector.getValue().getPort()));
             client = ProtocolChannelClient.create(configuration);
         } catch (Exception e) {
@@ -104,9 +106,12 @@ public class HostControllerConnectionService implements Service<Channel> {
 
     /** {@inheritDoc} */
     public synchronized void stop(StopContext context) {
+        safeClose(channel);
+        safeClose(connection);
         safeClose(client);
-        client = null;
         channel = null;
+        connection = null;
+        client = null;
     }
 
     /** {@inheritDoc} */

@@ -1,20 +1,15 @@
 package org.jboss.as.clustering.infinispan.subsystem;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.NAME;
-import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.VALUE;
 
 import java.util.List;
-import java.util.Locale;
 
-import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.PathAddress;
-import org.jboss.as.controller.descriptions.DescriptionProvider;
 import org.jboss.as.controller.operations.validation.ParametersValidator;
 import org.jboss.dmr.ModelNode;
-import org.jboss.logging.Logger;
 
 /**
  * Custom command to remove an alias for a cache-container.
@@ -23,7 +18,6 @@ import org.jboss.logging.Logger;
  */
 public class RemoveAliasCommand implements OperationStepHandler {
 
-    private static final Logger log = Logger.getLogger(RemoveAliasCommand.class.getPackage().getName());
     public static final RemoveAliasCommand INSTANCE = new RemoveAliasCommand();
 
     private final ParametersValidator nameValidator = new ParametersValidator();
@@ -41,14 +35,14 @@ public class RemoveAliasCommand implements OperationStepHandler {
         nameValidator.validate(operation);
         final String aliasToRemove = operation.require(NAME).asString();
         final ModelNode submodel = context.readResourceForUpdate(PathAddress.EMPTY_ADDRESS).getModel();
-        final ModelNode currentValue = submodel.get(CommonAttributes.ALIAS.getName()).clone();
+        final ModelNode currentValue = submodel.get(CommonAttributes.ALIASES.getName()).clone();
 
         ModelNode newValue = removeAliasFromList(currentValue, aliasToRemove) ;
 
         // now set the new ALIAS attribute
         final ModelNode syntheticOp = new ModelNode();
-        syntheticOp.get(CommonAttributes.ALIAS.getName()).set(newValue);
-        CommonAttributes.ALIAS.validateAndSet(syntheticOp, submodel);
+        syntheticOp.get(CommonAttributes.ALIASES.getName()).set(newValue);
+        CommonAttributes.ALIASES.validateAndSet(syntheticOp, submodel);
 
         // since we modified the model, set reload required
         if (requiresRuntime(context)) {
@@ -72,7 +66,7 @@ public class RemoveAliasCommand implements OperationStepHandler {
      * @return {@code true} if a runtime stage handler should be added; {@code false} otherwise.
      */
     protected boolean requiresRuntime(OperationContext context) {
-        return context.getType() == OperationContext.Type.SERVER && !context.isBooting();
+        return context.getProcessType().isServer() && !context.isBooting();
     }
 
     /**
@@ -82,11 +76,16 @@ public class RemoveAliasCommand implements OperationStepHandler {
      * @param alias
      * @return LIST ModelNode with the alias removed
      */
-    private ModelNode removeAliasFromList(ModelNode list, String alias) {
+    private ModelNode removeAliasFromList(ModelNode list, String alias) throws OperationFailedException {
 
         // check for empty string
         if (alias == null || alias.equals(""))
             return list ;
+
+        // check for undefined list (AS7-3476)
+        if (!list.isDefined()) {
+            throw new OperationFailedException(new ModelNode().set("cannot remove alias " + alias + " from empty list"));
+        }
 
         ModelNode newList = new ModelNode() ;
         List<ModelNode> listElements = list.asList();

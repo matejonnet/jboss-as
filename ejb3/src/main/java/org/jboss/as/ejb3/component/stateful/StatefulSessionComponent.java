@@ -21,10 +21,13 @@
  */
 package org.jboss.as.ejb3.component.stateful;
 
+import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
+
 import java.lang.reflect.Method;
-import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.ejb.AccessTimeout;
@@ -42,6 +45,7 @@ import org.jboss.as.ejb3.cache.StatefulObjectFactory;
 import org.jboss.as.ejb3.cache.TransactionAwareObjectFactory;
 import org.jboss.as.ejb3.component.DefaultAccessTimeoutService;
 import org.jboss.as.ejb3.component.EJBBusinessMethod;
+import org.jboss.as.ejb3.component.allowedmethods.AllowedMethodsInformation;
 import org.jboss.as.ejb3.component.session.SessionBeanComponent;
 import org.jboss.as.ejb3.concurrency.AccessTimeoutDetails;
 import org.jboss.as.naming.ManagedReference;
@@ -53,12 +57,9 @@ import org.jboss.invocation.Interceptor;
 import org.jboss.invocation.InterceptorContext;
 import org.jboss.invocation.InterceptorFactory;
 import org.jboss.invocation.InterceptorFactoryContext;
-import org.jboss.invocation.SimpleInterceptorFactoryContext;
 import org.jboss.marshalling.MarshallingConfiguration;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.StopContext;
-
-import static org.jboss.as.ejb3.EjbMessages.MESSAGES;
 
 /**
  * Stateful Session Bean
@@ -77,13 +78,20 @@ public class StatefulSessionComponent extends SessionBeanComponent implements St
     private final Method afterCompletionMethod;
     private final InterceptorFactory beforeCompletion;
     private final Method beforeCompletionMethod;
-    private final Collection<InterceptorFactory> prePassivate;
-    private final Collection<InterceptorFactory> postActivate;
+    private final InterceptorFactory prePassivate;
+    private final InterceptorFactory postActivate;
     private final Map<EJBBusinessMethod, AccessTimeoutDetails> methodAccessTimeouts;
     private final DefaultAccessTimeoutService defaultAccessTimeoutProvider;
     private final MarshallingConfiguration marshallingConfiguration;
 
     private final InterceptorFactory ejb2XRemoveMethod;
+
+    /**
+     * Set of context keys for serializable interceptors.
+     * <p/>
+     * These are used to serialize the user provided interceptors
+     */
+    private final Set<Object> serialiableInterceptorContextKeys;
 
     /**
      * Construct a new instance.
@@ -105,6 +113,7 @@ public class StatefulSessionComponent extends SessionBeanComponent implements St
         this.defaultAccessTimeoutProvider = ejbComponentCreateService.getDefaultAccessTimeoutService();
         this.ejb2XRemoveMethod = ejbComponentCreateService.getEjb2XRemoveMethod();
         this.marshallingConfiguration = ejbComponentCreateService.getMarshallingConfiguration();
+        this.serialiableInterceptorContextKeys = ejbComponentCreateService.getSerializableInterceptorContextKeys();
 
         String beanName = ejbComponentCreateService.getComponentClass().getName();
         StatefulObjectFactory<StatefulSessionComponentInstance> factory = new TransactionAwareObjectFactory<StatefulSessionComponentInstance>(this, this.getTransactionManager());
@@ -115,6 +124,17 @@ public class StatefulSessionComponent extends SessionBeanComponent implements St
     @Override
     public StatefulSessionComponentInstance createInstance() {
         return (StatefulSessionComponentInstance) super.createInstance();
+    }
+
+    @Override
+    public StatefulSessionComponentInstance createInstance(final Object instance) {
+        return (StatefulSessionComponentInstance) super.createInstance();
+    }
+
+
+    @Override
+    protected StatefulSessionComponentInstance constructComponentInstance(ManagedReference instance, boolean invokePostConstruct, InterceptorFactoryContext context) {
+        return (StatefulSessionComponentInstance) super.constructComponentInstance(instance, invokePostConstruct, context);
     }
 
     @Override
@@ -162,12 +182,12 @@ public class StatefulSessionComponent extends SessionBeanComponent implements St
     @Override
     public EJBObject getEJBObject(final InterceptorContext ctx) throws IllegalStateException {
         if (getEjbObjectViewServiceName() == null) {
-            throw MESSAGES.beanComponentMissingEjbObject(getComponentName(),"EJBObject");
+            throw MESSAGES.beanComponentMissingEjbObject(getComponentName(), "EJBObject");
         }
         final ServiceController<?> serviceController = CurrentServiceContainer.getServiceContainer().getRequiredService(getEjbObjectViewServiceName());
         final ComponentView view = (ComponentView) serviceController.getValue();
         final String locatorAppName = getEarApplicationName() == null ? "" : getEarApplicationName();
-        return EJBClient.createProxy(new StatefulEJBLocator<EJBObject>((Class<EJBObject>) view.getViewClass(), locatorAppName, getModuleName(), getComponentName(), getDistinctName(), getSessionIdOf(ctx)));
+        return EJBClient.createProxy(new StatefulEJBLocator<EJBObject>((Class<EJBObject>) view.getViewClass(), locatorAppName, getModuleName(), getComponentName(), getDistinctName(), getSessionIdOf(ctx), this.getCache().getStrictAffinity()));
     }
 
     @Override
@@ -193,10 +213,9 @@ public class StatefulSessionComponent extends SessionBeanComponent implements St
         return defaultAccessTimeoutProvider.getDefaultAccessTimeout();
     }
 
-    protected Interceptor createInterceptor(final InterceptorFactory factory) {
+    protected Interceptor createInterceptor(final InterceptorFactory factory, final InterceptorFactoryContext context) {
         if (factory == null)
             return null;
-        final SimpleInterceptorFactoryContext context = new SimpleInterceptorFactoryContext();
         context.getContextData().put(Component.class, this);
         return factory.create(context);
     }
@@ -211,7 +230,21 @@ public class StatefulSessionComponent extends SessionBeanComponent implements St
 
     @Override
     protected BasicComponentInstance instantiateComponentInstance(final AtomicReference<ManagedReference> instanceReference, final Interceptor preDestroyInterceptor, final Map<Method, Interceptor> methodInterceptors, final InterceptorFactoryContext interceptorContext) {
-        return new StatefulSessionComponentInstance(this, instanceReference, preDestroyInterceptor, methodInterceptors);
+        return new StatefulSessionComponentInstance(this, instanceReference, preDestroyInterceptor, methodInterceptors, interceptorContext);
+    }
+
+    @Override
+    protected void componentInstanceCreated(final BasicComponentInstance basicComponentInstance, final InterceptorFactoryContext context) {
+        final StatefulSessionComponentInstance instance = (StatefulSessionComponentInstance) basicComponentInstance;
+        final Map<Object, Object> serializableInterceptors = new HashMap<Object, Object>();
+        for (final Object key : serialiableInterceptorContextKeys) {
+            @SuppressWarnings("unchecked")
+            final AtomicReference<ManagedReference> data = (AtomicReference<ManagedReference>) context.getContextData().get(key);
+            if (data != null) {
+                serializableInterceptors.put(key, data.get().getInstance());
+            }
+        }
+        instance.setSerializableInterceptors(serializableInterceptors);
     }
 
     /**
@@ -248,11 +281,11 @@ public class StatefulSessionComponent extends SessionBeanComponent implements St
         return beforeCompletionMethod;
     }
 
-    public Collection<InterceptorFactory> getPrePassivate() {
+    public InterceptorFactory getPrePassivate() {
         return this.prePassivate;
     }
 
-    public Collection<InterceptorFactory> getPostActivate() {
+    public InterceptorFactory getPostActivate() {
         return this.postActivate;
     }
 
@@ -271,4 +304,14 @@ public class StatefulSessionComponent extends SessionBeanComponent implements St
         super.stop(stopContext);
         cache.stop();
     }
+
+    @Override
+    public AllowedMethodsInformation getAllowedMethodsInformation() {
+        return StatefulAllowedMethodsInformation.INSTANCE;
+    }
+
+    public Set<Object> getSerialiableInterceptorContextKeys() {
+        return serialiableInterceptorContextKeys;
+    }
+
 }
