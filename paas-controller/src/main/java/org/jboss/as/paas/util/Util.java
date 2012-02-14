@@ -4,6 +4,7 @@
 package org.jboss.as.paas.util;
 
 import java.io.Closeable;
+import java.net.Socket;
 
 import org.jboss.logging.Logger;
 
@@ -23,6 +24,15 @@ public class Util {
     }
 
     public static void safeClose(final Closeable closeable) {
+        if (closeable != null)
+            try {
+                closeable.close();
+            } catch (Throwable t) {
+                log.error(t);
+            }
+    }
+
+    public static void safeClose(final Socket closeable) {
         if (closeable != null)
             try {
                 closeable.close();
