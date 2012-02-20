@@ -7,6 +7,7 @@ import org.jboss.as.paas.controller.domain.Instance;
 import org.jboss.as.paas.controller.domain.ServerConfig;
 import org.jboss.as.paas.controller.iaas.IaasController;
 import org.jboss.as.paas.controller.iaas.InstanceState;
+import org.jboss.as.paas.util.Util;
 import org.jboss.dmr.ModelNode;
 
 /**
@@ -41,13 +42,14 @@ public class StatusOperation extends OperationBase {
 
         for (ModelNode modelNode : hosts.asList()) {
             String hostIp = modelNode.asString();
-            ModelNode op = DmrOperations.getServerConfig(hostIp);
+
+            ModelNode op = DmrOperations.getServerConfig(Util.getHostName(hostIp));
             ModelNode serverConfigsNode = dmrActionExecutor.executeForResult(op);
             for (ModelNode serverConfigNode : serverConfigsNode.asList()) {
                 ServerConfig serverConfig = new ServerConfig(serverConfigNode);
                 if (appName.equals(serverConfig.getName())) {
                     ModelNode config = new ModelNode();
-                    config.get("host").set(hostIp);
+                    config.get("host").set(Util.getHostName(hostIp));
                     config.get("slot-position").set(serverConfig.getPosition());
                     config.get("status").set(serverConfig.getStatus());
 

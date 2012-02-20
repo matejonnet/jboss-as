@@ -3,6 +3,7 @@
  */
 package org.jboss.as.paas.controller.domain;
 
+import org.jboss.as.paas.util.Util;
 
 /**
  * @author <a href="mailto:matejonnet@gmail.com">Matej Lazar</a>
@@ -73,6 +74,10 @@ public class InstanceSlot {
         if (dirty != null)
             return dirty.hostIp;
         return instance.getHostIP();
+    }
+
+    public String getHostName() {
+        return Util.getHostName(getHostIP());
     }
 
     /**

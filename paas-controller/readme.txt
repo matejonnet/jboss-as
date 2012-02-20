@@ -8,7 +8,8 @@ A. Install JBoss on IaaS instance
 3. override jboss-as-paas-controller.jar (modules/org/jboss/as/paas/controller/main/) with source code built
 4. create all scripts in bin folder executable
       chmod +x $JBOSS_HOME/bin/*.sh
-5. configure $JBOSS_HOME/bin/bootstrap-jboss-as7-paas.sh to execute after server boots (add to /etc/rc.local)
+5. configure server to execute $JBOSS_HOME/bin/bootstrap-jboss-as7-paas.sh after boot (add to /etc/rc.local)
+6. edit IaaS provider settings in $JBOSS_HOME/domain/configuration/paas.xml 
 
 B. Create IaaS image from IaaS instance (steps I used on eucalyptus). If running on static servers (non IaaS) skip this step.
    @instance
@@ -39,12 +40,16 @@ Sample paas.xml config:
                     <iaas-provider provider="myvm" driver="static" url="" username="" password="" image-id=""/>
                 </iaas-providers>
                 <instances>
+                    <instance id="local-instance" provider="static-provider" ip="172.16.254.213"/>
                     <instance id="01-static" provider="myvm" ip="172.16.254.128"/>
                     <instance id="02-static" provider="myvm" ip="172.16.254.129"/>
                 </instances>
             </subsystem>
         </profile>
 
+Start jboss AS on domain controller:
+     $JBOSS_HOME/bin/startjboss.sh
+        
 Operations:
   /profile=paas-controller/subsystem=paas-controller:deploy(path=/root/hello-servlet-noEJBnoDist.war)
   /profile=paas-controller/subsystem=paas-controller:scale-up(name="hello-servlet-noEJBnoDist.war", provider=euca-provider)

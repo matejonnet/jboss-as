@@ -36,11 +36,11 @@ public class AsClusterPassManagement {
         this.secretPass = pass.toCharArray();
     }
 
-    public void addRemoteServer(String remoteHostIp) {
+    public void addRemoteServer(String remoteHostName) {
         String entry;
         try {
-            String hash = new UsernamePasswordHashUtil().generateHashedHexURP(remoteHostIp, MANAGEMENT_REALM, secretPass);
-            entry = remoteHostIp + "=" + hash;
+            String hash = new UsernamePasswordHashUtil().generateHashedHexURP(remoteHostName, MANAGEMENT_REALM, secretPass);
+            entry = remoteHostName + "=" + hash;
         } catch (NoSuchAlgorithmException e) {
             log.error("Cannot hash user password.", e);
             return;
@@ -49,13 +49,13 @@ public class AsClusterPassManagement {
         File propFile = getPropertiesFile();
         try {
             append(entry, propFile);
-            log.debugf("Added user '%s' to file '%s'\n", remoteHostIp, propFile.getCanonicalPath());
+            log.debugf("Added user '%s' to file '%s'\n", remoteHostName, propFile.getCanonicalPath());
         } catch (IOException e) {
             log.error("Unable to add user to " + propFile.getAbsolutePath() + " due to error " + e.getMessage());
         }
     }
 
-    public void removeRemoteSerer(String remoteHostIp) {
+    public void removeRemoteServer(String remoteHostIp) {
         File propFile = getPropertiesFile();
         try {
             removePassFromFile(remoteHostIp, propFile);

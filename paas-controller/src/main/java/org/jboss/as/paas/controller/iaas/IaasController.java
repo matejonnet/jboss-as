@@ -9,6 +9,7 @@ import java.util.Map;
 import org.jboss.as.paas.configurator.client.RemoteConfigurator;
 import org.jboss.as.paas.controller.AsClusterPassManagement;
 import org.jboss.as.paas.controller.domain.IaasProvider;
+import org.jboss.as.paas.util.Util;
 import org.jboss.logging.Logger;
 
 /**
@@ -102,7 +103,7 @@ public class IaasController {
         driver.terminateInstance(instanceId);
 
         AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
-        clusterPaasMngmt.removeRemoteSerer(hostIp);
+        clusterPaasMngmt.removeRemoteServer(Util.getHostName(hostIp));
     }
 
     public String getInstanceIp(String providerName, String instanceId) throws Exception {

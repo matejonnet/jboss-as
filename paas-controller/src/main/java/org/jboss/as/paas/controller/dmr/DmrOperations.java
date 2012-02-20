@@ -25,7 +25,7 @@ public class DmrOperations {
         // socket-binding-port-offset=<portOffset>)
         ModelNode op = new ModelNode();
         op.get(OP).set("add");
-        op.get(OP_ADDR).add("host", slot.getHostIP());
+        op.get(OP_ADDR).add("host", slot.getHostName());
         op.get(OP_ADDR).add("server-config", "server" + slot.getSlotPosition());
         op.get("group").set(groupName);
         op.get("auto-start").set(true);
@@ -39,7 +39,7 @@ public class DmrOperations {
         // /host=master/server-config=server-one:stop()
         ModelNode opStop = new ModelNode();
         opStop.get(OP).set("stop");
-        opStop.get(OP_ADDR).add("host", slot.getHostIP());
+        opStop.get(OP_ADDR).add("host", slot.getHostName());
         opStop.get(OP_ADDR).add("server-config", "server" + slot.getSlotPosition());
 
         return opStop;
@@ -49,7 +49,7 @@ public class DmrOperations {
         // /host=master/server-config=server-one:remove()
         ModelNode opRemove = new ModelNode();
         opRemove.get(OP).set("remove");
-        opRemove.get(OP_ADDR).add("host", slot.getHostIP());
+        opRemove.get(OP_ADDR).add("host", slot.getHostName());
         opRemove.get(OP_ADDR).add("server-config", "server" + slot.getSlotPosition());
 
         return opRemove;
@@ -145,15 +145,15 @@ public class DmrOperations {
     }
 
     public static ModelNode getServerResorce(InstanceSlot slot) {
-        return getServerResorce(slot.getHostIP(), slot.getSlotPosition());
+        return getServerResorce(slot.getHostName(), slot.getSlotPosition());
     }
 
-    public static ModelNode getServerResorce(String hostIp, int slotPosition) {
+    public static ModelNode getServerResorce(String hostName, int slotPosition) {
         // /host=172.16.254.134/server-config=server0:read-resource(include-runtime=true)
         ModelNode op = new ModelNode();
         op.get(OP).set("read-resource");
         op.get("include-runtime").set("true");
-        op.get(OP_ADDR).add("host", hostIp);
+        op.get(OP_ADDR).add("host", hostName);
         op.get(OP_ADDR).add("server-config", "server" + slotPosition);
         return op;
     }
@@ -174,13 +174,13 @@ public class DmrOperations {
      * }}
      *
     */
-    public static ModelNode getServerConfig(String hostIp) {
+    public static ModelNode getServerConfig(String hostName) {
         // /host=172.16.254.160:read-children-resources(child-type=server-config, include-runtime=true)
         ModelNode op = new ModelNode();
         op.get(OP).set("read-children-resources");
         op.get("child-type").set("server-config");
         op.get("include-runtime").set("true");
-        op.get(OP_ADDR).add("host", hostIp);
+        op.get(OP_ADDR).add("host", hostName);
         return op;
     }
 
@@ -193,11 +193,11 @@ public class DmrOperations {
         return op;
     }
 
-    public static ModelNode getShutdown(String hostIp) {
+    public static ModelNode getShutdown(String hostName) {
         // /host=172.16.254.173:shutdown
         ModelNode op = new ModelNode();
         op.get(OP).set("shutdown");
-        op.get(OP_ADDR).add("host", hostIp);
+        op.get(OP_ADDR).add("host", hostName);
         return op;
     }
 

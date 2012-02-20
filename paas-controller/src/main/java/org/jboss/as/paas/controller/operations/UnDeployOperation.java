@@ -73,7 +73,7 @@ public class UnDeployOperation extends OperationBase implements Operation {
         try {
             String instanceId = instance.getInstanceId();
 
-            ModelNode opShutdown = DmrOperations.getShutdown(instance.getHostIP());
+            ModelNode opShutdown = DmrOperations.getShutdown(instance.getHostName());
             dmrActionExecutor.execute(opShutdown);
 
             IaasController.getInstance().terminateInstance(instance.getProviderName(), instanceId);

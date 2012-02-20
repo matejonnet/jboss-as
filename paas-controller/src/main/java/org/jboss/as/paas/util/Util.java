@@ -40,4 +40,8 @@ public class Util {
                 log.error(t);
             }
     }
+
+    public static String getHostName(String ip) {
+        return ip.replaceAll("\\.", "x");
+    }
 }

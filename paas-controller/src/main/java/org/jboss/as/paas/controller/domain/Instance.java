@@ -6,6 +6,7 @@ import java.util.Set;
 import org.jboss.as.paas.controller.dmr.DmrOperations;
 import org.jboss.as.paas.controller.dmr.executor.DmrActionExecutor;
 import org.jboss.as.paas.controller.extension.ServerInstanceAddHandler;
+import org.jboss.as.paas.util.Util;
 import org.jboss.dmr.ModelNode;
 
 /**
@@ -22,7 +23,8 @@ public class Instance {
     }
 
     public Set<ServerConfig> getServerGroups() {
-        ModelNode op = DmrOperations.getServerConfig(getHostIP());
+        String hostIp = getHostIP();
+        ModelNode op = DmrOperations.getServerConfig(Util.getHostName(hostIp));
         ModelNode nodeSGs = dmrActionExecutor.executeForResult(op);
 
         Set<ServerConfig> serverGroups = new LinkedHashSet<ServerConfig>();
@@ -42,6 +44,10 @@ public class Instance {
 
     public String getHostIP() {
         return instance.asProperty().getValue().get(ServerInstanceAddHandler.ATTRIBUTE_INSTANCE_IP).asString();
+    }
+
+    public String getHostName() {
+        return Util.getHostName(getHostIP());
     }
 
     @Override

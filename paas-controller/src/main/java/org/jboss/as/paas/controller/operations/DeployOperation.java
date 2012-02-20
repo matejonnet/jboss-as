@@ -8,6 +8,7 @@ import org.jboss.as.paas.controller.InstanceSearch;
 import org.jboss.as.paas.controller.dmr.DmrOperations;
 import org.jboss.as.paas.controller.domain.InstanceSlot;
 import org.jboss.as.paas.controller.iaas.IaasController;
+import org.jboss.as.paas.util.Util;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 
@@ -54,9 +55,9 @@ public class DeployOperation extends OperationBase implements Operation {
             return;
         }
 
-        log.debugf("Using free slot instanceId: [%s] host [%s] slot position [%s].", slot.getInstanceId(), slot.getHostIP(), slot.getSlotPosition());
+        log.debugf("Using free slot instance: [%s].", slot.toString());
 
-        waitRemoteHostToRegister(slot.getHostIP());
+        waitRemoteHostToRegister(slot.getHostName());
 
         if (createNewSG) {
             ModelNode opCSG = DmrOperations.createServerGroup(serverGroupName);
@@ -77,7 +78,7 @@ public class DeployOperation extends OperationBase implements Operation {
         ModelNode opHTSG = DmrOperations.addHostToServerGroup(slot, serverGroupName);
         dmrActionExecutor.execute(opHTSG);
 
-        ModelNode opStart = DmrOperations.startServer(slot.getHostIP(), slot.getSlotPosition());
+        ModelNode opStart = DmrOperations.startServer(slot.getHostName(), slot.getSlotPosition());
         dmrActionExecutor.execute(opStart);
 
         //dmrActionExecutor.close();
@@ -118,7 +119,7 @@ public class DeployOperation extends OperationBase implements Operation {
 
             //Add password for remote server
             AsClusterPassManagement clusterPaasMngmt = new AsClusterPassManagement();
-            clusterPaasMngmt.addRemoteServer(hostIp);
+            clusterPaasMngmt.addRemoteServer(Util.getHostName(hostIp));
 
             IaasController.getInstance().configureInstance(hostIp);
 
@@ -155,19 +156,19 @@ public class DeployOperation extends OperationBase implements Operation {
         return success;
     }
 
-    private void waitRemoteHostToRegister(String hostIP) {
+    private void waitRemoteHostToRegister(String hostName) {
 
         // TODO make configurable
         int maxWaitTime = 45000; // 45sec
         long started = System.currentTimeMillis();
 
-        log.debugf("Waiting host %s to register ...", hostIP);
-        while (!validateHostRegistration(hostIP)) {
+        log.debugf("Waiting host %s to register ...", hostName);
+        while (!validateHostRegistration(hostName)) {
             if (System.currentTimeMillis() - started > maxWaitTime) {
                 throw new RuntimeException("Host hasn't registered in " + maxWaitTime / 1000 + "seconds.");
             }
             try {
-                log.debugf("Waiting host %s to register. Going to sleep for 1000.", hostIP);
+                log.debugf("Waiting host %s to register. Going to sleep for 1000.", hostName);
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
                 // TODO Auto-generated catch block
@@ -176,9 +177,9 @@ public class DeployOperation extends OperationBase implements Operation {
         }
     }
 
-    private boolean validateHostRegistration(String hostIP) {
+    private boolean validateHostRegistration(String hostName) {
         ModelNode op = DmrOperations.getRegistedHosts();
         ModelNode hosts = dmrActionExecutor.executeForResult(op);
-        return isInResult(hostIP, hosts.asList());
+        return isInResult(hostName, hosts.asList());
     }
 }

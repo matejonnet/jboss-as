@@ -48,8 +48,9 @@ abstract class BaseHandler {
         Resource rootResource = context.getRootResource();
 
         String localIp = Util.getLocalIp();
+        String localName = Util.getHostName(localIp);
 
-        PathAddress addr = PathAddress.pathAddress(PathElement.pathElement("host", localIp));
+        PathAddress addr = PathAddress.pathAddress(PathElement.pathElement("host", localName));
 
         final Resource resource = rootResource.navigate(addr);
         String domainController = resource.getModel().get("domain-controller").asPropertyList().get(0).getName();
