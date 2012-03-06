@@ -6012,7 +6012,6 @@
                         <artifactId>jbosssx</artifactId>
                     </exclusion>
                 </exclusions>
->>>>>>> Add picketlink-fed & openid4java modules
             </dependency>
 
             <dependency>
