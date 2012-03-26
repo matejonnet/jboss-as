@@ -22,6 +22,13 @@
 
 package org.jboss.as.capedwarf.deployment;
 
+import java.io.File;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.jar.JarFile;
+
 import org.jboss.as.server.deployment.Attachments;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
@@ -38,13 +45,6 @@ import org.jboss.modules.ResourceLoaders;
 import org.jboss.modules.filter.PathFilters;
 import org.jboss.vfs.VirtualFile;
 import org.jboss.vfs.VirtualFileFilter;
-
-import java.io.File;
-import java.io.FilenameFilter;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.jar.JarFile;
 
 /**
  * Add CapeDwarf modules.
@@ -76,12 +76,14 @@ public class CapedwarfDeploymentProcessor extends CapedwarfDeploymentUnitProcess
     private static final ModuleIdentifier[] INLINE = {MODULES, VELOCITY, TX, ACTIVATION, MAIL, JAVASSIST, INFINISPAN_QUERY, HIBERNATE_SEARCH, LUCENE, HTTP_COMPONENTS, PICKETLINK_FED, PICKETLINK_SOCIAL};
 
     private static final VirtualFileFilter JARS_VFS = new VirtualFileFilter() {
+        @Override
         public boolean accepts(VirtualFile file) {
             return file.getName().endsWith(".jar");
         }
     };
 
     private static final FilenameFilter JARS_SDK = new FilenameFilter() {
+        @Override
         public boolean accept(File dir, String name) {
             return name.endsWith(".jar");
         }
@@ -152,18 +154,14 @@ public class CapedwarfDeploymentProcessor extends CapedwarfDeploymentUnitProcess
     protected synchronized List<ResourceLoaderSpec> getCapedwarfResources() throws DeploymentUnitProcessingException {
         try {
             if (capedwarfResources == null) {
-                // hardcoded location of CapeDwarf resources ...
-                final File capedwarfModules = new File(System.getProperty("jboss.home.dir"), "modules/org/jboss/capedwarf/main");
-                if (capedwarfModules.exists() == false)
-                    throw new DeploymentUnitProcessingException("No such CapeDwarf modules directory: " + capedwarfModules);
+                String[] mps = System.getProperty("module.path").split(":");
 
-                final List<ResourceLoaderSpec> resources = new ArrayList<ResourceLoaderSpec>();
-                for (File jar : capedwarfModules.listFiles(JARS_SDK)) {
-                    final JarFile jarFile = new JarFile(jar);
-                    final ResourceLoader rl = ResourceLoaders.createJarResourceLoader(jar.getName(), jarFile);
-                    resources.add(ResourceLoaderSpec.createResourceLoaderSpec(rl));
-                }
-                capedwarfResources = resources;
+                List<File> capedwarfModulePaths = getCapedwarfModulePaths(mps);
+                if (capedwarfModulePaths.size() == 0)
+                    throw new DeploymentUnitProcessingException("No CapeDwarf modules in module paths: " + mps);
+
+                List<File> cdJars = prepareCapedwarfJars(capedwarfModulePaths);
+                capedwarfResources = loadCapedwarfJars(cdJars);
             }
             return capedwarfResources;
         } catch (DeploymentUnitProcessingException e) {
@@ -172,4 +170,52 @@ public class CapedwarfDeploymentProcessor extends CapedwarfDeploymentUnitProcess
             throw new DeploymentUnitProcessingException(e);
         }
     }
+
+    private List<File> prepareCapedwarfJars(List<File> capedwarfModulePaths) {
+        final List<File> jars = new ArrayList<File>();
+        //loop modulePaths
+        for (File capedwarfModulePath : capedwarfModulePaths) {
+            //loop files in modulePath
+            for (File jar : capedwarfModulePath.listFiles(JARS_SDK)) {
+                if (!isJarPresent(jars, jar)) {
+                    jars.add(jar);
+                }
+            }
+        }
+        return jars;
+    }
+
+    /**
+     * Return true if file with the same name exists in the file list.
+     */
+    private boolean isJarPresent(List<File> fileList, File file) {
+        for (File listedFile : fileList) {
+            if (listedFile.getName().equals(file.getName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<ResourceLoaderSpec> loadCapedwarfJars(List<File> capedwarfModules) throws IOException {
+        final List<ResourceLoaderSpec> resources = new ArrayList<ResourceLoaderSpec>();
+        for (File jar : capedwarfModules) {
+            final JarFile jarFile = new JarFile(jar);
+            final ResourceLoader rl = ResourceLoaders.createJarResourceLoader(jar.getName(), jarFile);
+            resources.add(ResourceLoaderSpec.createResourceLoaderSpec(rl));
+        }
+        return resources;
+    }
+
+    private List<File> getCapedwarfModulePaths(String[] mps) {
+        List<File> capedwarfModulePaths = new ArrayList<File>();
+        for (String mp : mps) {
+            File moduleDir = new File(mp);
+            File cdModulePath = new File(moduleDir, "org/jboss/capedwarf/main");
+            if (cdModulePath.exists())
+                capedwarfModulePaths.add(cdModulePath);
+        }
+        return capedwarfModulePaths;
+    }
+
 }
