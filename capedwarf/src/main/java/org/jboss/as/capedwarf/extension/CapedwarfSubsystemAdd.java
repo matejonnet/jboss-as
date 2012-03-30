@@ -22,6 +22,13 @@
 
 package org.jboss.as.capedwarf.extension;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.logging.Handler;
+
+import javax.jms.Connection;
+
+import org.infinispan.Cache;
 import org.jboss.as.capedwarf.api.Logger;
 import org.jboss.as.capedwarf.deployment.CapedwarfCDIExtensionProcessor;
 import org.jboss.as.capedwarf.deployment.CapedwarfCleanupProcessor;
@@ -34,7 +41,12 @@ import org.jboss.as.capedwarf.deployment.CapedwarfWebCleanupProcessor;
 import org.jboss.as.capedwarf.deployment.CapedwarfWebComponentsDeploymentProcessor;
 import org.jboss.as.capedwarf.deployment.CapedwarfWeldParseProcessor;
 import org.jboss.as.capedwarf.deployment.CapedwarfWeldProcessor;
+import org.jboss.as.capedwarf.services.HibernateSearchJmsConsumerService;
 import org.jboss.as.capedwarf.services.ServletExecutorConsumerService;
+import org.jboss.as.clustering.SimpleClassResolver;
+import org.jboss.as.clustering.infinispan.subsystem.CacheService;
+import org.jboss.as.clustering.singleton.SingletonService;
+import org.jboss.as.clustering.singleton.election.SimpleSingletonElectionPolicy;
 import org.jboss.as.controller.AbstractBoottimeAddStepHandler;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
@@ -46,6 +58,7 @@ import org.jboss.as.logging.util.LogServices;
 import org.jboss.as.naming.ManagedReferenceFactory;
 import org.jboss.as.naming.deployment.ContextNames;
 import org.jboss.as.server.AbstractDeploymentChainStep;
+import org.jboss.as.server.CurrentServiceContainer;
 import org.jboss.as.server.DeploymentProcessorTarget;
 import org.jboss.as.server.Services;
 import org.jboss.as.server.deployment.Phase;
@@ -62,11 +75,6 @@ import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
 import org.jboss.vfs.TempDir;
 import org.jboss.vfs.VFSUtils;
-
-import javax.jms.Connection;
-import java.io.IOException;
-import java.util.List;
-import java.util.logging.Handler;
 
 /**
  * Handler responsible for adding the subsystem resource to the model
@@ -102,6 +110,7 @@ class CapedwarfSubsystemAdd extends AbstractBoottimeAddStepHandler {
         final String appengineAPI = appEngineModel.isDefined()?appEngineModel.asString():null;
 
         context.addStep(new AbstractDeploymentChainStep() {
+            @Override
             public void execute(DeploymentProcessorTarget processorTarget) {
                 final ServiceTarget serviceTarget = context.getServiceTarget();
 
@@ -110,6 +119,7 @@ class CapedwarfSubsystemAdd extends AbstractBoottimeAddStepHandler {
                 final TempDir tempDir = createTempDir(serviceTarget, newControllers);
 
                 addLogger(serviceTarget, newControllers);
+                addHSQueueConsumer(serviceTarget, newControllers);
 
                 final int initialPhaseOrder = Math.min(Phase.PARSE_WEB_DEPLOYMENT, Phase.PARSE_PERSISTENCE_UNIT);
                 processorTarget.addDeploymentProcessor(Phase.PARSE, initialPhaseOrder - 20, new CapedwarfInitializationProcessor());
@@ -139,6 +149,24 @@ class CapedwarfSubsystemAdd extends AbstractBoottimeAddStepHandler {
         return consumerService;
     }
 
+    protected static void addHSQueueConsumer(final ServiceTarget serviceTarget, final List<ServiceController<?>> newControllers) {
+        HibernateSearchJmsConsumerService consumerService = new HibernateSearchJmsConsumerService();
+        SingletonService<String> singletonCS = new SingletonService<String>(consumerService, HibernateSearchJmsConsumerService.NAME);
+        singletonCS.setElectionPolicy(new SimpleSingletonElectionPolicy());
+        singletonCS.setClassResolver(new SimpleClassResolver(CapedwarfSubsystemAdd.class.getClassLoader()));
+
+        ServiceBuilder<String> builder = singletonCS.build(CurrentServiceContainer.getServiceContainer(), CAPEDWARF);
+        builder.addDependency(ContextNames.bindInfoFor("java:/ConnectionFactory").getBinderServiceName(), ManagedReferenceFactory.class, consumerService.getFactory());
+        builder.addDependency(ContextNames.bindInfoFor("java:/queue/" + CAPEDWARF).getBinderServiceName(), ManagedReferenceFactory.class, consumerService.getQueue());
+        ServiceName cacheServiceName = CacheService.getServiceName("capedwarf", "default");
+        builder.addDependency(cacheServiceName, Cache.class, consumerService.getCache());
+        builder.addDependency(ServiceName.JBOSS.append("messaging").append("default")); // depending on messaging sub-system impl details ...
+
+        ServiceController<String> controller = builder.install();
+        controller.setMode(ServiceController.Mode.ACTIVE);
+        newControllers.add(controller);
+    }
+
     protected static TempDir createTempDir(final ServiceTarget serviceTarget, final List<ServiceController<?>> newControllers) {
         final TempDir tempDir;
         try {
@@ -148,13 +176,16 @@ class CapedwarfSubsystemAdd extends AbstractBoottimeAddStepHandler {
         }
 
         final ServiceBuilder<TempDir> builder = serviceTarget.addService(ServiceName.JBOSS.append(CAPEDWARF).append("tempDir"), new Service<TempDir>() {
+            @Override
             public void start(StartContext context) throws StartException {
             }
 
+            @Override
             public void stop(StopContext context) {
                 VFSUtils.safeClose(tempDir);
             }
 
+            @Override
             public TempDir getValue() throws IllegalStateException, IllegalArgumentException {
                 return tempDir;
             }
@@ -166,6 +197,7 @@ class CapedwarfSubsystemAdd extends AbstractBoottimeAddStepHandler {
     protected static void addLogger(final ServiceTarget serviceTarget, final List<ServiceController<?>> newControllers) {
         final CustomHandlerService chs = new CustomHandlerService(Logger.class.getName(), "org.jboss.as.capedwarf");
         chs.setFormatterSpec(new FormatterSpec() {
+            @Override
             public void apply(Handler handler) {
             }
         });

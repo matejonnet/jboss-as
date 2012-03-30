@@ -22,6 +22,7 @@
 
 package org.jboss.as.capedwarf.deployment;
 
+import org.jboss.as.capedwarf.services.HibernateSearchJmsConsumerService;
 import org.jboss.as.capedwarf.services.ServletExecutorConsumerService;
 import org.jboss.as.clustering.infinispan.subsystem.CacheConfigurationService;
 import org.jboss.as.logging.util.LogServices;
@@ -39,11 +40,13 @@ public class CapedwarfDependenciesProcessor extends CapedwarfDeploymentUnitProce
 
     private final ServiceName DEFAULT_CACHE_CONFIG = CacheConfigurationService.getServiceName(CAPEDWARF, "default");
 
+    @Override
     protected void doDeploy(DeploymentPhaseContext phaseContext) throws DeploymentUnitProcessingException {
         final ServiceTarget serviceTarget = phaseContext.getServiceTarget();
         serviceTarget.addDependency(DEFAULT_CACHE_CONFIG); // make sure the default cache config is registerd into container before we get the cache
         serviceTarget.addDependency(ServletExecutorConsumerService.NAME); // we need queue -- as default gae queue is there by default
         serviceTarget.addDependency(LogServices.loggerHandlerName("ROOT", CAPEDWARF.toUpperCase())); // we need logger
+        serviceTarget.addDependency(HibernateSearchJmsConsumerService.NAME); // we need hibernate search JMS consumer
     }
 
 }
