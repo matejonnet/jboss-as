@@ -28,7 +28,7 @@ import java.util.logging.Handler;
 
 import javax.jms.Connection;
 
-import org.infinispan.Cache;
+import org.infinispan.manager.EmbeddedCacheManager;
 import org.jboss.as.capedwarf.api.Logger;
 import org.jboss.as.capedwarf.deployment.CapedwarfCDIExtensionProcessor;
 import org.jboss.as.capedwarf.deployment.CapedwarfCleanupProcessor;
@@ -44,7 +44,7 @@ import org.jboss.as.capedwarf.deployment.CapedwarfWeldProcessor;
 import org.jboss.as.capedwarf.services.HibernateSearchJmsConsumerService;
 import org.jboss.as.capedwarf.services.ServletExecutorConsumerService;
 import org.jboss.as.clustering.SimpleClassResolver;
-import org.jboss.as.clustering.infinispan.subsystem.CacheService;
+import org.jboss.as.clustering.infinispan.subsystem.EmbeddedCacheManagerService;
 import org.jboss.as.clustering.singleton.SingletonService;
 import org.jboss.as.clustering.singleton.election.SimpleSingletonElectionPolicy;
 import org.jboss.as.controller.AbstractBoottimeAddStepHandler;
@@ -75,6 +75,7 @@ import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
 import org.jboss.vfs.TempDir;
 import org.jboss.vfs.VFSUtils;
+
 
 /**
  * Handler responsible for adding the subsystem resource to the model
@@ -158,12 +159,15 @@ class CapedwarfSubsystemAdd extends AbstractBoottimeAddStepHandler {
         ServiceBuilder<String> builder = singletonCS.build(CurrentServiceContainer.getServiceContainer(), CAPEDWARF);
         builder.addDependency(ContextNames.bindInfoFor("java:/ConnectionFactory").getBinderServiceName(), ManagedReferenceFactory.class, consumerService.getFactory());
         builder.addDependency(ContextNames.bindInfoFor("java:/queue/" + CAPEDWARF).getBinderServiceName(), ManagedReferenceFactory.class, consumerService.getQueue());
-        ServiceName cacheServiceName = CacheService.getServiceName("capedwarf", "default");
-        builder.addDependency(cacheServiceName, Cache.class, consumerService.getCache());
         builder.addDependency(ServiceName.JBOSS.append("messaging").append("default")); // depending on messaging sub-system impl details ...
+//        ServiceName cacheServiceName = CacheService.getServiceName("capedwarf", "default");
+//        builder.addDependency(cacheServiceName, Cache.class, consumerService.getCache());
+
+        ServiceName cmServiceName = EmbeddedCacheManagerService.getServiceName(CAPEDWARF);
+        builder.addDependency(cmServiceName, EmbeddedCacheManager.class, consumerService.getCacheManager());
 
         ServiceController<String> controller = builder.install();
-        controller.setMode(ServiceController.Mode.ACTIVE);
+        controller.setMode(ServiceController.Mode.ON_DEMAND);
         newControllers.add(controller);
     }
 

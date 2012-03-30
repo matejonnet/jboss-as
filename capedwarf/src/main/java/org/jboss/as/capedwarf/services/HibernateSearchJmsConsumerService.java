@@ -30,15 +30,16 @@ import javax.jms.Queue;
 import javax.jms.Session;
 
 import org.infinispan.Cache;
+import org.infinispan.manager.EmbeddedCacheManager;
 import org.jboss.as.naming.ManagedReferenceFactory;
 import org.jboss.logging.Logger;
+import org.jboss.msc.inject.Injector;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StartException;
 import org.jboss.msc.service.StopContext;
 import org.jboss.msc.value.InjectedValue;
-
 
 /**
  * Servlet executor consumera service
@@ -54,9 +55,11 @@ public class HibernateSearchJmsConsumerService implements Service<String> {
     private InjectedValue<ManagedReferenceFactory> factory = new InjectedValue<ManagedReferenceFactory>();
     private InjectedValue<ManagedReferenceFactory> queue = new InjectedValue<ManagedReferenceFactory>();
     private InjectedValue<Cache> cache = new InjectedValue<Cache>();
+    private InjectedValue<EmbeddedCacheManager> cacheManager = new InjectedValue<EmbeddedCacheManager>();
 
     private HibernateSearchJmsConsumer hsjc;
     private Connection connection;
+
 
     public HibernateSearchJmsConsumerService() {
     }
@@ -72,8 +75,11 @@ public class HibernateSearchJmsConsumerService implements Service<String> {
             final Session session = queryConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             final MessageConsumer consumer = session.createConsumer(cast(Queue.class, queue.getValue()));
 
-            //hsjc = new HibernateSearchJmsConsumer(cast(Cache.class, cache.getValue()));
+            String cacheName = "test"; //TODO hardcoded test name
+            cacheManager.getValue().getCache(cacheName);
+
             hsjc = new HibernateSearchJmsConsumer(cache.getValue());
+            //hsjc = new HibernateSearchJmsConsumer(cache.getValue());
             //hsjc = new HibernateSearchJmsConsumer(cache);
             consumer.setMessageListener(hsjc);
             queryConnection.start();
@@ -117,5 +123,9 @@ public class HibernateSearchJmsConsumerService implements Service<String> {
 
     public InjectedValue<Cache> getCache() {
         return cache;
+    }
+
+    public Injector<EmbeddedCacheManager> getCacheManager() {
+        return cacheManager;
     }
 }
