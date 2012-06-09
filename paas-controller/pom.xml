@@ -80,13 +80,6 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-        	<groupId>org.apache.deltacloud.client</groupId>
-        	<artifactId>client</artifactId>
-        	<version>0.2.0-SNAPSHOT</version>
-        	<type>jar</type>
-        	<scope>compile</scope>
-        </dependency>
-        <dependency>
         	<groupId>org.jboss.as</groupId>
         	<artifactId>jboss-as-cli</artifactId>
                 <scope>provided</scope>

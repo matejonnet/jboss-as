@@ -3,9 +3,6 @@
  */
 package org.jboss.as.paas.controller.iaas;
 
-import java.net.MalformedURLException;
-
-import org.apache.deltacloud.client.DeltaCloudClientException;
 import org.jboss.as.paas.controller.domain.IaasProvider;
 import org.jboss.logging.Logger;
 
@@ -23,14 +20,6 @@ class IaasDriverFactory {
             driver = new StaticDriver(iaasProvider);
         } else if (driverName.startsWith("jcloud-")) {
             driver = new JCloudIaasDriver(iaasProvider);
-        } else if (driverName.startsWith("delta-")) {
-            try {
-                driver = new DeltacloudIaasDriver(iaasProvider);
-            } catch (MalformedURLException e) {
-                log.error("Cannot crate DeltacloudIaasDriver.", e);
-            } catch (DeltaCloudClientException e) {
-                log.error("Cannot crate DeltacloudIaasDriver.", e);
-            }
         } else {
             throw new IllegalArgumentException("Unsuported driver [" + driver + "]");
         }
