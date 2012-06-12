@@ -7,6 +7,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -43,7 +44,8 @@ public class Server {
 
         try {
             try {
-                serverSocket = new ServerSocket(Main.CONFIGURATOR_PORT);
+                serverSocket = new ServerSocket();
+                serverSocket.bind(new InetSocketAddress("0.0.0.0", Main.CONFIGURATOR_PORT));
             } catch (IOException e) {
                 System.out.println("Could not listen on port: " + Main.CONFIGURATOR_PORT);
                 System.exit(-1);

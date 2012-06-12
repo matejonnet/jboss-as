@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # add to /etc/rc.local
 # /opt/jboss-as/jboss-as-7/bin/bootstrap-jboss-as7-paas.sh
@@ -6,7 +6,7 @@
 #
 
 
-echo "bootstraping jboss AS 7 paas"
+#echo "bootstraping jboss AS 7 paas"
 echo "booting ... " > /var/log/jboss-paas-config.log
 date >> /var/log/jboss-paas-config.log
 
@@ -28,18 +28,22 @@ while true; do
     if (test -s /tmp/local.ip); then
         break
     fi
-    echo "Waiting network to get ip ...going to sleep for 1"
+    echo "Waiting network to get ip ...going to sleep for 1" >> /var/log/jboss-paas-config.log
     sleep 1
     COUNT=$[ $COUNT + 1 ]
     if [ $COUNT -gt 30 ]; then
-        echo "ERROR: Time exceeded waiting for ip address"
+        echo "ERROR: Time exceeded waiting for ip address" >> /var/log/jboss-paas-config.log
         break
     fi
 done
 
 LISTEN_ADDRESS=`cat /tmp/local.ip`
 
-sed -i "s/name=\"master\"/name=\"${LISTEN_ADDRESS//\./x}\"/g" $jboss_path/domain/configuration/host.xml
+sed -i -e "s/name=\"master\"/name=\"${LISTEN_ADDRESS//\./x}\"/g" \
+-e "s/127\.0\.0\.1/${LISTEN_ADDRESS}/g" \
+${jboss_path}/domain/configuration/host.xml
 
 jboss_configurator_args="server $jboss_path/domain/configuration/host.xml $jboss_path/bin/startjboss.sh"
-/opt/java/jre1.6/bin/java -classpath $jboss_path/modules/org/jboss/as/paas/controller/main/jboss-as-paas-controller.jar org.jboss.as.paas.configurator.Main $jboss_configurator_args 2>&1 1>/var/log/jboss-paas-config.log &
+/opt/java/jre1.6/bin/java -Djava.net.preferIPv4Stack=true -classpath $jboss_path/modules/org/jboss/as/paas/controller/main/jboss-as-paas-controller.jar org.jboss.as.paas.configurator.Main $jboss_configurator_args 2>&1 1>/var/log/jboss-paas-config.log &
+
+echo "Done." >> /var/log/jboss-paas-config.log

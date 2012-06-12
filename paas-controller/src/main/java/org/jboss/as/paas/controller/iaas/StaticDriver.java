@@ -45,7 +45,7 @@ class StaticDriver implements IaasDriver {
 
     @Override
     public void terminateInstance(String instanceId) {
-        log.warn("Terminate instance called on vm driver. Skipping termination.");
+        log.warn("Terminate instance called on static driver. Skipping termination.");
     }
 
     @Override
