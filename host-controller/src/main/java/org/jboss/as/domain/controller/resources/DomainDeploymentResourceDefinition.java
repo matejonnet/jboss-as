@@ -25,6 +25,7 @@ import org.jboss.as.controller.OperationDefinition;
 import org.jboss.as.controller.OperationStepHandler;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.registry.OperationEntry.Flag;
+import org.jboss.as.domain.controller.modules.ModularDeploymentAddHandler;
 import org.jboss.as.domain.controller.operations.ServerGroupRemoveHandler;
 import org.jboss.as.domain.controller.operations.deployment.DeploymentAddHandler;
 import org.jboss.as.domain.controller.operations.deployment.DeploymentRemoveHandler;
@@ -52,7 +53,8 @@ public class DomainDeploymentResourceDefinition extends DeploymentResourceDefini
     public static DomainDeploymentResourceDefinition createForDomainRoot(boolean isMaster, ContentRepository contentRepository, HostFileRepository fileRepository) {
         return new DomainDeploymentResourceDefinition(DeploymentResourceParent.DOMAIN,
                 DeploymentAttributes.DOMAIN_DEPLOYMENT_ADD_DEFINITION,
-                isMaster ? new DeploymentAddHandler(contentRepository) : new DeploymentAddHandler(),
+                //isMaster ? new ModularDeploymentAddHandler(new DeploymentAddHandler(contentRepository)) : new DeploymentAddHandler(),
+                isMaster ? new ModularDeploymentAddHandler(contentRepository) : new DeploymentAddHandler(),
                 isMaster ? DeploymentRemoveHandler.createForMaster(contentRepository) : DeploymentRemoveHandler.createForSlave(fileRepository));
     }
 
