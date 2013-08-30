@@ -19,8 +19,6 @@ class Module {
     private final File warArchive;
     private final File libFolder;
     private final String name;
-    private boolean deployed;
-    private boolean started;
 
     public Module(File extractedWar, File destinationLocation, String name) throws IOException {
         this.name = name;
@@ -58,24 +56,8 @@ class Module {
         }
     }
 
-    public void markDeployed() {
-        deployed = true;
-    }
-
-    public boolean isDeployed() {
-        return deployed;
-    }
-
     public String name() {
         return name;
-    }
-
-    public void markStarterd() {
-        started = true;
-    }
-
-    public boolean isStarted() {
-        return started;
     }
 
     public InputStream getInputStream() throws FileNotFoundException {
