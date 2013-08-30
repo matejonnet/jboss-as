@@ -24,9 +24,18 @@ class ModularDeployerHandler implements OperationStepHandler {
 
     private final ContentRepository contentRepository;
     private final AtomicInteger portOffset;
+    private final File tempDir;
 
     public ModularDeployerHandler(ContentRepository contentRepository) {
         this.contentRepository = contentRepository;
+
+        String jbossTempDir = System.getProperty("jboss.domain.temp.dir");
+        if (jbossTempDir != null) {
+            tempDir = new File(jbossTempDir, "moduler-deployment");
+        } else {
+            jbossTempDir = System.getProperty("java.io.tmpdir");
+            tempDir = new File(jbossTempDir, "moduler-deployment");
+        }
 
         portOffset = new AtomicInteger();
     }
@@ -51,7 +60,7 @@ class ModularDeployerHandler implements OperationStepHandler {
         }
 
         if (deployment != null) {
-            File extractedEar = new File("/tmp/ear"); //TODO
+            File extractedEar = new File(tempDir, "ear");
             //extractedEar.delete();
             FileUtil.recursiveDelete(extractedEar);
             extractedEar.mkdir();
@@ -73,7 +82,7 @@ class ModularDeployerHandler implements OperationStepHandler {
     private void doExecute(OperationContext context, File extractedEar) {
         //todo war location
         try {
-            File warsDestination = new File("/tmp/wars"); //TODO
+            File warsDestination = new File(tempDir, "wars"); //TODO
             FileUtil.recursiveDelete(warsDestination);
             warsDestination.mkdir();
 
